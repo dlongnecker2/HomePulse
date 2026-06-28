@@ -45,6 +45,18 @@ class Database:
 
         self.conn.commit()
 
+    def add_health_check(self, timestamp, latency, packet_loss, dns_ok, score, rebooted=0):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO health_checks
+            (timestamp, latency, packet_loss, dns_ok, score, rebooted)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (timestamp, latency, packet_loss, int(dns_ok), score, rebooted)
+        )
+        self.conn.commit()
+
     def add_event(self, timestamp, event_type, message):
         cursor = self.conn.cursor()
         cursor.execute(
@@ -52,3 +64,27 @@ class Database:
             (timestamp, event_type, message)
         )
         self.conn.commit()
+
+    def latest_health_check(self):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT timestamp, latency, packet_loss, dns_ok, score, rebooted
+            FROM health_checks
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "timestamp": row[0],
+            "latency": row[1],
+            "packet_loss": row[2],
+            "dns_ok": bool(row[3]),
+            "score": row[4],
+            "rebooted": bool(row[5])
+        }

@@ -6,6 +6,7 @@ from modules.config import Config
 from modules.database import Database
 from modules.scheduler import Scheduler
 from modules.dashboard import Dashboard
+from modules.network import NetworkMonitor
 
 
 class Application:
@@ -14,6 +15,17 @@ class Application:
         self.config = Config()
         self.db = Database(self.config.get("database"))
         self.scheduler = Scheduler(self.log)
+        self.network = NetworkMonitor(self.config, self.log)
+
+        self.status = {
+            "internet_status": "Starting",
+            "health_score": None,
+            "latency": None,
+            "packet_loss": None,
+            "dns_ok": None,
+            "details": "Application starting",
+            "last_health_check": None
+        }
 
     def startup_message(self):
         self.log.info("=" * 60)
@@ -43,11 +55,32 @@ class Application:
         )
 
     def health_check(self):
-        self.log.info("Health check placeholder ran")
-        self.db.add_event(
-            timestamp=str(datetime.now()),
-            event_type="health_check",
-            message="Health check placeholder ran"
+        result = self.network.check()
+        now = str(datetime.now())
+
+        self.status.update({
+            "internet_status": result.status,
+            "health_score": result.score,
+            "latency": result.latency,
+            "packet_loss": result.packet_loss,
+            "dns_ok": result.dns_ok,
+            "details": result.details,
+            "last_health_check": now
+        })
+
+        self.db.add_health_check(
+            timestamp=now,
+            latency=result.latency,
+            packet_loss=result.packet_loss,
+            dns_ok=result.dns_ok,
+            score=result.score,
+            rebooted=0
+        )
+
+        self.log.info(
+            f"Health: {result.status} | Score={result.score} | "
+            f"Latency={result.latency}ms | PacketLoss={result.packet_loss}% | "
+            f"DNS={result.dns_ok} | {result.details}"
         )
 
     def daily_speed_test(self):
