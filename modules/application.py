@@ -9,6 +9,7 @@ from modules.dashboard import Dashboard
 from modules.network import NetworkMonitor
 from modules.status import StatusManager
 from modules.speedtest_engine import SpeedTestEngine
+from modules.port_check import check_dashboard_port
 
 
 class Application:
@@ -25,7 +26,7 @@ class Application:
         self.log.info("=" * 60)
         self.log.info("HomePulse starting...")
         self.log.info("Home Reliability Dashboard")
-        self.log.info(f"Version: {self.config.get('version', default='2.2')}")
+        self.log.info(f"Version: {self.config.get('version', default='2.5.1')}")
         self.log.info("Dashboard: http://localhost:8080")
         self.log.info("Developer Console: http://localhost:8080/dev")
         self.log.info("Logs: http://localhost:8080/logs")
@@ -118,6 +119,8 @@ class Application:
         )
 
     def start_dashboard(self):
+        check_dashboard_port(self.config, self.log)
+
         dashboard = Dashboard(self)
         dashboard_thread = threading.Thread(
             target=dashboard.run,
