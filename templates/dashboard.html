@@ -30,6 +30,14 @@
 </section>
 
 <section>
+    <h2>Latency History</h2>
+    <div class="chart-box">
+        <canvas id="latencyChart"></canvas>
+    </div>
+    <p class="small">Shows recent health checks stored in SQLite.</p>
+</section>
+
+<section>
     <h2>Daily Speed Test</h2>
     <table>
         <tr><td>Download</td><td>{{ speedtest.download }} Mbps</td></tr>
@@ -54,4 +62,7 @@
 </section>
 
 <p class="small">Page refreshes every 30 seconds.</p>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard_charts.js') }}"></script>
 {% endblock %}

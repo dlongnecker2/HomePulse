@@ -68,6 +68,22 @@ class Dashboard:
                 now=datetime.now()
             )
 
+        @self.app.route("/api/charts/latency")
+        def api_latency_chart():
+            rows = self.application.db.health_history(limit=96)
+
+            labels = []
+            values = []
+
+            for row in rows:
+                labels.append(row["timestamp"][11:16] if row["timestamp"] else "")
+                values.append(row["latency"])
+
+            return {
+                "labels": labels,
+                "values": values
+            }
+
         @self.app.route("/health")
         def health():
             return {

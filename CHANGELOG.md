@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.4.0
+- Added first chart API endpoint: /api/charts/latency
+- Added Chart.js to dashboard.
+- Added live latency chart using health check history.
+- Added database history method for health checks.
+- Prepared dashboard structure for additional charts.
+
 ## v2.3
 - Moved dashboard HTML out of Python strings and into Flask templates.
 - Added shared base layout.
@@ -14,15 +21,3 @@
 - Speed test results now update the Status Manager.
 - Speed test results now save to SQLite.
 - Dashboard Daily Speed Test values now populate after a speed test.
-
-## v2.1
-- Added Developer Console at /dev.
-- Added Run Internet Health Check Now button.
-- Added log viewer at /logs.
-- Added startup dashboard links.
-
-## v2.0
-- Rebranded application from RouterMonitor V2 to HomePulse.
-- Added central StatusManager.
-- Updated dashboard branding for HomePulse.
-- Internet monitoring is now the first HomePulse module foundation.

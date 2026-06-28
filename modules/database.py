@@ -123,3 +123,30 @@ class Database:
             "ping": row[3],
             "server": row[4]
         }
+
+    def health_history(self, limit=96):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT timestamp, latency, packet_loss, dns_ok, score, rebooted
+            FROM health_checks
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,)
+        )
+
+        rows = cursor.fetchall()
+        rows.reverse()
+
+        return [
+            {
+                "timestamp": row[0],
+                "latency": row[1],
+                "packet_loss": row[2],
+                "dns_ok": bool(row[3]),
+                "score": row[4],
+                "rebooted": bool(row[5])
+            }
+            for row in rows
+        ]
