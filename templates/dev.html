@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}HomePulse Developer Console{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Developer Console</h2>
+
+    <form action="/dev/run-health-check" method="post">
+        <button type="submit">Run Internet Health Check Now</button>
+    </form>
+
+    <form action="/dev/run-speedtest" method="post">
+        <button type="submit">Run Speed Test Now</button>
+    </form>
+</section>
+
+<section>
+    <h2>Current Internet Status</h2>
+    <table>
+        <tr><td>Status</td><td>{{ internet.status }}</td></tr>
+        <tr><td>Score</td><td>{{ internet.score }}</td></tr>
+        <tr><td>Latency</td><td>{{ internet.latency }}</td></tr>
+        <tr><td>Packet Loss</td><td>{{ internet.packet_loss }}</td></tr>
+        <tr><td>DNS OK</td><td>{{ internet.dns_ok }}</td></tr>
+        <tr><td>Details</td><td>{{ internet.details }}</td></tr>
+        <tr><td>Last Check</td><td>{{ internet.last_check }}</td></tr>
+    </table>
+</section>
+
+<section>
+    <h2>Current Speed Test</h2>
+    <table>
+        <tr><td>Download</td><td>{{ speedtest.download }}</td></tr>
+        <tr><td>Upload</td><td>{{ speedtest.upload }}</td></tr>
+        <tr><td>Ping</td><td>{{ speedtest.ping }}</td></tr>
+        <tr><td>Server</td><td>{{ speedtest.server }}</td></tr>
+        <tr><td>Last Run</td><td>{{ speedtest.last_run }}</td></tr>
+    </table>
+</section>
+{% endblock %}

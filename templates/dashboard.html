@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}HomePulse Dashboard{% endblock %}
+
+{% block refresh %}
+<meta http-equiv="refresh" content="30">
+{% endblock %}
+
+{% block content %}
+{% set health_status = internet.status %}
+{% set status_class = "healthy" %}
+{% if health_status == "Degraded" %}
+    {% set status_class = "degraded" %}
+{% elif health_status == "Unhealthy" %}
+    {% set status_class = "unhealthy" %}
+{% endif %}
+
+<section>
+    <h2>Internet</h2>
+    <div class="status {{ status_class }}">{{ health_status }}</div>
+
+    <table>
+        <tr><td>Health Score</td><td>{{ internet.score }}</td></tr>
+        <tr><td>Latency</td><td>{{ internet.latency }} ms</td></tr>
+        <tr><td>Packet Loss</td><td>{{ internet.packet_loss }}%</td></tr>
+        <tr><td>DNS</td><td>{{ internet.dns_ok }}</td></tr>
+        <tr><td>Details</td><td>{{ internet.details }}</td></tr>
+        <tr><td>Last Internet Check</td><td>{{ internet.last_check }}</td></tr>
+    </table>
+</section>
+
+<section>
+    <h2>Daily Speed Test</h2>
+    <table>
+        <tr><td>Download</td><td>{{ speedtest.download }} Mbps</td></tr>
+        <tr><td>Upload</td><td>{{ speedtest.upload }} Mbps</td></tr>
+        <tr><td>Ping</td><td>{{ speedtest.ping }} ms</td></tr>
+        <tr><td>Server</td><td>{{ speedtest.server }}</td></tr>
+        <tr><td>Last Run</td><td>{{ speedtest.last_run }}</td></tr>
+    </table>
+</section>
+
+<section>
+    <h2>System</h2>
+    <table>
+        <tr><td>Version</td><td>{{ status.version }}</td></tr>
+        <tr><td>Folder</td><td>C:\RouterMonitorV2</td></tr>
+        <tr><td>Current Time</td><td>{{ now }}</td></tr>
+        <tr><td>Started At</td><td>{{ system.started_at }}</td></tr>
+        <tr><td>Last Update</td><td>{{ system.last_update }}</td></tr>
+        <tr><td>Monitor Interval</td><td>{{ config.get("monitor_interval_minutes") }} minutes</td></tr>
+        <tr><td>Dry Run Mode</td><td>{{ config.get("dry_run") }}</td></tr>
+    </table>
+</section>
+
+<p class="small">Page refreshes every 30 seconds.</p>
+{% endblock %}

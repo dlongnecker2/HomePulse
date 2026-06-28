@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+    <title>{% block title %}HomePulse{% endblock %}</title>
+    <meta charset="utf-8">
+    {% block refresh %}{% endblock %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/homepulse.css') }}">
+</head>
+<body>
+    <div class="card">
+        <header>
+            <h1>HomePulse</h1>
+            <div class="subtitle">Home Reliability Dashboard</div>
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/dev">Developer Console</a>
+                <a href="/logs">Logs</a>
+                <a href="/health">JSON Health</a>
+            </nav>
+        </header>
+
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

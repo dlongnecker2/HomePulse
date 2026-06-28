@@ -1,6 +1,6 @@
 {
   "project_name": "RouterMonitorV2",
-  "version": "2.2",
+  "version": "2.3",
   "monitor_interval_minutes": 15,
   "speedtest_hour": 4,
   "dry_run": true,

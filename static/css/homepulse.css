@@ -1,0 +1,100 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 40px;
+    background: #f3f5f7;
+    color: #222;
+}
+
+.card {
+    background: white;
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 960px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.14);
+}
+
+h1 {
+    margin-top: 0;
+    margin-bottom: 4px;
+    font-size: 36px;
+}
+
+.subtitle {
+    color: #666;
+    margin-bottom: 18px;
+    font-size: 16px;
+}
+
+nav {
+    margin-bottom: 28px;
+}
+
+nav a {
+    display: inline-block;
+    margin-right: 14px;
+}
+
+section {
+    margin-top: 28px;
+}
+
+h2 {
+    font-size: 20px;
+    margin-bottom: 10px;
+}
+
+.status {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 18px;
+}
+
+.status.healthy {
+    color: green;
+}
+
+.status.degraded {
+    color: orange;
+}
+
+.status.unhealthy {
+    color: red;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 10px;
+}
+
+td {
+    padding: 9px;
+    border-bottom: 1px solid #ddd;
+}
+
+td:first-child {
+    font-weight: bold;
+    width: 42%;
+}
+
+button {
+    font-size: 16px;
+    padding: 10px 16px;
+    margin: 8px 8px 8px 0;
+    cursor: pointer;
+}
+
+.small {
+    color: #666;
+    font-size: 13px;
+    margin-top: 22px;
+}
+
+.log-viewer {
+    background: #111;
+    color: #eee;
+    border-radius: 10px;
+    padding: 18px;
+    overflow-x: auto;
+    line-height: 1.45;
+}
