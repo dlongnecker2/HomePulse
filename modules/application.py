@@ -7,6 +7,7 @@ from modules.database import Database
 from modules.scheduler import Scheduler
 from modules.dashboard import Dashboard
 from modules.network import NetworkMonitor
+from modules.status import StatusManager
 
 
 class Application:
@@ -16,22 +17,13 @@ class Application:
         self.db = Database(self.config.get("database"))
         self.scheduler = Scheduler(self.log)
         self.network = NetworkMonitor(self.config, self.log)
-
-        self.status = {
-            "internet_status": "Starting",
-            "health_score": None,
-            "latency": None,
-            "packet_loss": None,
-            "dns_ok": None,
-            "details": "Application starting",
-            "last_health_check": None
-        }
+        self.status = StatusManager()
 
     def startup_message(self):
         self.log.info("=" * 60)
-        self.log.info("RouterMonitorV2 starting...")
-        self.log.info(f"Project: {self.config.get('project_name')}")
-        self.log.info(f"Version: {self.config.get('version')}")
+        self.log.info("HomePulse starting...")
+        self.log.info("Home Reliability Dashboard")
+        self.log.info(f"Version: {self.config.get('version', default='2.0')}")
         self.log.info("=" * 60)
 
     def initialize(self):
@@ -42,7 +34,7 @@ class Application:
 
     def register_jobs(self):
         self.scheduler.every_minutes(
-            name="Health Check",
+            name="Internet Health Check",
             minutes=self.config.get("monitor_interval_minutes"),
             function=self.health_check
         )
@@ -58,15 +50,15 @@ class Application:
         result = self.network.check()
         now = str(datetime.now())
 
-        self.status.update({
-            "internet_status": result.status,
-            "health_score": result.score,
-            "latency": result.latency,
-            "packet_loss": result.packet_loss,
-            "dns_ok": result.dns_ok,
-            "details": result.details,
-            "last_health_check": now
-        })
+        self.status.update_internet(
+            status=result.status,
+            score=result.score,
+            latency=result.latency,
+            packet_loss=result.packet_loss,
+            dns_ok=result.dns_ok,
+            details=result.details,
+            last_check=now
+        )
 
         self.db.add_health_check(
             timestamp=now,
@@ -78,7 +70,7 @@ class Application:
         )
 
         self.log.info(
-            f"Health: {result.status} | Score={result.score} | "
+            f"Internet Health: {result.status} | Score={result.score} | "
             f"Latency={result.latency}ms | PacketLoss={result.packet_loss}% | "
             f"DNS={result.dns_ok} | {result.details}"
         )

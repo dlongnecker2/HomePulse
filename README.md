@@ -1,6 +1,19 @@
-# RouterMonitorV2 v1.3
+# HomePulse v2.0
 
-Target install folder:
+HomePulse is a home reliability dashboard.
+
+Current module:
+- Internet health monitoring
+
+Future modules may include:
+- Solar monitoring
+- EV charging
+- Greenhouse monitoring
+- Smart home devices
+
+## Folder
+
+For now, the Windows folder remains:
 
 C:\RouterMonitorV2
 
@@ -15,5 +28,3 @@ python router_monitor.py
 Open:
 
 http://localhost:8080
-
-Stop with CTRL + C.

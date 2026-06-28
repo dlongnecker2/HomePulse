@@ -12,17 +12,12 @@ class Dashboard:
         @self.app.route("/")
         def home():
             config = self.application.config
-            status = self.application.status
-            latest = self.application.db.latest_health_check()
+            status = self.application.status.get()
+            internet = status["internet"]
+            speedtest = status["speedtest"]
+            system = status["system"]
 
-            health_status = status.get("internet_status", "Waiting for first check")
-            score = status.get("health_score", "N/A")
-            latency = status.get("latency", "N/A")
-            packet_loss = status.get("packet_loss", "N/A")
-            dns_ok = status.get("dns_ok", "N/A")
-            details = status.get("details", "No health check yet")
-            last_check = status.get("last_health_check", "Never")
-
+            health_status = internet["status"]
             color = "green"
             if health_status == "Degraded":
                 color = "orange"
@@ -33,69 +28,103 @@ class Dashboard:
             <!doctype html>
             <html>
             <head>
-                <title>RouterMonitor V2</title>
+                <title>HomePulse</title>
                 <meta http-equiv="refresh" content="30">
                 <style>
                     body {{
                         font-family: Arial, sans-serif;
                         margin: 40px;
-                        background: #f5f5f5;
+                        background: #f3f5f7;
+                        color: #222;
                     }}
                     .card {{
                         background: white;
-                        border-radius: 12px;
-                        padding: 24px;
-                        max-width: 820px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+                        border-radius: 16px;
+                        padding: 28px;
+                        max-width: 920px;
+                        box-shadow: 0 3px 12px rgba(0,0,0,0.14);
                     }}
-                    h1 {{ margin-top: 0; }}
+                    h1 {{
+                        margin-top: 0;
+                        margin-bottom: 4px;
+                        font-size: 36px;
+                    }}
+                    .subtitle {{
+                        color: #666;
+                        margin-bottom: 24px;
+                        font-size: 16px;
+                    }}
                     .status {{
-                        font-size: 26px;
+                        font-size: 28px;
                         color: {color};
+                        font-weight: bold;
+                        margin-bottom: 18px;
+                    }}
+                    .section-title {{
+                        margin-top: 28px;
+                        font-size: 20px;
                         font-weight: bold;
                     }}
                     table {{
                         border-collapse: collapse;
                         width: 100%;
-                        margin-top: 16px;
+                        margin-top: 10px;
                     }}
                     td {{
-                        padding: 8px;
+                        padding: 9px;
                         border-bottom: 1px solid #ddd;
                     }}
                     td:first-child {{
                         font-weight: bold;
-                        width: 45%;
+                        width: 42%;
                     }}
                     .small {{
                         color: #666;
                         font-size: 13px;
+                        margin-top: 22px;
                     }}
                 </style>
             </head>
             <body>
                 <div class="card">
-                    <h1>RouterMonitor V2</h1>
+                    <h1>HomePulse</h1>
+                    <div class="subtitle">Home Reliability Dashboard</div>
+
+                    <div class="section-title">Internet</div>
                     <div class="status">{health_status}</div>
 
                     <table>
-                        <tr><td>Project</td><td>{config.get("project_name")}</td></tr>
-                        <tr><td>Version</td><td>{config.get("version")}</td></tr>
+                        <tr><td>Health Score</td><td>{internet["score"]}</td></tr>
+                        <tr><td>Latency</td><td>{internet["latency"]} ms</td></tr>
+                        <tr><td>Packet Loss</td><td>{internet["packet_loss"]}%</td></tr>
+                        <tr><td>DNS</td><td>{internet["dns_ok"]}</td></tr>
+                        <tr><td>Details</td><td>{internet["details"]}</td></tr>
+                        <tr><td>Last Internet Check</td><td>{internet["last_check"]}</td></tr>
+                    </table>
+
+                    <div class="section-title">Daily Speed Test</div>
+                    <table>
+                        <tr><td>Download</td><td>{speedtest["download"]}</td></tr>
+                        <tr><td>Upload</td><td>{speedtest["upload"]}</td></tr>
+                        <tr><td>Ping</td><td>{speedtest["ping"]}</td></tr>
+                        <tr><td>Server</td><td>{speedtest["server"]}</td></tr>
+                        <tr><td>Last Run</td><td>{speedtest["last_run"]}</td></tr>
+                    </table>
+
+                    <div class="section-title">System</div>
+                    <table>
+                        <tr><td>Version</td><td>{status["version"]}</td></tr>
+                        <tr><td>Folder</td><td>C:\\RouterMonitorV2</td></tr>
                         <tr><td>Current Time</td><td>{datetime.now()}</td></tr>
-                        <tr><td>Last Health Check</td><td>{last_check}</td></tr>
-                        <tr><td>Health Score</td><td>{score}</td></tr>
-                        <tr><td>Latency</td><td>{latency} ms</td></tr>
-                        <tr><td>Packet Loss</td><td>{packet_loss}%</td></tr>
-                        <tr><td>DNS</td><td>{dns_ok}</td></tr>
-                        <tr><td>Details</td><td>{details}</td></tr>
+                        <tr><td>Started At</td><td>{system["started_at"]}</td></tr>
+                        <tr><td>Last Update</td><td>{system["last_update"]}</td></tr>
                         <tr><td>Monitor Interval</td><td>{config.get("monitor_interval_minutes")} minutes</td></tr>
-                        <tr><td>Daily Speed Test</td><td>{config.get("speedtest_hour")}:00</td></tr>
                         <tr><td>Dry Run Mode</td><td>{config.get("dry_run")}</td></tr>
                     </table>
 
                     <p class="small">
-                        Page refreshes every 30 seconds. Latest DB row:
-                        {latest if latest else "None yet"}
+                        This is the first HomePulse-branded release. Internet is the first module.
+                        Solar, EV, greenhouse, and other home systems can be added later.
                     </p>
                 </div>
             </body>
@@ -105,9 +134,7 @@ class Dashboard:
         @self.app.route("/health")
         def health():
             return {
-                "status": self.application.status,
-                "project": self.application.config.get("project_name"),
-                "version": self.application.config.get("version"),
+                "status": self.application.status.get(),
                 "timestamp": str(datetime.now())
             }
 
