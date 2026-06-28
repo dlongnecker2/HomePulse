@@ -8,6 +8,7 @@ from modules.scheduler import Scheduler
 from modules.dashboard import Dashboard
 from modules.network import NetworkMonitor
 from modules.status import StatusManager
+from modules.speedtest_engine import SpeedTestEngine
 
 
 class Application:
@@ -17,20 +18,36 @@ class Application:
         self.db = Database(self.config.get("database"))
         self.scheduler = Scheduler(self.log)
         self.network = NetworkMonitor(self.config, self.log)
+        self.speedtest = SpeedTestEngine(self.log)
         self.status = StatusManager()
 
     def startup_message(self):
         self.log.info("=" * 60)
         self.log.info("HomePulse starting...")
         self.log.info("Home Reliability Dashboard")
-        self.log.info(f"Version: {self.config.get('version', default='2.0')}")
+        self.log.info(f"Version: {self.config.get('version', default='2.2')}")
+        self.log.info("Dashboard: http://localhost:8080")
+        self.log.info("Developer Console: http://localhost:8080/dev")
+        self.log.info("Logs: http://localhost:8080/logs")
         self.log.info("=" * 60)
 
     def initialize(self):
         self.startup_message()
         self.db.initialize()
         self.log.info("Database initialized successfully")
+        self.load_latest_speedtest()
         self.register_jobs()
+
+    def load_latest_speedtest(self):
+        latest = self.db.latest_speed_test()
+        if latest:
+            self.status.update_speedtest(
+                download=latest["download"],
+                upload=latest["upload"],
+                ping=latest["ping"],
+                server=latest["server"],
+                last_run=latest["timestamp"]
+            )
 
     def register_jobs(self):
         self.scheduler.every_minutes(
@@ -76,11 +93,28 @@ class Application:
         )
 
     def daily_speed_test(self):
-        self.log.info("Daily speed test placeholder ran")
+        result = self.speedtest.run()
+
+        self.status.update_speedtest(
+            download=result.download,
+            upload=result.upload,
+            ping=result.ping,
+            server=result.server,
+            last_run=result.timestamp
+        )
+
+        self.db.add_speed_test(
+            timestamp=result.timestamp,
+            download=result.download,
+            upload=result.upload,
+            ping=result.ping,
+            server=result.server
+        )
+
         self.db.add_event(
-            timestamp=str(datetime.now()),
+            timestamp=result.timestamp,
             event_type="speed_test",
-            message="Daily speed test placeholder ran"
+            message=f"Speed test complete: {result.download} down / {result.upload} up"
         )
 
     def start_dashboard(self):

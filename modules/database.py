@@ -57,6 +57,18 @@ class Database:
         )
         self.conn.commit()
 
+    def add_speed_test(self, timestamp, download, upload, ping, server):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO speed_tests
+            (timestamp, download, upload, ping, server)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (timestamp, download, upload, ping, server)
+        )
+        self.conn.commit()
+
     def add_event(self, timestamp, event_type, message):
         cursor = self.conn.cursor()
         cursor.execute(
@@ -87,4 +99,27 @@ class Database:
             "dns_ok": bool(row[3]),
             "score": row[4],
             "rebooted": bool(row[5])
+        }
+
+    def latest_speed_test(self):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT timestamp, download, upload, ping, server
+            FROM speed_tests
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "timestamp": row[0],
+            "download": row[1],
+            "upload": row[2],
+            "ping": row[3],
+            "server": row[4]
         }

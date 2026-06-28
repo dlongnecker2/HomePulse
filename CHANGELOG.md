@@ -1,23 +1,20 @@
 # Changelog
 
+## v2.2
+- Added real Speed Test engine using speedtest-cli Python module.
+- Added Run Speed Test Now button to Developer Console.
+- Speed test results now update the Status Manager.
+- Speed test results now save to SQLite.
+- Dashboard Daily Speed Test values now populate after a speed test.
+
+## v2.1
+- Added Developer Console at /dev.
+- Added Run Internet Health Check Now button.
+- Added log viewer at /logs.
+- Added startup dashboard links.
+
 ## v2.0
 - Rebranded application from RouterMonitor V2 to HomePulse.
 - Added central StatusManager.
 - Updated dashboard branding for HomePulse.
 - Internet monitoring is now the first HomePulse module foundation.
-- Folder may remain C:\RouterMonitorV2 for compatibility.
-
-## v1.4
-- Added real network health engine.
-- Added latency and packet loss checks.
-- Added DNS resolution check.
-- Added health score.
-- Updated dashboard to show live network status.
-- Added health check database inserts.
-
-## v1.3
-- Added Flask dashboard.
-- Added threaded dashboard startup.
-- Added interval and daily scheduler.
-- Added SQLite database initialization.
-- Added modular application structure.
