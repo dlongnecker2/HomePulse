@@ -1,0 +1,35 @@
+{
+  "project_name": "RouterMonitorV2",
+  "version": "1.3",
+  "monitor_interval_minutes": 15,
+  "speedtest_hour": 4,
+  "dry_run": true,
+  "dashboard": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 8080
+  },
+  "database": "data/routermonitor.db",
+  "log_directory": "logs",
+  "history_days": 365,
+  "tapo": {
+    "plug_ip": "",
+    "username": "",
+    "password": ""
+  },
+  "thresholds": {
+    "latency_ms": 150,
+    "packet_loss": 10,
+    "speed_mbps": 50,
+    "consecutive_failures": 3,
+    "cooldown_hours": 6
+  },
+  "email": {
+    "enabled": false,
+    "smtp_server": "",
+    "smtp_port": 587,
+    "sender": "",
+    "password": "",
+    "recipient": ""
+  }
+}
