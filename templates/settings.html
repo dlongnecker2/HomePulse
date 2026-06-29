@@ -55,14 +55,24 @@
       <h3>Reboot Safety</h3>
       <p>Speed tests may run anytime. Automatic router reboot is only allowed during the configured maintenance window.</p>
       {% set device_type = router_reboot.get("recovery_device_type", router_reboot.get("method", "dry_run")) %}
-      {% set reboot_method = "tapo_p125m_matter" if device_type == "tapo_p125m_matter" else "advanced" if device_type not in ("dry_run", "tapo_p125m_matter") else "dry_run" %}
+      {% set control_mode = router_reboot.get("recovery_control_mode", "") %}
+      {% set reboot_method = "tapo_p125m_matter" if control_mode in ("matter_bridge", "matter") or device_type == "tapo_p125m_matter" else "advanced" if device_type not in ("dry_run", "tapo_p125m_matter") else "dry_run" %}
       <label class="field-label" for="recovery-device-type">Reboot Method</label>
       <select id="recovery-device-type" name="recovery_device_type">
         <option value="dry_run" {% if reboot_method == "dry_run" %}selected{% endif %}>Dry Run</option>
-        <option value="tapo_p125m_matter" {% if reboot_method == "tapo_p125m_matter" %}selected{% endif %}>TP-Link Tapo (python-kasa)</option>
+        <option value="tapo_p125m_matter" {% if reboot_method == "tapo_p125m_matter" %}selected{% endif %}>Matter Bridge (Home Assistant)</option>
         <option value="future_adapter" {% if reboot_method == "advanced" %}selected{% endif %}>Advanced (future use only)</option>
       </select>
       <p class="settings-help">Dry Run remains the safe default. Real router reboot is still disabled until explicitly approved later.</p>
+
+      <label class="field-label" for="home-assistant-url">Home Assistant URL</label>
+      <input id="home-assistant-url" name="home_assistant_url" type="text" value="{{ router_reboot.get("home_assistant_url", "") }}" placeholder="http://homeassistant.local:8123">
+
+      <label class="field-label" for="home-assistant-token">Home Assistant token</label>
+      <input id="home-assistant-token" name="home_assistant_token" type="password" value="" placeholder="Leave blank to keep existing token">
+
+      <label class="field-label" for="matter-entity-id">Matter switch entity ID</label>
+      <input id="matter-entity-id" name="matter_entity_id" type="text" value="{{ router_reboot.get("matter_entity_id", "") }}" placeholder="switch.router_plug">
 
       <div id="tapo-settings" class="method-settings">
         <div class="discovery-toolbar">
@@ -89,19 +99,25 @@
 
         <div class="diagnostics-actions inline-diagnostics">
           {{ render_test_button("Test Connection", url_for("test_tapo")) }}
-          <form method="post" action="{{ url_for("test_tapo_power_cycle") }}" class="diagnostic-test-form">
-            <label class="option-row power-cycle-confirm">
-              <input type="checkbox" name="confirm_tapo_power_cycle">
-              <span>I confirm this is a lamp or safe test load.</span>
-            </label>
-            <button type="submit">Test Power Cycle (Lamp only)</button>
-          </form>
+          <label class="option-row power-cycle-confirm">
+            <input type="checkbox" id="confirm-inline-tapo-power-cycle">
+            <span>I confirm this is a lamp or safe test load.</span>
+          </label>
+          <button type="button" class="diagnostic-test-button" data-endpoint="{{ url_for("test_tapo_power_cycle") }}" data-requires-power-confirm="inline">Test Power Cycle (Lamp only)</button>
         </div>
       </div>
 
       <details id="advanced-reboot-settings" class="advanced-settings">
         <summary>Advanced (Future)</summary>
         <p class="settings-help">These fields are preserved for future adapters and hidden from the default workflow.</p>
+
+        <label class="field-label" for="recovery-control-mode">Recovery control mode</label>
+        <select id="recovery-control-mode" name="recovery_control_mode">
+          <option value="dry_run" {% if router_reboot.get("recovery_control_mode", "dry_run") == "dry_run" %}selected{% endif %}>dry_run</option>
+          <option value="matter_bridge" {% if router_reboot.get("recovery_control_mode") in ("matter", "matter_bridge") %}selected{% endif %}>matter_bridge</option>
+          <option value="cloud" {% if router_reboot.get("recovery_control_mode") == "cloud" %}selected{% endif %}>cloud</option>
+          <option value="kasa_legacy" {% if router_reboot.get("recovery_control_mode") == "kasa_legacy" %}selected{% endif %}>kasa_legacy (deprecated for P125M)</option>
+        </select>
 
         <label class="field-label" for="recovery-device-name">Recovery device name</label>
         <input id="recovery-device-name" name="recovery_device_name" type="text" value="{{ router_reboot.get("recovery_device_name", "") }}" placeholder="Tapo P125M Router Plug">
@@ -194,25 +210,68 @@
     {{ render_test_button("Test Internet Ping", url_for("test_ping")) }}
     {{ render_test_button("Run Speed Test", url_for("test_speed")) }}
     {{ render_test_button("Test Tapo Plug Connection", url_for("test_tapo")) }}
-    <form method="post" action="{{ url_for("test_tapo_power_cycle") }}" class="diagnostic-test-form">
-      <label class="option-row power-cycle-confirm">
-        <input type="checkbox" name="confirm_tapo_power_cycle">
-        <span>I confirm the plug is connected to a lamp or safe test load.</span>
-      </label>
-      <button type="submit">Test Lamp Power Cycle</button>
-    </form>
+    <label class="option-row power-cycle-confirm">
+      <input type="checkbox" id="confirm-panel-tapo-power-cycle">
+      <span>I confirm the plug is connected to a lamp or safe test load.</span>
+    </label>
+    <button type="button" class="diagnostic-test-button" data-endpoint="{{ url_for("test_tapo_power_cycle") }}" data-requires-power-confirm="panel">Test Lamp Power Cycle</button>
     {{ render_test_button("Run Full Diagnostics", url_for("test_full_diagnostics")) }}
   </div>
 </section>
 
 <script>
-  document.querySelectorAll(".diagnostic-test-form").forEach((form) => {
-    form.addEventListener("submit", async (event) => {
+  function fieldValue(id) {
+    return document.getElementById(id)?.value || "";
+  }
+
+  function collectDiagnosticOverrides() {
+    return {
+      router_reboot: {
+        recovery_device_type: fieldValue("recovery-device-type"),
+        recovery_device_ip: fieldValue("recovery-device-ip"),
+        recovery_device_name: fieldValue("recovery-device-name"),
+        home_assistant_url: fieldValue("home-assistant-url"),
+        home_assistant_token: fieldValue("home-assistant-token"),
+        matter_entity_id: fieldValue("matter-entity-id"),
+        recovery_power_off_seconds: Number(fieldValue("recovery-power-off-seconds") || 10),
+        recovery_wait_after_power_on_seconds: Number(fieldValue("recovery-wait-after-power-on-seconds") || 180),
+        kasa_username: fieldValue("kasa-username"),
+        kasa_password: fieldValue("kasa-password"),
+        kasa_device_type: fieldValue("kasa-device-type") || "smart",
+        kasa_device_family: fieldValue("kasa-device-family") || "SMART.TAPOPLUG",
+        kasa_encrypt_type: fieldValue("kasa-encrypt-type") || "KLAP",
+        kasa_login_version: Number(fieldValue("kasa-login-version") || 2),
+        kasa_credentials_hash: fieldValue("kasa-credentials-hash")
+      },
+      email: {
+        enabled: document.querySelector("input[name='email_enabled']")?.checked || false,
+        smtp_host: fieldValue("smtp-host"),
+        smtp_port: Number(fieldValue("smtp-port") || 587),
+        use_tls: document.querySelector("input[name='smtp_use_tls']")?.checked || false,
+        username: fieldValue("smtp-username"),
+        password: fieldValue("smtp-password"),
+        from_address: fieldValue("email-from-address"),
+        to_address: fieldValue("email-to-address")
+      }
+    };
+  }
+
+  document.querySelectorAll(".diagnostic-test-button").forEach((button) => {
+    button.addEventListener("click", async (event) => {
       event.preventDefault();
-      const data = new FormData(form);
-      const response = await fetch(form.action, {
+      const confirmSource = button.dataset.requiresPowerConfirm;
+      const confirmed = confirmSource === "inline"
+        ? document.getElementById("confirm-inline-tapo-power-cycle")?.checked
+        : confirmSource === "panel"
+          ? document.getElementById("confirm-panel-tapo-power-cycle")?.checked
+          : false;
+      const response = await fetch(button.dataset.endpoint, {
         method: "POST",
-        body: data,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          overrides: collectDiagnosticOverrides(),
+          confirm_tapo_power_cycle: confirmed === true
+        }),
         cache: "no-store",
       });
       const result = await response.json();

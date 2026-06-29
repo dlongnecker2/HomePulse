@@ -232,28 +232,31 @@ class Dashboard:
 
         @self.app.route("/test/tapo_power_cycle", methods=["POST"])
         def test_tapo_power_cycle():
-            confirmed = request.form.get("confirm_tapo_power_cycle") == "on"
+            payload = request.get_json(silent=True) or {}
+            confirmed = payload.get("confirm_tapo_power_cycle") is True
             return self._diagnostic_response("tapo_power_cycle_test", confirmed=confirmed)
 
         @self.app.route("/test/full_diagnostics", methods=["POST"])
         def test_full_diagnostics():
-            return jsonify(self.application.diagnostics.run_full_diagnostics().to_dict())
+            payload = request.get_json(silent=True) or {}
+            overrides = payload.get("overrides", payload)
+            return jsonify(self.application.diagnostics.run_full_diagnostics(overrides=overrides).to_dict())
 
         @self.app.route("/discover/tapo")
         def discover_tapo():
             return jsonify(self.application.tapo_discovery.discover())
 
     def _diagnostic_response(self, test_name, **kwargs):
-        return jsonify(self.application.diagnostics.run_test(test_name, **kwargs).to_dict())
+        payload = request.get_json(silent=True) or {}
+        overrides = payload.get("overrides", payload)
+        return jsonify(self.application.diagnostics.run_test(test_name, overrides=overrides, **kwargs).to_dict())
 
     @staticmethod
     def render_test_button(name, endpoint):
         label = escape(name)
         action = escape(endpoint)
         return Markup(
-            f'<form method="post" action="{action}" class="diagnostic-test-form">'
-            f'<button type="submit">{label}</button>'
-            '</form>'
+            f'<button type="button" class="diagnostic-test-button" data-endpoint="{action}">{label}</button>'
         )
 
     def _lab_payload(self):

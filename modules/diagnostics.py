@@ -1,9 +1,10 @@
-import asyncio
 import smtplib
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from email.message import EmailMessage
+
+from modules.power_adapters import KasaAdapter, MatterAdapter
 
 
 @dataclass
@@ -51,6 +52,7 @@ class Diagnostics:
             )
 
         try:
+            self._current_overrides = kwargs.get("overrides", {})
             result = test(timestamp=timestamp, **kwargs)
         except Exception as exc:
             self.log.exception(f"Diagnostic test failed unexpectedly: {test_name} - {exc}")
@@ -61,9 +63,11 @@ class Diagnostics:
                 duration_ms=0,
                 timestamp=timestamp,
             )
+        finally:
+            self._current_overrides = {}
         return self._finalize(result, started)
 
-    def run_full_diagnostics(self):
+    def run_full_diagnostics(self, overrides=None):
         tests = [
             "database_test",
             "scheduler_test",
@@ -73,7 +77,7 @@ class Diagnostics:
             "tapo_connection_test",
             "speed_test",
         ]
-        results = [self.run_test(test_name) for test_name in tests]
+        results = [self.run_test(test_name, overrides=overrides or {}) for test_name in tests]
         failed = sum(1 for result in results if result.status == "FAIL")
         warned = sum(1 for result in results if result.status == "WARN")
         status = "FAIL" if failed else "WARN" if warned else "PASS"
@@ -89,7 +93,11 @@ class Diagnostics:
         return summary
 
     def smtp_test(self, timestamp, **kwargs):
-        email = self.application.config.get("email", default={})
+        email = dict(self.application.config.get("email", default={}))
+        email_overrides = dict(kwargs.get("overrides", {}).get("email", {}))
+        if not email_overrides.get("password"):
+            email_overrides.pop("password", None)
+        email.update(email_overrides)
         if not email.get("enabled"):
             return DiagnosticResult(
                 "smtp_test",
@@ -234,83 +242,40 @@ class Diagnostics:
         )
 
     def _run_async_tapo_test(self, timestamp, power_cycle):
+        recovery = dict(self.application.config.get("router_reboot", default={}))
+        recovery_overrides = dict(getattr(self, "_current_overrides", {}).get("router_reboot", {}))
+        if not recovery_overrides.get("kasa_password"):
+            recovery_overrides.pop("kasa_password", None)
+        recovery.update(recovery_overrides)
+        original = self.application.config.data.get("router_reboot")
+        self.application.config.data["router_reboot"] = recovery
         try:
-            return asyncio.run(self._tapo_test(timestamp, power_cycle))
-        except ImportError:
-            return DiagnosticResult(
-                "tapo_power_cycle_test" if power_cycle else "tapo_connection_test",
-                "FAIL",
-                "python-kasa is not installed in this Python environment.",
-                0,
-                timestamp,
-            )
-
-    async def _tapo_test(self, timestamp, power_cycle):
-        from kasa import Device, DeviceConfig, DeviceConnectionParameters, DeviceEncryptionType, DeviceFamily
-        from kasa.credentials import Credentials
-
-        recovery = self.application.config.get("router_reboot", default={})
-        host = recovery.get("recovery_device_ip")
-        if not host:
-            return DiagnosticResult(
-                "tapo_power_cycle_test" if power_cycle else "tapo_connection_test",
-                "WARN",
-                "Tapo plug IP address is not configured.",
-                0,
-                timestamp,
-            )
-
-        credentials = None
-        if recovery.get("kasa_username") and recovery.get("kasa_password"):
-            credentials = Credentials(recovery.get("kasa_username"), recovery.get("kasa_password"))
-
-        connection_type = DeviceConnectionParameters(
-            DeviceFamily(recovery.get("kasa_device_family", "SMART.TAPOPLUG")),
-            DeviceEncryptionType(recovery.get("kasa_encrypt_type", "KLAP")),
-            int(recovery.get("kasa_login_version", 2)),
-            False,
-        )
-        config = DeviceConfig(
-            host=host,
-            timeout=10,
-            credentials=credentials,
-            credentials_hash=recovery.get("kasa_credentials_hash") or None,
-            connection_type=connection_type,
-        )
-        device = await Device.connect(config=config)
-        try:
-            await device.update()
-            alias = getattr(device, "alias", host)
-            is_on = getattr(device, "is_on", None)
-            if power_cycle:
-                off_seconds = int(recovery.get("recovery_power_off_seconds", 10))
-                wait_seconds = int(recovery.get("recovery_wait_after_power_on_seconds", 180))
-                await device.turn_off()
-                await asyncio.sleep(off_seconds)
-                await device.turn_on()
-                return DiagnosticResult(
-                    "tapo_power_cycle_test",
-                    "PASS",
-                    f"Tapo lamp power cycle command completed for {alias}.",
-                    0,
-                    timestamp,
-                    {
-                        "host": host,
-                        "alias": alias,
-                        "power_off_seconds": off_seconds,
-                        "wait_after_power_on_seconds": wait_seconds,
-                    },
-                )
-            return DiagnosticResult(
-                "tapo_connection_test",
-                "PASS",
-                f"Tapo plug connection succeeded for {alias}.",
-                0,
-                timestamp,
-                {"host": host, "alias": alias, "is_on": is_on},
-            )
+            adapter = self._power_diagnostic_adapter(recovery)
+            power_result = adapter.cycle() if power_cycle else adapter.status()
         finally:
-            await device.disconnect()
+            self.application.config.data["router_reboot"] = original
+
+        return DiagnosticResult(
+            "tapo_power_cycle_test" if power_cycle else "tapo_connection_test",
+            power_result.status,
+            power_result.message,
+            0,
+            timestamp,
+            power_result.metadata,
+        )
+
+    def _power_diagnostic_adapter(self, recovery):
+        mode = recovery.get("recovery_control_mode")
+        if mode == "kasa_legacy":
+            return KasaAdapter(self.application.config, self.log)
+        if (
+            mode == "matter_bridge"
+            or recovery.get("home_assistant_url")
+            or recovery.get("home_assistant_token")
+            or recovery.get("matter_entity_id")
+        ):
+            return MatterAdapter(self.application.config, self.log)
+        return KasaAdapter(self.application.config, self.log)
 
     def _finalize(self, result, started):
         result.duration_ms = int((time.perf_counter() - started) * 1000)

@@ -219,8 +219,17 @@ class Application:
 
         router_reboot = self.config.data.setdefault("router_reboot", {})
         device_type = form.get("recovery_device_type", form.get("router_reboot_method", "dry_run"))
+        control_mode = form.get("recovery_control_mode")
+        if not control_mode:
+            if device_type == "tapo_p125m_matter":
+                control_mode = "matter_bridge"
+            elif device_type in ("kasa_tapo", "kasa_legacy"):
+                control_mode = "kasa_legacy"
+            else:
+                control_mode = "dry_run"
         router_reboot["method"] = device_type
         router_reboot["recovery_device_type"] = device_type
+        router_reboot["recovery_control_mode"] = control_mode
         router_reboot["recovery_device_ip"] = form.get("recovery_device_ip", "").strip()
         router_reboot["recovery_device_name"] = form.get("recovery_device_name", "").strip()
         router_reboot["recovery_power_off_seconds"] = int(form.get("recovery_power_off_seconds", "10") or 10)
@@ -233,6 +242,11 @@ class Application:
         router_reboot["ssh_user"] = form.get("router_ssh_user", "").strip()
         router_reboot["ssh_command"] = form.get("router_ssh_command", "reboot").strip() or "reboot"
         router_reboot["smart_plug_url"] = form.get("smart_plug_url", "").strip()
+        router_reboot["home_assistant_url"] = form.get("home_assistant_url", "").strip()
+        router_reboot["matter_entity_id"] = form.get("matter_entity_id", "").strip()
+        new_ha_token = form.get("home_assistant_token", "")
+        if new_ha_token:
+            router_reboot["home_assistant_token"] = new_ha_token
         router_reboot["kasa_device_type"] = form.get("kasa_device_type", "smart").strip() or "smart"
         router_reboot["kasa_device_family"] = form.get("kasa_device_family", "SMART.TAPOPLUG").strip() or "SMART.TAPOPLUG"
         router_reboot["kasa_encrypt_type"] = form.get("kasa_encrypt_type", "KLAP").strip() or "KLAP"

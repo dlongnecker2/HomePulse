@@ -780,11 +780,7 @@ select {
   align-items: flex-start;
 }
 
-.diagnostic-test-form {
-  margin: 0;
-}
-
-.diagnostic-test-form button {
+.diagnostic-test-button {
   margin: 0;
 }
 
