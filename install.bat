@@ -1,6 +1,5 @@
 @echo off
-cd /d C:\RouterMonitorV2
-pip install -r requirements.txt
-echo.
-echo Install complete.
+echo Installing HomePulse requirements...
+python -m pip install -r requirements.txt
+echo Done.
 pause

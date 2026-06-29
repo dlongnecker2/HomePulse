@@ -1,68 +1,236 @@
 {% extends "base.html" %}
-
 {% block title %}HomePulse Dashboard{% endblock %}
-
-{% block refresh %}
-<meta http-equiv="refresh" content="30">
-{% endblock %}
-
 {% block content %}
 {% set health_status = internet.status %}
 {% set status_class = "healthy" %}
 {% if health_status == "Degraded" %}
-    {% set status_class = "degraded" %}
+  {% set status_class = "degraded" %}
 {% elif health_status == "Unhealthy" %}
-    {% set status_class = "unhealthy" %}
+  {% set status_class = "unhealthy" %}
+{% elif health_status == "Starting" %}
+  {% set status_class = "starting" %}
 {% endif %}
+{% set speed_available = speedtest.download is not none %}
 
-<section>
-    <h2>Internet</h2>
-    <div class="status {{ status_class }}">{{ health_status }}</div>
+<svg class="icon-defs" aria-hidden="true" focusable="false">
+  <symbol id="icon-wifi" viewBox="0 0 24 24">
+    <path d="M4.8 9.4a10.7 10.7 0 0 1 14.4 0" />
+    <path d="M8.2 12.8a5.8 5.8 0 0 1 7.6 0" />
+    <path d="M11.1 16.1a1.4 1.4 0 0 1 1.8 0" />
+    <path d="M12 19h.01" />
+  </symbol>
+  <symbol id="icon-activity" viewBox="0 0 24 24">
+    <path d="M3 12h4l2.2-6 5.2 12 2.4-6H21" />
+  </symbol>
+  <symbol id="icon-shield" viewBox="0 0 24 24">
+    <path d="M12 3 5.5 5.4v5.2c0 4.2 2.7 8 6.5 9.4 3.8-1.4 6.5-5.2 6.5-9.4V5.4L12 3Z" />
+    <path d="m9.5 12 1.8 1.8 3.7-4" />
+  </symbol>
+  <symbol id="icon-download" viewBox="0 0 24 24">
+    <path d="M12 4v10" />
+    <path d="m7.5 10 4.5 4.5L16.5 10" />
+    <path d="M5 20h14" />
+  </symbol>
+  <symbol id="icon-upload" viewBox="0 0 24 24">
+    <path d="M12 20V10" />
+    <path d="m7.5 14 4.5-4.5 4.5 4.5" />
+    <path d="M5 4h14" />
+  </symbol>
+  <symbol id="icon-router" viewBox="0 0 24 24">
+    <path d="M5 13h14a2 2 0 0 1 2 2v3H3v-3a2 2 0 0 1 2-2Z" />
+    <path d="M7 18h.01" />
+    <path d="M11 18h.01" />
+    <path d="M9 10a4.2 4.2 0 0 1 6 0" />
+    <path d="M6.5 7.5a7.8 7.8 0 0 1 11 0" />
+  </symbol>
+  <symbol id="icon-clock" viewBox="0 0 24 24">
+    <path d="M12 7v5l3 2" />
+    <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+  </symbol>
+  <symbol id="icon-check" viewBox="0 0 24 24">
+    <path d="m5 12 4 4L19 6" />
+  </symbol>
+</svg>
 
-    <table>
-        <tr><td>Health Score</td><td>{{ internet.score }}</td></tr>
-        <tr><td>Latency</td><td>{{ internet.latency }} ms</td></tr>
-        <tr><td>Packet Loss</td><td>{{ internet.packet_loss }}%</td></tr>
-        <tr><td>DNS</td><td>{{ internet.dns_ok }}</td></tr>
-        <tr><td>Details</td><td>{{ internet.details }}</td></tr>
-        <tr><td>Last Internet Check</td><td>{{ internet.last_check }}</td></tr>
-    </table>
-</section>
-
-<section>
-    <h2>Latency History</h2>
-    <div class="chart-box">
-        <canvas id="latencyChart"></canvas>
+<section class="status-overview">
+  <div class="overview-copy">
+    <div class="eyebrow">Live network status</div>
+    <div class="overview-title">
+      <span id="hero-status" class="hero-status {{ status_class }}">{{ health_status }}</span>
+      <span class="status-dot hero-dot health-indicator {{ status_class }}" aria-hidden="true"></span>
     </div>
-    <p class="small">Shows recent health checks stored in SQLite.</p>
+    <p id="internet-details" class="hero-detail">{{ internet.details }}</p>
+    <p id="hero-subtitle" class="hero-subtitle">
+      {% if health_status == "Healthy" %}
+        All monitored services operating normally.
+      {% elif health_status == "Degraded" %}
+        Performance is degraded. Review latency, packet loss, and DNS status.
+      {% elif health_status == "Unhealthy" %}
+        Critical network issues detected. Immediate attention recommended.
+      {% else %}
+        Collecting the first monitoring sample.
+      {% endif %}
+    </p>
+  </div>
+  <div class="info-strip" aria-label="Dashboard metadata">
+    <div class="info-item">
+      <span>Version</span>
+      <strong id="app-version">{{ status.version }}</strong>
+    </div>
+    <div class="info-item">
+      <span>Last Updated</span>
+      <strong id="last-update">{{ system.last_update or "--" }}</strong>
+    </div>
+    <div class="info-item">
+      <span>Auto Refresh</span>
+      <strong>10 sec</strong>
+    </div>
+    <div class="info-item">
+      <span>Application Uptime</span>
+      <strong id="application-uptime">Calculating</strong>
+    </div>
+  </div>
 </section>
 
-<section>
-    <h2>Daily Speed Test</h2>
-    <table>
-        <tr><td>Download</td><td>{{ speedtest.download }} Mbps</td></tr>
-        <tr><td>Upload</td><td>{{ speedtest.upload }} Mbps</td></tr>
-        <tr><td>Ping</td><td>{{ speedtest.ping }} ms</td></tr>
-        <tr><td>Server</td><td>{{ speedtest.server }}</td></tr>
-        <tr><td>Last Run</td><td>{{ speedtest.last_run }}</td></tr>
-    </table>
+<section class="status-grid">
+  <article class="status-card">
+    <div class="card-topline">
+      <div class="card-title">
+        <svg class="card-icon" aria-hidden="true"><use href="#icon-wifi"></use></svg>
+        <div class="card-label">Internet</div>
+      </div>
+      <span class="status-dot health-indicator {{ status_class }}" aria-hidden="true"></span>
+    </div>
+    <div id="internet-status" class="card-value {{ status_class }}">{{ internet.status }}</div>
+    <div id="last-check" class="card-foot">Last check: {{ internet.last_check or "--" }}</div>
+  </article>
+
+  <article class="status-card">
+    <div class="card-title">
+      <svg class="card-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
+      <div class="card-label">Latency</div>
+    </div>
+    <div class="card-value"><span id="latest-latency">{{ internet.latency if internet.latency is not none else "--" }}</span> ms</div>
+    <div id="packet-loss" class="card-foot">Packet loss: {{ internet.packet_loss if internet.packet_loss is not none else "--" }}%</div>
+  </article>
+
+  <article class="status-card">
+    <div class="card-title">
+      <svg class="card-icon" aria-hidden="true"><use href="#icon-shield"></use></svg>
+      <div class="card-label">Health Score</div>
+    </div>
+    <div class="card-value"><span id="health-score">{{ internet.score if internet.score is not none else "--" }}</span><span class="metric-unit"> / 100</span></div>
+    <div id="dns-status" class="card-foot">DNS: {{ internet.dns_ok }}</div>
+  </article>
+
+  <article class="status-card">
+    <div class="card-title">
+      <svg class="card-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
+      <div class="card-label">Speed Test</div>
+    </div>
+    <div class="card-value"><span id="speed-download">{{ speedtest.download ~ " Mbps" if speed_available else "Waiting for first test" }}</span></div>
+    <div id="last-speedtest" class="card-foot">Last run: {{ speedtest.last_run or "--" }}</div>
+  </article>
+
+  <article class="status-card">
+    <div class="card-title">
+      <svg class="card-icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
+      <div class="card-label">Upload</div>
+    </div>
+    <div class="card-value"><span id="speed-upload">{{ speedtest.upload ~ " Mbps" if speedtest.upload is not none else "Last test unavailable" }}</span></div>
+    <div id="speedtest-ping" class="card-foot">Ping: {{ speedtest.ping ~ " ms" if speedtest.ping is not none else "Last test unavailable" }}</div>
+  </article>
+
+  <article class="status-card">
+    <div class="card-title">
+      <svg class="card-icon" aria-hidden="true"><use href="#icon-router"></use></svg>
+      <div class="card-label">Router</div>
+    </div>
+    <div id="router-status" class="card-value no-wrap">{{ router.status or "Monitoring" }}</div>
+    <div id="last-reboot" class="card-foot">Last reboot: {{ router.last_reboot or "None recorded" }}</div>
+  </article>
 </section>
 
-<section>
-    <h2>System</h2>
-    <table>
-        <tr><td>Version</td><td>{{ status.version }}</td></tr>
+<section class="dashboard-main">
+  <article class="dashboard-panel chart-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Latency History</h2>
+        <p>Recent SQLite health checks with average latency reference.</p>
+      </div>
+      <div class="live-pill">Live refresh: 10 sec</div>
+    </div>
+    <div class="chart-box">
+      <canvas id="latencyChart"></canvas>
+    </div>
+  </article>
+
+  <aside class="side-stack">
+    <section class="dashboard-panel compact-panel">
+      <h2>Daily Speed Test</h2>
+      <table>
+        <tr><td>Download</td><td><span id="speed-download-table">{{ speedtest.download ~ " Mbps" if speedtest.download is not none else "Waiting for first test" }}</span></td></tr>
+        <tr><td>Upload</td><td><span id="speed-upload-table">{{ speedtest.upload ~ " Mbps" if speedtest.upload is not none else "Last test unavailable" }}</span></td></tr>
+        <tr><td>Ping</td><td><span id="speedtest-ping-table">{{ speedtest.ping ~ " ms" if speedtest.ping is not none else "Last test unavailable" }}</span></td></tr>
+        <tr><td>Server</td><td id="speedtest-server">{{ speedtest.server or "Last test unavailable" }}</td></tr>
+      </table>
+    </section>
+
+    <section class="dashboard-panel compact-panel">
+      <h2>System</h2>
+      <table>
         <tr><td>Folder</td><td>C:\RouterMonitorV2</td></tr>
         <tr><td>Current Time</td><td>{{ now }}</td></tr>
-        <tr><td>Started At</td><td>{{ system.started_at }}</td></tr>
-        <tr><td>Last Update</td><td>{{ system.last_update }}</td></tr>
+        <tr><td>Started At</td><td id="started-at">{{ system.started_at }}</td></tr>
         <tr><td>Monitor Interval</td><td>{{ config.get("monitor_interval_minutes") }} minutes</td></tr>
         <tr><td>Dry Run Mode</td><td>{{ config.get("dry_run") }}</td></tr>
-    </table>
+      </table>
+    </section>
+
+    <section class="dashboard-panel compact-panel timeline-panel">
+      <div class="panel-heading compact">
+        <div>
+          <h2>Recent Events</h2>
+          <p>Activity from the active monitor state.</p>
+        </div>
+      </div>
+      <div class="activity-timeline">
+        <div class="timeline-item">
+          <span class="timeline-icon health-indicator {{ status_class }}" aria-hidden="true">
+            <svg><use href="#icon-check"></use></svg>
+          </span>
+          <div>
+            <time id="event-health-time">{{ internet.last_check or "--" }}</time>
+            <strong>Internet health check</strong>
+            <span id="event-health">Status: {{ internet.status }}{% if internet.latency is not none %} · {{ internet.latency }} ms{% endif %}</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <span class="timeline-icon neutral" aria-hidden="true">
+            <svg><use href="#icon-download"></use></svg>
+          </span>
+          <div>
+            <time id="event-speedtest-time">{{ speedtest.last_run or "--" }}</time>
+            <strong>Speed test</strong>
+            <span id="event-speedtest">{% if speed_available %}{{ speedtest.download }} Mbps down / {{ speedtest.upload }} Mbps up{% else %}Waiting for first test{% endif %}</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <span class="timeline-icon neutral" aria-hidden="true">
+            <svg><use href="#icon-router"></use></svg>
+          </span>
+          <div>
+            <time id="event-router-time">{{ router.last_reboot or "--" }}</time>
+            <strong>Router monitoring</strong>
+            <span id="event-router">Last reboot: {{ router.last_reboot or "None recorded" }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </aside>
 </section>
 
-<p class="small">Page refreshes every 30 seconds.</p>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<p class="small">HomePulse v2.6.2 refines the dashboard experience while preserving the existing monitor, routes, and SQLite data.</p>
 <script src="{{ url_for('static', filename='js/dashboard_charts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/live_dashboard.js') }}"></script>
 {% endblock %}

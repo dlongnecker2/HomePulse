@@ -13,7 +13,7 @@ class Scheduler:
             "name": name,
             "interval": timedelta(minutes=minutes),
             "function": function,
-            "last_run": None
+            "last_run": None,
         })
 
     def daily(self, name, hour, minute, function):
@@ -23,18 +23,16 @@ class Scheduler:
             "hour": hour,
             "minute": minute,
             "function": function,
-            "last_run_date": None
+            "last_run_date": None,
         })
 
     def run_pending(self):
         now = datetime.now()
-
         for job in self.jobs:
             if job["type"] == "interval":
                 if job["last_run"] is None or now - job["last_run"] >= job["interval"]:
                     self._run_job(job)
                     job["last_run"] = now
-
             elif job["type"] == "daily":
                 today = now.date()
                 if now.hour == job["hour"] and now.minute >= job["minute"] and job["last_run_date"] != today:

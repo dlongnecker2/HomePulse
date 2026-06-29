@@ -1,19 +1,5 @@
-# Python
 __pycache__/
 *.pyc
-
-# Runtime data
-logs/
-data/
-
-# Virtual environments
-.venv/
-venv/
-
-# Windows
-Thumbs.db
-Desktop.ini
-
-# IDEs
-.vscode/
-.idea/
+.env
+logs/*.log
+data/*.db

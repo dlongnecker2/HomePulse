@@ -1,8 +1,4 @@
-"""
-RouterMonitorV2
-Main entry point
-"""
-
+"""HomePulse main entry point."""
 from modules.application import Application
 
 

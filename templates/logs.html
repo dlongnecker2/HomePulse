@@ -1,16 +1,10 @@
 {% extends "base.html" %}
-
 {% block title %}HomePulse Logs{% endblock %}
-
-{% block refresh %}
-<meta http-equiv="refresh" content="15">
-{% endblock %}
-
 {% block content %}
-<section>
-    <h2>Logs</h2>
-    <p class="small">Showing the most recent 150 log entries. Page refreshes every 15 seconds.</p>
-    <pre class="log-viewer">{% for line in lines %}{{ line }}
+<section class="dashboard-panel">
+  <h2>Recent Logs</h2>
+  <pre class="log-viewer">{% for line in lines %}{{ line }}
 {% endfor %}</pre>
+  <p class="small">Updated when this page was loaded: {{ now }}</p>
 </section>
 {% endblock %}

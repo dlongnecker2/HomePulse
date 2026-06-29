@@ -1,25 +1,30 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-    <title>{% block title %}HomePulse{% endblock %}</title>
-    <meta charset="utf-8">
-    {% block refresh %}{% endblock %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/homepulse.css') }}">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HomePulse{% endblock %}</title>
+  {% block refresh %}{% endblock %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/homepulse.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="card">
-        <header>
-            <h1>HomePulse</h1>
-            <div class="subtitle">Home Reliability Dashboard</div>
-            <nav>
-                <a href="/">Dashboard</a>
-                <a href="/dev">Developer Console</a>
-                <a href="/logs">Logs</a>
-                <a href="/health">JSON Health</a>
-            </nav>
-        </header>
-
-        {% block content %}{% endblock %}
+  <header class="top-bar">
+    <div class="brand-lockup">
+      <div class="brand-mark">HP</div>
+      <div>
+        <h1>HomePulse</h1>
+        <div class="subtitle">Home Reliability Dashboard</div>
+      </div>
     </div>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="{{ url_for('home') }}">Dashboard</a>
+      <a href="{{ url_for('dev') }}">Developer Console</a>
+      <a href="{{ url_for('logs') }}">Logs</a>
+    </nav>
+  </header>
+  <main class="page-shell">
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>
