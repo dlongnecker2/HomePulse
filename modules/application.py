@@ -27,7 +27,7 @@ class Application:
         self.log.info("=" * 60)
         self.log.info("HomePulse starting...")
         self.log.info("Home Reliability Dashboard")
-        self.log.info(f"Version: {self.config.get('version', default='2.7.0')}")
+        self.log.info(f"Version: {self.config.get('version', default='2.8.0')}")
         self.log.info("Dashboard: http://localhost:8080")
         self.log.info("Developer Console: http://localhost:8080/dev")
         self.log.info("Logs: http://localhost:8080/logs")
@@ -599,6 +599,81 @@ class Application:
             recommendations.append("Internet quality is strong; no action is recommended right now.")
 
         return recommendations[:5]
+
+    def history_summary(self):
+        now = datetime.now()
+        since = now - timedelta(hours=24)
+        since_text = str(since)
+        health_rows = self.db.health_history_since(since_text)
+        speed_rows = self.db.speed_tests_since(since_text)
+        events = self.db.events_since(since_text)
+        reboot_events = [
+            event for event in events
+            if event["event_type"] in ("router_reboot", "router_reboot_recommended", "router_reboot_skipped")
+        ]
+        outage_rows = [row for row in health_rows if self.is_outage_row(row)]
+        latencies = [row["latency"] for row in health_rows if row["latency"] is not None]
+        scores = [row["score"] for row in health_rows if row["score"] is not None]
+
+        return {
+            "health_rows": health_rows,
+            "speed_tests": list(reversed(speed_rows[-10:])),
+            "events": list(reversed((reboot_events + self.outage_events_from_rows(outage_rows))[-10:])),
+            "average_latency": round(mean(latencies), 1) if latencies else None,
+            "maximum_latency": round(max(latencies), 1) if latencies else None,
+            "quality_trend": self.reliability_trend(health_rows),
+            "average_quality": round(mean(scores), 1) if scores else None,
+            "outage_count": len(self.outage_runs(health_rows)),
+        }
+
+    def report_summary(self):
+        now = datetime.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        since_text = str(month_start)
+        health_rows = self.db.health_history_since(since_text)
+        speed_rows = self.db.speed_tests_since(since_text)
+        reboot_events = self.db.events_since(since_text, "router_reboot")
+        reliability = self.reliability_summary(health_rows, reboot_events)
+        latencies = [row["latency"] for row in health_rows if row["latency"] is not None]
+        downloads = [row["download"] for row in speed_rows if row["download"] is not None]
+        uploads = [row["upload"] for row in speed_rows if row["upload"] is not None]
+        quality_score = self.internet_quality_score(health_rows, self.db.latest_speed_test())
+
+        return {
+            "month_label": month_start.strftime("%B %Y"),
+            "uptime_percent": reliability["uptime_percent"],
+            "average_latency": round(mean(latencies), 1) if latencies else None,
+            "average_download": round(mean(downloads), 1) if downloads else None,
+            "average_upload": round(mean(uploads), 1) if uploads else None,
+            "outage_count": reliability["outages"],
+            "router_reboot_count": reliability["router_reboots"],
+            "isp_grade": self.isp_grade(quality_score),
+            "sample_count": len(health_rows),
+            "speedtest_count": len(speed_rows),
+        }
+
+    def outage_runs(self, health_rows):
+        runs = []
+        current = []
+        for row in health_rows:
+            if self.is_outage_row(row):
+                current.append(row)
+            elif current:
+                runs.append(current)
+                current = []
+        if current:
+            runs.append(current)
+        return runs
+
+    def outage_events_from_rows(self, outage_rows):
+        return [
+            {
+                "timestamp": row["timestamp"],
+                "event_type": "outage",
+                "message": f"Internet quality outage detected: score {row['score']}",
+            }
+            for row in outage_rows[-10:]
+        ]
 
     def start_dashboard(self):
         check_dashboard_port(self.config, self.log)

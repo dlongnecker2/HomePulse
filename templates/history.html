@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}HomePulse History{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>History</h2>
+    <p>Last 24 hours of HomePulse latency, quality, speed tests, and notable events.</p>
+  </div>
+</section>
+
+<section class="insight-grid">
+  <article class="dashboard-panel compact-panel">
+    <h2>Latency Overview</h2>
+    <table>
+      <tr><td>Average</td><td>{{ history.average_latency if history.average_latency is not none else "No data" }}{% if history.average_latency is not none %} ms{% endif %}</td></tr>
+      <tr><td>Maximum</td><td>{{ history.maximum_latency if history.maximum_latency is not none else "No data" }}{% if history.maximum_latency is not none %} ms{% endif %}</td></tr>
+      <tr><td>Samples</td><td>{{ history.health_rows | length }}</td></tr>
+    </table>
+  </article>
+  <article class="dashboard-panel compact-panel">
+    <h2>Quality Trend</h2>
+    <div class="insight-value text-value">{{ history.quality_trend }}</div>
+    <p>Average quality: {{ history.average_quality if history.average_quality is not none else "No data" }}</p>
+  </article>
+  <article class="dashboard-panel compact-panel">
+    <h2>Outages / Reboots</h2>
+    <table>
+      <tr><td>Outages</td><td>{{ history.outage_count }}</td></tr>
+      <tr><td>Events</td><td>{{ history.events | length }}</td></tr>
+    </table>
+  </article>
+</section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>Recent Speed Tests</h2>
+    <table>
+      {% if history.speed_tests %}
+        {% for test in history.speed_tests %}
+          <tr><td>{{ test.timestamp }}</td><td>{{ test.download }} down / {{ test.upload }} up / {{ test.ping }} ms</td></tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="2">No speed tests in the last 24 hours.</td></tr>
+      {% endif %}
+    </table>
+  </article>
+
+  <article class="dashboard-panel">
+    <h2>Recent Outages / Reboots</h2>
+    <table>
+      {% if history.events %}
+        {% for event in history.events %}
+          <tr><td>{{ event.timestamp }}</td><td>{{ event.event_type }}: {{ event.message }}</td></tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="2">No outage or reboot events in the last 24 hours.</td></tr>
+      {% endif %}
+    </table>
+  </article>
+</section>
+{% endblock %}

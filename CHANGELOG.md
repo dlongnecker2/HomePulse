@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.8.0
+
+- Added dedicated Internet, History, and Reports navigation pages.
+- Kept the Dashboard focused on a clean live overview and moved detailed intelligence/reliability views to dedicated pages.
+- Added a History page with 24-hour latency overview, quality trend, recent speed tests, and recent outage/reboot activity.
+- Added a Reports foundation page with monthly reliability summary metrics; PDF generation is not included yet.
+- Preserved existing routes, SQLite schema compatibility, and local-only calculations.
+
 ## v2.7.0
 
 - Added Internet Intelligence using existing local HomePulse data only.

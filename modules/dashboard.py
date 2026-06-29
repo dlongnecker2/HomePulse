@@ -40,6 +40,40 @@ class Dashboard:
                 now=datetime.now(),
             )
 
+        @self.app.route("/internet")
+        def internet():
+            status = self._dashboard_payload()
+            return render_template(
+                "internet.html",
+                config=self.application.config,
+                status=status,
+                internet=status["internet"],
+                speedtest=status["speedtest"],
+                router=status["router"],
+                intelligence=status["intelligence"],
+                now=datetime.now(),
+            )
+
+        @self.app.route("/history")
+        def history():
+            status = self._dashboard_payload()
+            return render_template(
+                "history.html",
+                status=status,
+                history=self.application.history_summary(),
+                now=datetime.now(),
+            )
+
+        @self.app.route("/reports")
+        def reports():
+            status = self._dashboard_payload()
+            return render_template(
+                "reports.html",
+                status=status,
+                report=self.application.report_summary(),
+                now=datetime.now(),
+            )
+
         @self.app.route("/settings", methods=["GET", "POST"])
         def settings():
             error = None

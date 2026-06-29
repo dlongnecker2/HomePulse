@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}HomePulse Internet{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Internet Intelligence</h2>
+    <p>Calculated from local HomePulse health checks, speed tests, and events.</p>
+  </div>
+</section>
+
+<section class="insight-grid">
+  <article class="dashboard-panel compact-panel">
+    <h2>Internet Quality</h2>
+    <div class="insight-value">{{ intelligence.quality_score if intelligence.quality_score is not none else "--" }}<span>/100</span></div>
+    <p>ISP Grade: <strong>{{ intelligence.isp_grade }}</strong></p>
+  </article>
+  <article class="dashboard-panel compact-panel">
+    <h2>Reliability Trend</h2>
+    <div class="insight-value text-value">{{ intelligence.trend }}</div>
+    <p>{{ intelligence.sample_count }} health samples in the 30-day window.</p>
+  </article>
+  <article class="dashboard-panel compact-panel">
+    <h2>Current Internet</h2>
+    <table>
+      <tr><td>Status</td><td>{{ internet.status }}</td></tr>
+      <tr><td>Latency</td><td>{{ internet.latency if internet.latency is not none else "--" }} ms</td></tr>
+      <tr><td>Packet Loss</td><td>{{ internet.packet_loss if internet.packet_loss is not none else "--" }}%</td></tr>
+      <tr><td>DNS</td><td>{{ internet.dns_ok }}</td></tr>
+    </table>
+  </article>
+</section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>30-Day Reliability</h2>
+    <table>
+      <tr><td>Uptime</td><td>{{ intelligence.reliability.uptime_percent if intelligence.reliability.uptime_percent is not none else "No data" }}{% if intelligence.reliability.uptime_percent is not none %}%{% endif %}</td></tr>
+      <tr><td>Outages</td><td>{{ intelligence.reliability.outages }}</td></tr>
+      <tr><td>Longest Outage</td><td>{{ intelligence.reliability.longest_outage }}</td></tr>
+      <tr><td>Router Reboots</td><td>{{ intelligence.reliability.router_reboots }}</td></tr>
+    </table>
+  </article>
+
+  <article class="dashboard-panel">
+    <h2>Recommendations</h2>
+    <ul class="recommendation-list">
+      {% for recommendation in intelligence.recommendations %}
+        <li>{{ recommendation }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+</section>
+{% endblock %}

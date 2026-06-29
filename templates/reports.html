@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}HomePulse Reports{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Reports</h2>
+    <p>Monthly Internet Reliability Summary foundation. PDF export is not enabled yet.</p>
+  </div>
+</section>
+
+<section class="dashboard-panel report-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Monthly Internet Reliability Summary</h2>
+      <p>Generated from existing local HomePulse data.</p>
+    </div>
+  </div>
+  <p class="small">Period: {{ report.month_label }}</p>
+  <div class="report-grid">
+    <div><span>Uptime</span><strong>{{ report.uptime_percent if report.uptime_percent is not none else "No data" }}{% if report.uptime_percent is not none %}%{% endif %}</strong></div>
+    <div><span>Avg Latency</span><strong>{{ report.average_latency if report.average_latency is not none else "No data" }}{% if report.average_latency is not none %} ms{% endif %}</strong></div>
+    <div><span>Avg Download</span><strong>{{ report.average_download if report.average_download is not none else "No data" }}{% if report.average_download is not none %} Mbps{% endif %}</strong></div>
+    <div><span>Avg Upload</span><strong>{{ report.average_upload if report.average_upload is not none else "No data" }}{% if report.average_upload is not none %} Mbps{% endif %}</strong></div>
+    <div><span>Outages</span><strong>{{ report.outage_count }}</strong></div>
+    <div><span>Router Reboots</span><strong>{{ report.router_reboot_count }}</strong></div>
+    <div><span>ISP Grade</span><strong>{{ report.isp_grade }}</strong></div>
+    <div><span>Samples</span><strong>{{ report.sample_count }} health / {{ report.speedtest_count }} speed</strong></div>
+  </div>
+</section>
+{% endblock %}

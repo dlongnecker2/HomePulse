@@ -402,6 +402,78 @@ h2 {
   color: var(--muted);
 }
 
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.page-heading p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.insight-grid,
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.content-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.insight-value {
+  margin: 8px 0;
+  color: var(--text);
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 820;
+}
+
+.insight-value span {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.insight-value.text-value {
+  font-size: 24px;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.report-grid div {
+  padding: 14px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+}
+
+.report-grid span,
+.report-grid strong {
+  display: block;
+}
+
+.report-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  text-transform: uppercase;
+}
+
+.report-grid strong {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 18px;
+}
+
 .live-pill {
   display: inline-flex;
   align-items: center;
@@ -792,6 +864,12 @@ button:focus-visible {
   }
 
   .dashboard-main {
+    grid-template-columns: 1fr;
+  }
+
+  .insight-grid,
+  .content-grid,
+  .report-grid {
     grid-template-columns: 1fr;
   }
 
