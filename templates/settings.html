@@ -54,9 +54,151 @@
     <section class="settings-section safety-summary">
       <h3>Reboot Safety</h3>
       <p>Speed tests may run anytime. Automatic router reboot is only allowed during the configured maintenance window.</p>
+      {% set device_type = router_reboot.get("recovery_device_type", router_reboot.get("method", "dry_run")) %}
+      <label class="field-label" for="recovery-device-type">Recovery device type</label>
+      <select id="recovery-device-type" name="recovery_device_type">
+        <option value="dry_run" {% if device_type == "dry_run" %}selected{% endif %}>Dry run only</option>
+        <option value="tapo_p125m_matter" {% if device_type == "tapo_p125m_matter" %}selected{% endif %}>TP-Link Tapo P125M via Matter structure only</option>
+        <option value="generic_http" {% if device_type in ("generic_http", "http") %}selected{% endif %}>Generic HTTP structure only</option>
+        <option value="ssh" {% if device_type == "ssh" %}selected{% endif %}>SSH structure only</option>
+        <option value="future_adapter" {% if device_type in ("future_adapter", "smart_plug") %}selected{% endif %}>Future adapter</option>
+      </select>
+      <p class="settings-help">Real reboot methods are disabled in this release unless explicitly approved later. Dry-run remains the safe default.</p>
+
+      <label class="field-label" for="recovery-device-ip">Recovery device IP</label>
+      <input id="recovery-device-ip" name="recovery_device_ip" type="text" value="{{ router_reboot.get("recovery_device_ip", "") }}" placeholder="192.168.1.50">
+
+      <label class="field-label" for="recovery-device-name">Recovery device name</label>
+      <input id="recovery-device-name" name="recovery_device_name" type="text" value="{{ router_reboot.get("recovery_device_name", "") }}" placeholder="Tapo P125M Router Plug">
+
+      <label class="field-label" for="recovery-power-off-seconds">Power off seconds</label>
+      <input id="recovery-power-off-seconds" name="recovery_power_off_seconds" type="number" min="1" max="300" value="{{ router_reboot.get("recovery_power_off_seconds", 10) }}">
+
+      <label class="field-label" for="recovery-wait-after-power-on-seconds">Wait after power on seconds</label>
+      <input id="recovery-wait-after-power-on-seconds" name="recovery_wait_after_power_on_seconds" type="number" min="10" max="1200" value="{{ router_reboot.get("recovery_wait_after_power_on_seconds", 180) }}">
+
+      <label class="field-label" for="router-http-url">HTTP/HTTPS reboot URL</label>
+      <input id="router-http-url" name="router_http_url" type="text" value="{{ router_reboot.get("http_url", "") }}" placeholder="https://router.local/reboot">
+
+      <label class="field-label" for="router-ssh-host">SSH host</label>
+      <input id="router-ssh-host" name="router_ssh_host" type="text" value="{{ router_reboot.get("ssh_host", "") }}" placeholder="192.168.1.1">
+
+      <label class="field-label" for="router-ssh-user">SSH user</label>
+      <input id="router-ssh-user" name="router_ssh_user" type="text" value="{{ router_reboot.get("ssh_user", "") }}" placeholder="admin">
+
+      <label class="field-label" for="router-ssh-command">SSH command</label>
+      <input id="router-ssh-command" name="router_ssh_command" type="text" value="{{ router_reboot.get("ssh_command", "reboot") }}">
+
+      <label class="field-label" for="smart-plug-url">Smart plug control URL</label>
+      <input id="smart-plug-url" name="smart_plug_url" type="text" value="{{ router_reboot.get("smart_plug_url", "") }}" placeholder="http://plug.local/api/power-cycle">
+
+      <label class="field-label" for="kasa-device-type">python-kasa device type</label>
+      <input id="kasa-device-type" name="kasa_device_type" type="text" value="{{ router_reboot.get("kasa_device_type", "smart") }}">
+
+      <label class="field-label" for="kasa-device-family">python-kasa device family</label>
+      <input id="kasa-device-family" name="kasa_device_family" type="text" value="{{ router_reboot.get("kasa_device_family", "SMART.TAPOPLUG") }}">
+
+      <label class="field-label" for="kasa-encrypt-type">python-kasa encryption type</label>
+      <input id="kasa-encrypt-type" name="kasa_encrypt_type" type="text" value="{{ router_reboot.get("kasa_encrypt_type", "KLAP") }}">
+
+      <label class="field-label" for="kasa-login-version">python-kasa login version</label>
+      <input id="kasa-login-version" name="kasa_login_version" type="number" min="1" max="3" value="{{ router_reboot.get("kasa_login_version", 2) }}">
+
+      <label class="field-label" for="kasa-username">TP-Link account email</label>
+      <input id="kasa-username" name="kasa_username" type="text" value="{{ router_reboot.get("kasa_username", "") }}">
+
+      <label class="field-label" for="kasa-password">TP-Link account password</label>
+      <input id="kasa-password" name="kasa_password" type="password" value="" placeholder="Leave blank to keep existing password">
+      <p class="settings-help">Saved passwords are never displayed. Prefer a credentials hash after initial verification.</p>
+
+      <label class="field-label" for="kasa-credentials-hash">python-kasa credentials hash</label>
+      <input id="kasa-credentials-hash" name="kasa_credentials_hash" type="text" value="{{ router_reboot.get("kasa_credentials_hash", "") }}">
+    </section>
+
+    <section class="settings-section">
+      <h3>Email Notifications</h3>
+      <label class="option-row">
+        <input type="checkbox" name="email_enabled" {% if email.get("enabled") %}checked{% endif %}>
+        <span>Send reboot email notifications</span>
+      </label>
+
+      <label class="field-label" for="smtp-host">SMTP host</label>
+      <input id="smtp-host" name="smtp_host" type="text" value="{{ email.get("smtp_host", "") }}">
+
+      <label class="field-label" for="smtp-port">SMTP port</label>
+      <input id="smtp-port" name="smtp_port" type="number" min="1" max="65535" value="{{ email.get("smtp_port", 587) }}">
+
+      <label class="option-row">
+        <input type="checkbox" name="smtp_use_tls" {% if email.get("use_tls", true) %}checked{% endif %}>
+        <span>Use TLS</span>
+      </label>
+
+      <label class="field-label" for="smtp-username">SMTP username</label>
+      <input id="smtp-username" name="smtp_username" type="text" value="{{ email.get("username", "") }}">
+
+      <label class="field-label" for="smtp-password">SMTP password</label>
+      <input id="smtp-password" name="smtp_password" type="password" value="" placeholder="Leave blank to keep existing password">
+      <p class="settings-help">Saved passwords are never displayed. The password changes only when a new value is entered.</p>
+
+      <label class="field-label" for="email-from-address">From address</label>
+      <input id="email-from-address" name="email_from_address" type="email" value="{{ email.get("from_address", "") }}">
+
+      <label class="field-label" for="email-to-address">To address</label>
+      <input id="email-to-address" name="email_to_address" type="email" value="{{ email.get("to_address", "") }}">
     </section>
 
     <button type="submit">Save Settings</button>
   </form>
 </section>
+
+<section class="dashboard-panel settings-panel diagnostics-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Diagnostics</h2>
+      <p>Run safe system tests using the unified HomePulse diagnostics framework.</p>
+    </div>
+  </div>
+
+  <div class="diagnostics-results-panel" id="diagnostics-results">
+    <div><span>Last Test</span><strong id="diagnostics-last-test">{{ diagnostic_result.test_name if diagnostic_result else "None" }}</strong></div>
+    <div><span>Status</span><strong id="diagnostics-status" class="{{ diagnostic_result.status|lower if diagnostic_result else "" }}">{{ diagnostic_result.status if diagnostic_result else "--" }}</strong></div>
+    <div><span>Timestamp</span><strong id="diagnostics-timestamp">{{ diagnostic_result.timestamp if diagnostic_result else "--" }}</strong></div>
+    <div><span>Message</span><strong id="diagnostics-message">{{ diagnostic_result.message if diagnostic_result else "No diagnostics have been run yet." }}</strong></div>
+  </div>
+
+  <div class="diagnostics-actions">
+    {{ render_test_button("Test SMTP Connection", url_for("test_smtp")) }}
+    {{ render_test_button("Test Internet Ping", url_for("test_ping")) }}
+    {{ render_test_button("Run Speed Test", url_for("test_speed")) }}
+    {{ render_test_button("Test Tapo Plug Connection", url_for("test_tapo")) }}
+    <form method="post" action="{{ url_for("test_tapo_power_cycle") }}" class="diagnostic-test-form">
+      <label class="option-row power-cycle-confirm">
+        <input type="checkbox" name="confirm_tapo_power_cycle">
+        <span>I confirm the plug is connected to a lamp or safe test load.</span>
+      </label>
+      <button type="submit">Test Lamp Power Cycle</button>
+    </form>
+    {{ render_test_button("Run Full Diagnostics", url_for("test_full_diagnostics")) }}
+  </div>
+</section>
+
+<script>
+  document.querySelectorAll(".diagnostic-test-form").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: data,
+        cache: "no-store",
+      });
+      const result = await response.json();
+      document.getElementById("diagnostics-last-test").textContent = result.test_name || "diagnostic";
+      document.getElementById("diagnostics-status").textContent = result.status || "--";
+      document.getElementById("diagnostics-status").className = String(result.status || "").toLowerCase();
+      document.getElementById("diagnostics-timestamp").textContent = result.timestamp || "--";
+      document.getElementById("diagnostics-message").textContent = result.message || "No message returned.";
+    });
+  });
+</script>
 {% endblock %}

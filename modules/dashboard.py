@@ -5,6 +5,7 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, redirect, render_template, request, url_for, jsonify
+from markupsafe import Markup, escape
 
 
 class Dashboard:
@@ -15,6 +16,7 @@ class Dashboard:
             template_folder="../templates",
             static_folder="../static",
         )
+        self.app.jinja_env.globals["render_test_button"] = self.render_test_button
         self.register_routes()
 
     def _dashboard_payload(self):
@@ -26,6 +28,7 @@ class Dashboard:
         status["speedtest"]["next_run"] = str(next_speedtest) if next_speedtest else None
         status["speedtest"]["schedule_label"] = self.application.speedtest_schedule_label()
         status["intelligence"] = self.application.internet_intelligence()
+        status["events"] = self.application.db.recent_events(limit=5)
         return status
 
     def register_routes(self):
@@ -41,6 +44,7 @@ class Dashboard:
                 router=status["router"],
                 system=status["system"],
                 intelligence=status["intelligence"],
+                events=status["events"],
                 now=datetime.now(),
             )
 
@@ -82,10 +86,8 @@ class Dashboard:
         def settings():
             error = None
             if request.method == "POST":
-                mode = request.form.get("speedtest_schedule_mode", "every_30_minutes")
-                custom_times = request.form.get("custom_speedtest_times", "")
                 try:
-                    self.application.update_speedtest_schedule(mode, custom_times)
+                    self.application.update_settings(request.form)
                     return redirect(url_for("settings", saved="1"))
                 except ValueError as exc:
                     error = str(exc)
@@ -96,6 +98,9 @@ class Dashboard:
                 schedule_mode=self.application.speedtest_schedule_mode(),
                 schedule_label=self.application.speedtest_schedule_label(),
                 speedtest_times=self.application.configured_speedtest_times(),
+                router_reboot=self.application.config.get("router_reboot", default={}),
+                email=self.application.config.get("email", default={}),
+                diagnostic_result=self.application.diagnostics.latest_result(),
                 error=error,
                 saved=request.args.get("saved") == "1",
                 now=datetime.now(),
@@ -209,6 +214,44 @@ class Dashboard:
         def health():
             return jsonify({"status": self._dashboard_payload(), "timestamp": str(datetime.now())})
 
+        @self.app.route("/test/smtp", methods=["POST"])
+        def test_smtp():
+            return self._diagnostic_response("smtp_test")
+
+        @self.app.route("/test/ping", methods=["POST"])
+        def test_ping():
+            return self._diagnostic_response("internet_ping_test")
+
+        @self.app.route("/test/speed", methods=["POST"])
+        def test_speed():
+            return self._diagnostic_response("speed_test")
+
+        @self.app.route("/test/tapo", methods=["POST"])
+        def test_tapo():
+            return self._diagnostic_response("tapo_connection_test")
+
+        @self.app.route("/test/tapo_power_cycle", methods=["POST"])
+        def test_tapo_power_cycle():
+            confirmed = request.form.get("confirm_tapo_power_cycle") == "on"
+            return self._diagnostic_response("tapo_power_cycle_test", confirmed=confirmed)
+
+        @self.app.route("/test/full_diagnostics", methods=["POST"])
+        def test_full_diagnostics():
+            return jsonify(self.application.diagnostics.run_full_diagnostics().to_dict())
+
+    def _diagnostic_response(self, test_name, **kwargs):
+        return jsonify(self.application.diagnostics.run_test(test_name, **kwargs).to_dict())
+
+    @staticmethod
+    def render_test_button(name, endpoint):
+        label = escape(name)
+        action = escape(endpoint)
+        return Markup(
+            f'<form method="post" action="{action}" class="diagnostic-test-form">'
+            f'<button type="submit">{label}</button>'
+            '</form>'
+        )
+
     def _lab_payload(self):
         status = self._dashboard_payload()
         return {
@@ -216,6 +259,8 @@ class Dashboard:
             "scheduler": self._lab_scheduler(status),
             "logs": self._recent_log_entries(),
             "database": self._database_counts(),
+            "reboot": self._reboot_status(),
+            "reboot_events": self._recent_reboot_events(),
             "configuration": self._flatten_config(self.application.config.data),
             "actions": [
                 ("run_ping", "Run Ping"),
@@ -224,6 +269,12 @@ class Dashboard:
                 ("reload_config", "Reload Configuration"),
             ],
         }
+
+    def _recent_reboot_events(self):
+        return [
+            event for event in self.application.db.recent_events(limit=25)
+            if event["event_type"] in ("router_reboot", "router_reboot_recommended", "router_reboot_skipped")
+        ][:8]
 
     def _lab_overview(self, status):
         started_at = status["system"].get("started_at")
@@ -239,6 +290,25 @@ class Dashboard:
             ("Scheduler Status", self._scheduler_status()),
             ("Background Threads", max(threading.active_count() - 1, 0)),
             ("Configuration Loaded", "Loaded" if self.application.config.data else "Unavailable"),
+        ]
+
+    def _reboot_status(self):
+        router_reboot = self.application.config.get("router_reboot", default={})
+        email = self.application.config.get("email", default={})
+        latest = self.application.db.latest_event("router_reboot")
+        status = self.application.router_rebooter.status()
+        return [
+            ("Current Method", status["label"]),
+            ("Device Type", status["device_type"]),
+            ("Real Reboot Enabled", "Yes" if status["real_reboot_enabled"] else "No"),
+            ("Dry-run Active", "Yes" if status["dry_run_active"] else "No"),
+            ("Device Name", router_reboot.get("recovery_device_name") or "Not configured"),
+            ("Device IP", router_reboot.get("recovery_device_ip") or "Not configured"),
+            ("Power Off Seconds", router_reboot.get("recovery_power_off_seconds", 10)),
+            ("Wait After Power On", router_reboot.get("recovery_wait_after_power_on_seconds", 180)),
+            ("Dry Run Mode", self.application.config.get("dry_run", default=True)),
+            ("Email Enabled", email.get("enabled", False)),
+            ("Last Reboot Event", latest["timestamp"] if latest else "None recorded"),
         ]
 
     def _lab_scheduler(self, status):
@@ -399,6 +469,8 @@ class Dashboard:
                 rows.extend(cls._flatten_config(value, path))
             elif isinstance(value, list):
                 rows.append((path, ", ".join(str(item) for item in value)))
+            elif "password" in path.lower():
+                rows.append((path, "Configured" if value else "Not configured"))
             else:
                 rows.append((path, value))
         return rows

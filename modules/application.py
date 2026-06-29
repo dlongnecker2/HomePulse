@@ -5,9 +5,12 @@ from statistics import mean
 from modules.config import Config
 from modules.dashboard import Dashboard
 from modules.database import Database
+from modules.diagnostics import Diagnostics
+from modules.email_notifier import EmailNotifier
 from modules.logger import get_logger
 from modules.network import NetworkMonitor
 from modules.port_check import check_dashboard_port
+from modules.router_rebooter import RouterRebooter
 from modules.scheduler import Scheduler
 from modules.speedtest_engine import SpeedTestEngine
 from modules.status import StatusManager
@@ -21,7 +24,10 @@ class Application:
         self.scheduler = Scheduler(self.log)
         self.network = NetworkMonitor(self.config, self.log)
         self.speedtest = SpeedTestEngine(self.log)
+        self.router_rebooter = RouterRebooter(self.config, self.log)
+        self.email_notifier = EmailNotifier(self.config, self.log)
         self.status = StatusManager()
+        self.diagnostics = Diagnostics(self)
 
     def startup_message(self):
         self.log.info("=" * 60)
@@ -195,11 +201,58 @@ class Application:
     def reload_configuration(self):
         self.config = Config()
         self.network.config = self.config
+        self.router_rebooter.config = self.config
+        self.email_notifier.config = self.config
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.scheduler.remove_jobs_by_prefix("Maintenance Check")
         self.register_speedtest_jobs()
         self.register_maintenance_job()
         self.log.info("Configuration reloaded from config.json")
+
+    def update_settings(self, form):
+        self.update_speedtest_schedule(
+            form.get("speedtest_schedule_mode", "every_30_minutes"),
+            form.get("custom_speedtest_times", ""),
+        )
+
+        router_reboot = self.config.data.setdefault("router_reboot", {})
+        device_type = form.get("recovery_device_type", form.get("router_reboot_method", "dry_run"))
+        router_reboot["method"] = device_type
+        router_reboot["recovery_device_type"] = device_type
+        router_reboot["recovery_device_ip"] = form.get("recovery_device_ip", "").strip()
+        router_reboot["recovery_device_name"] = form.get("recovery_device_name", "").strip()
+        router_reboot["recovery_power_off_seconds"] = int(form.get("recovery_power_off_seconds", "10") or 10)
+        router_reboot["recovery_wait_after_power_on_seconds"] = int(
+            form.get("recovery_wait_after_power_on_seconds", "180") or 180
+        )
+        router_reboot["real_reboot_enabled"] = False
+        router_reboot["http_url"] = form.get("router_http_url", "").strip()
+        router_reboot["ssh_host"] = form.get("router_ssh_host", "").strip()
+        router_reboot["ssh_user"] = form.get("router_ssh_user", "").strip()
+        router_reboot["ssh_command"] = form.get("router_ssh_command", "reboot").strip() or "reboot"
+        router_reboot["smart_plug_url"] = form.get("smart_plug_url", "").strip()
+        router_reboot["kasa_device_type"] = form.get("kasa_device_type", "smart").strip() or "smart"
+        router_reboot["kasa_device_family"] = form.get("kasa_device_family", "SMART.TAPOPLUG").strip() or "SMART.TAPOPLUG"
+        router_reboot["kasa_encrypt_type"] = form.get("kasa_encrypt_type", "KLAP").strip() or "KLAP"
+        router_reboot["kasa_login_version"] = int(form.get("kasa_login_version", "2") or 2)
+        router_reboot["kasa_username"] = form.get("kasa_username", "").strip()
+        new_kasa_password = form.get("kasa_password", "")
+        if new_kasa_password:
+            router_reboot["kasa_password"] = new_kasa_password
+        router_reboot["kasa_credentials_hash"] = form.get("kasa_credentials_hash", "").strip()
+
+        email = self.config.data.setdefault("email", {})
+        email["enabled"] = form.get("email_enabled") == "on"
+        email["smtp_host"] = form.get("smtp_host", "").strip()
+        email["smtp_port"] = int(form.get("smtp_port", "587") or 587)
+        email["use_tls"] = form.get("smtp_use_tls") == "on"
+        email["username"] = form.get("smtp_username", "").strip()
+        new_password = form.get("smtp_password", "")
+        if new_password:
+            email["password"] = new_password
+        email["from_address"] = form.get("email_from_address", "").strip()
+        email["to_address"] = form.get("email_to_address", "").strip()
+        self.config.save()
 
     def normalize_custom_speedtest_times(self, raw_times):
         pieces = raw_times.replace(",", "\n").splitlines()
@@ -325,7 +378,7 @@ class Application:
             self.db.add_event(timestamp=str(now), event_type="router_reboot_skipped", message=message)
             return
 
-        self.recommend_router_reboot(now, reasons)
+        self.execute_router_reboot(now, reasons)
 
     def reboot_recommendation_reasons(self):
         reasons = []
@@ -413,6 +466,72 @@ class Application:
         )
         self.log.warning(message)
         self.db.add_event(timestamp=str(now), event_type="router_reboot_recommended", message=message)
+
+    def execute_router_reboot(self, now, reasons):
+        context = self.reboot_context(now, reasons)
+        result = self.router_rebooter.execute(context["reason"])
+        message = self.reboot_event_message(context, result)
+        self.db.add_event(timestamp=str(now), event_type="router_reboot", message=message)
+        self.log.warning(message)
+        self.email_notifier.send_reboot_notification(context, result)
+
+    def reboot_context(self, now, reasons):
+        latest_health = self.db.latest_health_check() or {}
+        latest_speed = self.db.latest_speed_test() or {}
+        return {
+            "timestamp": str(now),
+            "reason": "; ".join(reasons),
+            "quality_score": latest_health.get("score", "Unavailable"),
+            "download": self.metric_text(latest_speed.get("download"), "Mbps"),
+            "upload": self.metric_text(latest_speed.get("upload"), "Mbps"),
+            "latency": self.metric_text(latest_health.get("latency"), "ms"),
+            "packet_loss": self.metric_text(latest_health.get("packet_loss"), "%"),
+            "failed_checks": self.failed_check_count(),
+            "last_successful_speedtest": self.last_successful_speedtest_text(latest_speed),
+            "maintenance_window": self.config.get("reboot_window_time", default="04:00"),
+        }
+
+    def reboot_event_message(self, context, result):
+        return (
+            f"Router reboot {result.method}: {result.result}. "
+            f"Reason: {context['reason']}. "
+            f"Quality={context['quality_score']}; "
+            f"Download={context['download']}; Upload={context['upload']}; "
+            f"Latency={context['latency']}; PacketLoss={context['packet_loss']}; "
+            f"FailedChecks={context['failed_checks']}; "
+            f"CommandSent={result.command_sent}; RouterResponded={result.router_responded}; "
+            f"InternetRestored={result.internet_restored}; Recovery={result.elapsed_recovery_time}"
+        )
+
+    def failed_check_count(self):
+        maximum_latency = self.config.get("maximum_latency_ms", default=100)
+        maximum_packet_loss = self.config.get("thresholds", "packet_loss", default=5)
+        failed = 0
+        for row in self.db.health_history(limit=6):
+            if (
+                row["score"] is not None and row["score"] < 60
+            ) or (
+                row["latency"] is not None and row["latency"] > maximum_latency
+            ) or (
+                row["packet_loss"] is not None and row["packet_loss"] > maximum_packet_loss
+            ) or row["dns_ok"] is False:
+                failed += 1
+        return failed
+
+    @staticmethod
+    def metric_text(value, unit):
+        if value is None:
+            return "Unavailable"
+        return f"{value} {unit}"
+
+    @staticmethod
+    def last_successful_speedtest_text(latest_speed):
+        if not latest_speed:
+            return "Unavailable"
+        timestamp = latest_speed.get("timestamp", "Unknown time")
+        download = latest_speed.get("download")
+        upload = latest_speed.get("upload")
+        return f"{timestamp} ({download} Mbps down / {upload} Mbps up)"
 
     @classmethod
     def is_maintenance_window(cls, now, window_time):

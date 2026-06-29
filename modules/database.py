@@ -110,6 +110,20 @@ class Database:
             return None
         return {"timestamp": row["timestamp"], "event_type": row["event_type"], "message": row["message"]}
 
+    def recent_events(self, limit=10):
+        rows = self.conn.execute(
+            """
+            SELECT timestamp, event_type, message
+            FROM events
+            ORDER BY id DESC LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [
+            {"timestamp": row["timestamp"], "event_type": row["event_type"], "message": row["message"]}
+            for row in rows
+        ]
+
     def count_rows(self, table_name):
         allowed_tables = {"health_checks", "speed_tests", "events"}
         if table_name not in allowed_tables:

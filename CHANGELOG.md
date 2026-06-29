@@ -7,6 +7,12 @@
 - Added read-only runtime overview details including version, start time, uptime, Python version, SQLite status, database size, memory usage, scheduler status, thread count, and configuration load state.
 - Added scheduler diagnostics for next ping, next speed test, next maintenance, last speed test, last maintenance, and scheduled job count.
 - Added recent color-coded log entries, SQLite record counts, read-only runtime configuration values, and manual action buttons.
+- Added guarded router reboot automation phase 1 with dry-run-only execution, SQLite reboot event logging, and optional SMTP email notifications.
+- Added inert structure for HTTP, SSH, and smart-plug reboot methods; real power control remains disabled pending explicit approval.
+- Added Settings controls for reboot method structure and email notification configuration without displaying saved SMTP passwords.
+- Added dry-run reboot event visibility on the Dashboard, History, and Lab pages.
+- Refactored router recovery around adapter-based device types, including a disabled TP-Link Tapo P125M Matter placeholder and recovery timing settings.
+- Added a unified Settings diagnostics framework with structured JSON test endpoints, SMTP/ping/speed/Tapo/database/scheduler/log tests, and SQLite event logging.
 - Preserved existing routes, SQLite schema compatibility, and dependency set.
 
 ## v2.8.1

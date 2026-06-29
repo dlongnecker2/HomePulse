@@ -633,6 +633,10 @@ h2 {
   max-width: 860px;
 }
 
+.diagnostics-panel {
+  margin-top: 14px;
+}
+
 .settings-form {
   display: grid;
   gap: 18px;
@@ -691,6 +695,22 @@ textarea {
   font: inherit;
 }
 
+input:not([type="radio"]):not([type="checkbox"]),
+select {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  background: #ffffff;
+  font: inherit;
+}
+
+select {
+  cursor: pointer;
+}
+
 .settings-message {
   margin-bottom: 14px;
   padding: 10px 12px;
@@ -706,6 +726,72 @@ textarea {
 .settings-message.error {
   color: var(--unhealthy);
   background: rgba(197, 48, 48, 0.10);
+}
+
+.diagnostics-results-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.diagnostics-results-panel div {
+  padding: 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+}
+
+.diagnostics-results-panel span,
+.diagnostics-results-panel strong {
+  display: block;
+}
+
+.diagnostics-results-panel span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.diagnostics-results-panel strong {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.diagnostics-results-panel .pass {
+  color: var(--healthy);
+}
+
+.diagnostics-results-panel .warn {
+  color: var(--degraded);
+}
+
+.diagnostics-results-panel .fail {
+  color: var(--unhealthy);
+}
+
+.diagnostics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.diagnostic-test-form {
+  margin: 0;
+}
+
+.diagnostic-test-form button {
+  margin: 0;
+}
+
+.power-cycle-confirm {
+  max-width: 360px;
+  padding: 0 0 8px;
+  font-size: 12px;
 }
 
 .safety-summary {
@@ -1123,7 +1209,8 @@ button:focus-visible {
   .info-strip,
   .status-grid,
   .dashboard-main,
-  .side-stack {
+  .side-stack,
+  .diagnostics-results-panel {
     grid-template-columns: 1fr;
   }
 

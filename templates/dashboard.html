@@ -194,9 +194,33 @@
         <tr><td>Schedule</td><td id="speedtest-schedule-label">{{ speedtest.schedule_label or "Every 30 minutes" }}</td></tr>
         <tr><td>Next Test</td><td id="automation-next-speedtest">{{ speedtest.next_run or "Schedule disabled" }}</td></tr>
         <tr><td>Reboot Window</td><td>{{ config.get("reboot_window_time", default="04:00") }}</td></tr>
+        <tr><td>Reboot Method</td><td>{{ config.get("router_reboot", "method", default="dry_run") }}</td></tr>
       </table>
       <div class="rule-notes">
         <div>Speed tests never reboot the router outside the maintenance window.</div>
+        <div>Real reboot methods are disabled unless explicitly approved later.</div>
+      </div>
+    </section>
+
+    <section class="dashboard-panel compact-panel timeline-panel">
+      <h2>Recent Events</h2>
+      <div class="activity-timeline">
+        {% if events %}
+          {% for event in events %}
+          <div class="timeline-item">
+            <div class="timeline-icon {% if event.event_type == 'router_reboot' %}degraded{% else %}neutral{% endif %}" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3v8" /><path d="M7.1 6.9a7 7 0 1 0 9.8 0" /></svg>
+            </div>
+            <div>
+              <time>{{ event.timestamp }}</time>
+              <strong>{{ event.event_type }}</strong>
+              <span>{{ event.message }}</span>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="small">No recent events recorded.</p>
+        {% endif %}
       </div>
     </section>
   </aside>
