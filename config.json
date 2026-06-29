@@ -1,8 +1,9 @@
 {
-  "version": "2.6.2",
+  "version": "2.6.4",
   "database": "data/homepulse.db",
   "monitor_interval_minutes": 5,
   "speedtest_schedule_enabled": true,
+  "speedtest_schedule_mode": "every_30_minutes",
   "speedtest_times": [
     "00:00",
     "00:30",

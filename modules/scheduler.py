@@ -26,6 +26,9 @@ class Scheduler:
             "last_run_date": None,
         })
 
+    def remove_jobs_by_prefix(self, prefix):
+        self.jobs = [job for job in self.jobs if not job["name"].startswith(prefix)]
+
     def run_pending(self):
         now = datetime.now()
         for job in self.jobs:

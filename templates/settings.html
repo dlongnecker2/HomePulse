@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}HomePulse Settings{% endblock %}
+{% block content %}
+<section class="dashboard-panel settings-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Settings</h2>
+      <p>Configure scheduled speed tests. Router reboot safety remains limited to the maintenance window.</p>
+    </div>
+  </div>
+
+  {% if saved %}
+    <div class="settings-message success">Settings saved.</div>
+  {% endif %}
+  {% if error %}
+    <div class="settings-message error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('settings') }}" class="settings-form">
+    <section class="settings-section">
+      <h3>Speed Test Schedule</h3>
+      <p class="settings-help">Current schedule: <strong>{{ schedule_label }}</strong></p>
+
+      <label class="option-row">
+        <input type="radio" name="speedtest_schedule_mode" value="disabled" {% if schedule_mode == "disabled" %}checked{% endif %}>
+        <span>Disabled</span>
+      </label>
+      <label class="option-row">
+        <input type="radio" name="speedtest_schedule_mode" value="every_30_minutes" {% if schedule_mode == "every_30_minutes" %}checked{% endif %}>
+        <span>Every 30 minutes</span>
+      </label>
+      <label class="option-row">
+        <input type="radio" name="speedtest_schedule_mode" value="every_1_hour" {% if schedule_mode == "every_1_hour" %}checked{% endif %}>
+        <span>Every 1 hour</span>
+      </label>
+      <label class="option-row">
+        <input type="radio" name="speedtest_schedule_mode" value="every_3_hours" {% if schedule_mode == "every_3_hours" %}checked{% endif %}>
+        <span>Every 3 hours</span>
+      </label>
+      <label class="option-row">
+        <input type="radio" name="speedtest_schedule_mode" value="every_6_hours" {% if schedule_mode == "every_6_hours" %}checked{% endif %}>
+        <span>Every 6 hours</span>
+      </label>
+      <label class="option-row">
+        <input type="radio" name="speedtest_schedule_mode" value="custom" {% if schedule_mode == "custom" %}checked{% endif %}>
+        <span>Custom scheduled times</span>
+      </label>
+
+      <label class="field-label" for="custom-speedtest-times">Custom times</label>
+      <textarea id="custom-speedtest-times" name="custom_speedtest_times" rows="5" placeholder="04:00&#10;10:00&#10;16:00&#10;22:00">{{ speedtest_times | join("\n") }}</textarea>
+      <p class="settings-help">Use HH:MM times, one per line or comma-separated.</p>
+    </section>
+
+    <section class="settings-section safety-summary">
+      <h3>Reboot Safety</h3>
+      <p>Speed tests may run anytime. Automatic router reboot is only allowed during the configured maintenance window.</p>
+    </section>
+
+    <button type="submit">Save Settings</button>
+  </form>
+</section>
+{% endblock %}

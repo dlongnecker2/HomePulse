@@ -19,3 +19,8 @@ class Config:
             if default is not None:
                 return default
             raise
+
+    def save(self):
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(self.data, f, indent=2)
+            f.write("\n")

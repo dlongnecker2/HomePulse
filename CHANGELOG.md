@@ -1,11 +1,21 @@
 # Changelog
 
-## Unreleased
+## v2.6.4
+
+- Added a compact Automation Rules dashboard section for scheduled speed-test and reboot-safety settings.
+- Added Settings controls for disabling speed tests, preset intervals, and custom scheduled times.
+- Saved speed-test schedule selections to `config.json` and refreshed in-memory scheduled speed-test jobs.
+- Displayed speed-test scheduling status, next scheduled test, reboot window, reboot cooldown, and configured quality thresholds.
+- Clarified that daytime speed tests do not trigger router reboots and automatic reboot is limited to the maintenance window.
+- Preserved existing monitoring behavior, Flask routes, and SQLite schemas.
+
+## v2.6.3
 
 - Added configurable scheduled speed tests, defaulting to every 30 minutes.
 - Added configurable speed, latency, maintenance-window, and reboot-cooldown settings.
 - Added a 4:00 AM maintenance check that can recommend a router reboot only when speed or sustained health thresholds fail.
 - Kept daytime speed tests separate from reboot decisions.
+- Added the next scheduled speed test to the existing dashboard speed-test panel and live status payload.
 - Preserved existing Flask routes and SQLite schemas.
 
 ## v2.6.2

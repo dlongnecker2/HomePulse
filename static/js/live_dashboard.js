@@ -75,6 +75,9 @@ async function refreshDashboardStatus() {
     setText("speedtest-ping", `Ping: ${formatMetric(data.speedtest_ping, "ms", "Last test unavailable")}`);
     setText("speedtest-ping-table", formatMetric(data.speedtest_ping, "ms", "Last test unavailable"));
     setText("speedtest-server", data.speedtest_server, "Last test unavailable");
+    setText("next-speedtest", data.next_speedtest, "Schedule disabled");
+    setText("automation-next-speedtest", data.next_speedtest, "Schedule disabled");
+    setText("speedtest-schedule-label", data.speedtest_schedule_label, "Every 30 minutes");
     setText("last-speedtest", `Last run: ${data.last_speedtest || "--"}`);
     setText("router-status", data.router_status);
     setText("last-reboot", `Last reboot: ${data.last_reboot || "None recorded"}`);
@@ -82,7 +85,7 @@ async function refreshDashboardStatus() {
     setText("last-update", data.last_update);
     setText("application-uptime", formatUptime(data.started_at));
     setText("event-health-time", data.last_check);
-    setText("event-health", `Status: ${data.internet_status || "--"}${data.latest_latency_ms === null || data.latest_latency_ms === undefined ? "" : ` · ${data.latest_latency_ms} ms`}`);
+    setText("event-health", `Status: ${data.internet_status || "--"}${data.latest_latency_ms === null || data.latest_latency_ms === undefined ? "" : ` - ${data.latest_latency_ms} ms`}`);
     setText("event-speedtest-time", data.last_speedtest);
     setText("event-speedtest", data.download === null || data.download === undefined ? "Waiting for first test" : `${data.download} Mbps down / ${data.upload ?? "--"} Mbps up`);
     setText("event-router-time", data.last_reboot);

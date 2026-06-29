@@ -26,7 +26,7 @@ class Application:
         self.log.info("=" * 60)
         self.log.info("HomePulse starting...")
         self.log.info("Home Reliability Dashboard")
-        self.log.info(f"Version: {self.config.get('version', default='2.6.2')}")
+        self.log.info(f"Version: {self.config.get('version', default='2.6.4')}")
         self.log.info("Dashboard: http://localhost:8080")
         self.log.info("Developer Console: http://localhost:8080/dev")
         self.log.info("Logs: http://localhost:8080/logs")
@@ -128,6 +128,100 @@ class Application:
     @staticmethod
     def default_speedtest_times():
         return [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (0, 30)]
+
+    @staticmethod
+    def speedtest_times_for_interval(hours):
+        return [f"{hour:02d}:00" for hour in range(0, 24, hours)]
+
+    def speedtest_schedule_mode(self):
+        if not self.config.get("speedtest_schedule_enabled", default=True):
+            return "disabled"
+        mode = self.config.get("speedtest_schedule_mode", default=None)
+        if mode:
+            return mode
+
+        times = self.configured_speedtest_times()
+        presets = {
+            "every_30_minutes": self.default_speedtest_times(),
+            "every_1_hour": self.speedtest_times_for_interval(1),
+            "every_3_hours": self.speedtest_times_for_interval(3),
+            "every_6_hours": self.speedtest_times_for_interval(6),
+        }
+        for preset, preset_times in presets.items():
+            if times == preset_times:
+                return preset
+        return "custom"
+
+    def speedtest_schedule_label(self):
+        labels = {
+            "disabled": "Disabled",
+            "every_30_minutes": "Every 30 minutes",
+            "every_1_hour": "Every 1 hour",
+            "every_3_hours": "Every 3 hours",
+            "every_6_hours": "Every 6 hours",
+            "custom": "Custom scheduled times",
+        }
+        return labels.get(self.speedtest_schedule_mode(), "Custom scheduled times")
+
+    def update_speedtest_schedule(self, mode, custom_times=None):
+        mode_times = {
+            "every_30_minutes": self.default_speedtest_times,
+            "every_1_hour": lambda: self.speedtest_times_for_interval(1),
+            "every_3_hours": lambda: self.speedtest_times_for_interval(3),
+            "every_6_hours": lambda: self.speedtest_times_for_interval(6),
+        }
+
+        if mode == "disabled":
+            self.config.data["speedtest_schedule_enabled"] = False
+            self.config.data["speedtest_schedule_mode"] = "disabled"
+        elif mode == "custom":
+            times = self.normalize_custom_speedtest_times(custom_times or "")
+            self.config.data["speedtest_schedule_enabled"] = True
+            self.config.data["speedtest_schedule_mode"] = "custom"
+            self.config.data["speedtest_times"] = times
+        elif mode in mode_times:
+            self.config.data["speedtest_schedule_enabled"] = True
+            self.config.data["speedtest_schedule_mode"] = mode
+            self.config.data["speedtest_times"] = mode_times[mode]()
+        else:
+            raise ValueError("Unknown speed test schedule mode")
+
+        self.config.save()
+        self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
+        self.register_speedtest_jobs()
+
+    def normalize_custom_speedtest_times(self, raw_times):
+        pieces = raw_times.replace(",", "\n").splitlines()
+        normalized = []
+        seen = set()
+        for piece in pieces:
+            value = piece.strip()
+            if not value:
+                continue
+            time_value = self.normalize_clock_time(value)
+            if time_value not in seen:
+                normalized.append(time_value)
+                seen.add(time_value)
+        if not normalized:
+            raise ValueError("Enter at least one custom time")
+        return normalized
+
+    def next_scheduled_speedtest(self, now=None):
+        if not self.config.get("speedtest_schedule_enabled", default=True):
+            return None
+
+        now = now or datetime.now()
+        candidates = []
+        for time_value in self.configured_speedtest_times():
+            hour, minute = self.parse_clock_time(time_value)
+            candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if candidate <= now:
+                candidate += timedelta(days=1)
+            candidates.append(candidate)
+
+        if not candidates:
+            return None
+        return min(candidates)
 
     @classmethod
     def normalize_clock_time(cls, value):

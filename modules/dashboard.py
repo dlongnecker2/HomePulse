@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, redirect, render_template, url_for, jsonify
+from flask import Flask, redirect, render_template, request, url_for, jsonify
 
 
 class Dashboard:
@@ -18,6 +18,9 @@ class Dashboard:
         last_reboot = self.application.db.latest_event("router_reboot")
         if last_reboot:
             status["router"]["last_reboot"] = last_reboot["timestamp"]
+        next_speedtest = self.application.next_scheduled_speedtest()
+        status["speedtest"]["next_run"] = str(next_speedtest) if next_speedtest else None
+        status["speedtest"]["schedule_label"] = self.application.speedtest_schedule_label()
         return status
 
     def register_routes(self):
@@ -32,6 +35,29 @@ class Dashboard:
                 speedtest=status["speedtest"],
                 router=status["router"],
                 system=status["system"],
+                now=datetime.now(),
+            )
+
+        @self.app.route("/settings", methods=["GET", "POST"])
+        def settings():
+            error = None
+            if request.method == "POST":
+                mode = request.form.get("speedtest_schedule_mode", "every_30_minutes")
+                custom_times = request.form.get("custom_speedtest_times", "")
+                try:
+                    self.application.update_speedtest_schedule(mode, custom_times)
+                    return redirect(url_for("settings", saved="1"))
+                except ValueError as exc:
+                    error = str(exc)
+
+            return render_template(
+                "settings.html",
+                config=self.application.config,
+                schedule_mode=self.application.speedtest_schedule_mode(),
+                schedule_label=self.application.speedtest_schedule_label(),
+                speedtest_times=self.application.configured_speedtest_times(),
+                error=error,
+                saved=request.args.get("saved") == "1",
                 now=datetime.now(),
             )
 
@@ -87,6 +113,8 @@ class Dashboard:
                 "speedtest_ping": speedtest["ping"],
                 "speedtest_server": speedtest["server"],
                 "last_speedtest": speedtest["last_run"],
+                "next_speedtest": speedtest.get("next_run"),
+                "speedtest_schedule_label": speedtest.get("schedule_label"),
                 "router_status": router.get("status", "Monitoring"),
                 "last_reboot": router.get("last_reboot"),
                 "started_at": system["started_at"],

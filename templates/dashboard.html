@@ -173,6 +173,7 @@
         <tr><td>Upload</td><td><span id="speed-upload-table">{{ speedtest.upload ~ " Mbps" if speedtest.upload is not none else "Last test unavailable" }}</span></td></tr>
         <tr><td>Ping</td><td><span id="speedtest-ping-table">{{ speedtest.ping ~ " ms" if speedtest.ping is not none else "Last test unavailable" }}</span></td></tr>
         <tr><td>Server</td><td id="speedtest-server">{{ speedtest.server or "Last test unavailable" }}</td></tr>
+        <tr><td>Next Scheduled</td><td id="next-speedtest">{{ speedtest.next_run or "Schedule disabled" }}</td></tr>
       </table>
     </section>
 
@@ -185,6 +186,24 @@
         <tr><td>Monitor Interval</td><td>{{ config.get("monitor_interval_minutes") }} minutes</td></tr>
         <tr><td>Dry Run Mode</td><td>{{ config.get("dry_run") }}</td></tr>
       </table>
+    </section>
+
+    <section class="dashboard-panel compact-panel automation-panel">
+      <h2>Automation Rules</h2>
+      <table>
+        <tr><td>Speed Tests</td><td>{{ "Enabled" if config.get("speedtest_schedule_enabled", default=True) else "Disabled" }}</td></tr>
+        <tr><td>Schedule</td><td id="speedtest-schedule-label">{{ speedtest.schedule_label or "Every 30 minutes" }}</td></tr>
+        <tr><td>Next Test</td><td id="automation-next-speedtest">{{ speedtest.next_run or "Schedule disabled" }}</td></tr>
+        <tr><td>Reboot Window</td><td>{{ config.get("reboot_window_time", default="04:00") }}</td></tr>
+        <tr><td>Cooldown</td><td>{{ config.get("reboot_cooldown_hours", default=24) }} hours</td></tr>
+        <tr><td>Download Min</td><td>{{ config.get("minimum_download_mbps", default=100) }} Mbps</td></tr>
+        <tr><td>Upload Min</td><td>{{ config.get("minimum_upload_mbps", default=10) }} Mbps</td></tr>
+        <tr><td>Latency Max</td><td>{{ config.get("maximum_latency_ms", default=100) }} ms</td></tr>
+      </table>
+      <div class="rule-notes">
+        <div>Daytime speed tests never trigger router reboots.</div>
+        <div>Automatic reboot is only allowed during the configured maintenance window.</div>
+      </div>
     </section>
 
     <section class="dashboard-panel compact-panel timeline-panel">
@@ -202,7 +221,7 @@
           <div>
             <time id="event-health-time">{{ internet.last_check or "--" }}</time>
             <strong>Internet health check</strong>
-            <span id="event-health">Status: {{ internet.status }}{% if internet.latency is not none %} · {{ internet.latency }} ms{% endif %}</span>
+            <span id="event-health">Status: {{ internet.status }}{% if internet.latency is not none %} - {{ internet.latency }} ms{% endif %}</span>
           </div>
         </div>
         <div class="timeline-item">
@@ -230,7 +249,7 @@
   </aside>
 </section>
 
-<p class="small">HomePulse v2.6.2 refines the dashboard experience while preserving the existing monitor, routes, and SQLite data.</p>
+<p class="small">HomePulse v2.6.4 improves scheduled automation visibility while preserving the existing monitor, routes, and SQLite data.</p>
 <script src="{{ url_for('static', filename='js/dashboard_charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/live_dashboard.js') }}"></script>
 {% endblock %}
