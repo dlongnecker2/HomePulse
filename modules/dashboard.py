@@ -239,6 +239,10 @@ class Dashboard:
         def test_full_diagnostics():
             return jsonify(self.application.diagnostics.run_full_diagnostics().to_dict())
 
+        @self.app.route("/discover/tapo")
+        def discover_tapo():
+            return jsonify(self.application.tapo_discovery.discover())
+
     def _diagnostic_response(self, test_name, **kwargs):
         return jsonify(self.application.diagnostics.run_test(test_name, **kwargs).to_dict())
 

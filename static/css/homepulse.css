@@ -794,6 +794,75 @@ select {
   font-size: 12px;
 }
 
+.method-settings {
+  margin-top: 12px;
+}
+
+.inline-diagnostics {
+  margin-top: 14px;
+}
+
+.advanced-settings {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+}
+
+.advanced-settings summary {
+  cursor: pointer;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.discovery-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 12px 0 6px;
+}
+
+.discovery-toolbar button {
+  margin: 0;
+}
+
+.discovery-results {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.discovery-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+}
+
+.discovery-result strong,
+.discovery-result span {
+  display: block;
+}
+
+.discovery-result span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.discovery-result button {
+  min-height: 34px;
+  margin: 0;
+  padding: 7px 11px;
+}
+
 .safety-summary {
   color: var(--text-soft);
 }

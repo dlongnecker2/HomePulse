@@ -14,6 +14,7 @@ from modules.router_rebooter import RouterRebooter
 from modules.scheduler import Scheduler
 from modules.speedtest_engine import SpeedTestEngine
 from modules.status import StatusManager
+from modules.tapo_discovery import TapoDiscovery
 
 
 class Application:
@@ -28,6 +29,7 @@ class Application:
         self.email_notifier = EmailNotifier(self.config, self.log)
         self.status = StatusManager()
         self.diagnostics = Diagnostics(self)
+        self.tapo_discovery = TapoDiscovery(self.log)
 
     def startup_message(self):
         self.log.info("=" * 60)
