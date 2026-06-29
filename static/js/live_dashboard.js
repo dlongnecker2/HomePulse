@@ -65,8 +65,10 @@ async function refreshDashboardStatus() {
     setText("hero-subtitle", statusSubtitle(data.internet_status));
     setText("latest-latency", data.latest_latency_ms);
     setText("packet-loss", `Packet loss: ${data.packet_loss ?? "--"}%`);
-    setText("health-score", data.health_score);
-    setText("dns-status", `DNS: ${data.dns_ok}`);
+    setText("health-score", data.internet_quality_score ?? data.health_score);
+    setText("dns-status", `ISP grade: ${data.isp_grade || "--"}`);
+    setText("isp-grade", data.isp_grade);
+    setText("reliability-trend", data.reliability_trend);
     setText("last-check", `Last check: ${data.last_check || "--"}`);
     setText("speed-download", formatMetric(data.download, "Mbps", "Waiting for first test"));
     setText("speed-download-table", formatMetric(data.download, "Mbps", "Waiting for first test"));

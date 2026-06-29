@@ -1,5 +1,6 @@
 import threading
 from datetime import datetime, timedelta
+from statistics import mean
 
 from modules.config import Config
 from modules.dashboard import Dashboard
@@ -26,7 +27,7 @@ class Application:
         self.log.info("=" * 60)
         self.log.info("HomePulse starting...")
         self.log.info("Home Reliability Dashboard")
-        self.log.info(f"Version: {self.config.get('version', default='2.6.4')}")
+        self.log.info(f"Version: {self.config.get('version', default='2.7.0')}")
         self.log.info("Dashboard: http://localhost:8080")
         self.log.info("Developer Console: http://localhost:8080/dev")
         self.log.info("Logs: http://localhost:8080/logs")
@@ -418,6 +419,186 @@ class Application:
             except ValueError:
                 continue
         return None
+
+    def internet_intelligence(self):
+        now = datetime.now()
+        since = now - timedelta(days=30)
+        since_text = str(since)
+        health_rows = self.db.health_history_since(since_text)
+        speed_rows = self.db.speed_tests_since(since_text)
+        reboot_events = self.db.events_since(since_text, "router_reboot")
+        latest_speed = self.db.latest_speed_test()
+
+        quality_score = self.internet_quality_score(health_rows, latest_speed)
+        reliability = self.reliability_summary(health_rows, reboot_events)
+        grade = self.isp_grade(quality_score)
+        trend = self.reliability_trend(health_rows)
+        recommendations = self.internet_recommendations(
+            health_rows=health_rows,
+            speed_rows=speed_rows,
+            latest_speed=latest_speed,
+            reliability=reliability,
+            quality_score=quality_score,
+            trend=trend,
+        )
+
+        return {
+            "quality_score": quality_score,
+            "isp_grade": grade,
+            "trend": trend,
+            "reliability": reliability,
+            "recommendations": recommendations,
+            "sample_count": len(health_rows),
+        }
+
+    def internet_quality_score(self, health_rows, latest_speed):
+        health_scores = [row["score"] for row in health_rows if row["score"] is not None]
+        if health_scores:
+            health_score = mean(health_scores)
+        else:
+            current = self.status.get()["internet"].get("score")
+            health_score = current if current is not None else None
+
+        speed_score = self.speed_quality_score(latest_speed)
+        if health_score is None and speed_score is None:
+            return None
+        if health_score is None:
+            return round(speed_score)
+        if speed_score is None:
+            return round(health_score)
+        return round((health_score * 0.75) + (speed_score * 0.25))
+
+    def speed_quality_score(self, latest_speed):
+        if not latest_speed:
+            return None
+        minimum_download = self.config.get("minimum_download_mbps", default=100)
+        minimum_upload = self.config.get("minimum_upload_mbps", default=10)
+        download = latest_speed.get("download")
+        upload = latest_speed.get("upload")
+        if download is None or upload is None:
+            return None
+        download_score = min(download / minimum_download * 100, 100) if minimum_download else 100
+        upload_score = min(upload / minimum_upload * 100, 100) if minimum_upload else 100
+        return max(0, min(100, (download_score * 0.65) + (upload_score * 0.35)))
+
+    def reliability_summary(self, health_rows, reboot_events):
+        if not health_rows:
+            return {
+                "uptime_percent": None,
+                "outages": 0,
+                "longest_outage": "No data",
+                "router_reboots": len(reboot_events),
+            }
+
+        total = len(health_rows)
+        outage_flags = [self.is_outage_row(row) for row in health_rows]
+        outage_samples = sum(1 for flag in outage_flags if flag)
+        uptime_percent = round((total - outage_samples) / total * 100, 2)
+
+        outages = 0
+        longest_run = 0
+        current_run = 0
+        for is_outage in outage_flags:
+            if is_outage:
+                current_run += 1
+                if current_run == 1:
+                    outages += 1
+                longest_run = max(longest_run, current_run)
+            else:
+                current_run = 0
+
+        interval = self.config.get("monitor_interval_minutes", default=5)
+        longest_minutes = longest_run * interval
+        return {
+            "uptime_percent": uptime_percent,
+            "outages": outages,
+            "longest_outage": self.format_duration(longest_minutes),
+            "router_reboots": len(reboot_events),
+        }
+
+    @staticmethod
+    def format_duration(minutes):
+        if minutes <= 0:
+            return "0 min"
+        hours = minutes // 60
+        remaining = minutes % 60
+        if hours and remaining:
+            return f"{hours}h {remaining}m"
+        if hours:
+            return f"{hours}h"
+        return f"{minutes} min"
+
+    @staticmethod
+    def is_outage_row(row):
+        return (
+            row["score"] is not None and row["score"] < 60
+        ) or (
+            row["latency"] is not None and row["latency"] >= 999
+        ) or (
+            row["packet_loss"] is not None and row["packet_loss"] >= 100
+        ) or row["dns_ok"] is False
+
+    @staticmethod
+    def isp_grade(score):
+        if score is None:
+            return "Collecting Data"
+        if score >= 90:
+            return "Excellent"
+        if score >= 75:
+            return "Good"
+        if score >= 60:
+            return "Fair"
+        return "Poor"
+
+    def reliability_trend(self, health_rows):
+        if len(health_rows) < 6:
+            return "Collecting Data"
+        midpoint = len(health_rows) // 2
+        early = [row["score"] for row in health_rows[:midpoint] if row["score"] is not None]
+        recent = [row["score"] for row in health_rows[midpoint:] if row["score"] is not None]
+        if not early or not recent:
+            return "Collecting Data"
+        delta = mean(recent) - mean(early)
+        if delta > 3:
+            return "Improving"
+        if delta < -3:
+            return "Declining"
+        return "Stable"
+
+    def internet_recommendations(self, health_rows, speed_rows, latest_speed, reliability, quality_score, trend):
+        recommendations = []
+        maximum_latency = self.config.get("maximum_latency_ms", default=100)
+        minimum_download = self.config.get("minimum_download_mbps", default=100)
+        minimum_upload = self.config.get("minimum_upload_mbps", default=10)
+
+        if not health_rows:
+            return ["Keep HomePulse running to build a 30-day reliability baseline."]
+
+        latencies = [row["latency"] for row in health_rows if row["latency"] is not None]
+        packet_losses = [row["packet_loss"] for row in health_rows if row["packet_loss"] is not None]
+
+        if reliability["uptime_percent"] is not None and reliability["uptime_percent"] < 99:
+            recommendations.append("Reliability is below 99%; review outage timing before contacting the ISP.")
+        if reliability["outages"] > 0:
+            recommendations.append(f"{reliability['outages']} outage window(s) were detected in the last 30 days.")
+        if latencies and mean(latencies) > maximum_latency:
+            recommendations.append("Average latency is above the configured threshold.")
+        if packet_losses and mean(packet_losses) > self.config.get("thresholds", "packet_loss", default=5):
+            recommendations.append("Packet loss is elevated across recent health checks.")
+        if latest_speed and self.speed_below_thresholds(latest_speed):
+            recommendations.append(
+                f"Latest speed test is below threshold ({minimum_download} down / {minimum_upload} up)."
+            )
+        if reliability["router_reboots"] > 0:
+            recommendations.append("Router reboot events exist in the 30-day window; compare them with outage timing.")
+        if trend == "Declining":
+            recommendations.append("Reliability trend is declining; watch the next few scheduled checks closely.")
+        if not speed_rows:
+            recommendations.append("No speed tests are available in the 30-day window yet.")
+        if quality_score is not None and quality_score >= 90 and not recommendations:
+            recommendations.append("Internet quality is strong; no action is recommended right now.")
+
+        return recommendations[:5]
 
     def start_dashboard(self):
         check_dashboard_port(self.config, self.log)

@@ -434,7 +434,7 @@ h2 {
 
 .side-stack {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto;
   gap: 12px;
   min-width: 0;
 }
@@ -548,6 +548,24 @@ textarea {
 
 .safety-summary {
   color: var(--text-soft);
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 10px 0 0;
+  list-style: none;
+}
+
+.recommendation-list li {
+  padding: 9px 10px;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 620;
 }
 
 table {

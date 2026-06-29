@@ -9,7 +9,7 @@ class StatusManager:
         self._status = {
             "app_name": "HomePulse",
             "app_subtitle": "Home Reliability Dashboard",
-            "version": "2.6.4",
+            "version": "2.7.0",
             "internet": {
                 "status": "Starting",
                 "score": None,

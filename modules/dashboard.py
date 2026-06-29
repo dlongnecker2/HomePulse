@@ -21,6 +21,7 @@ class Dashboard:
         next_speedtest = self.application.next_scheduled_speedtest()
         status["speedtest"]["next_run"] = str(next_speedtest) if next_speedtest else None
         status["speedtest"]["schedule_label"] = self.application.speedtest_schedule_label()
+        status["intelligence"] = self.application.internet_intelligence()
         return status
 
     def register_routes(self):
@@ -35,6 +36,7 @@ class Dashboard:
                 speedtest=status["speedtest"],
                 router=status["router"],
                 system=status["system"],
+                intelligence=status["intelligence"],
                 now=datetime.now(),
             )
 
@@ -99,10 +101,14 @@ class Dashboard:
             speedtest = status["speedtest"]
             router = status["router"]
             system = status["system"]
+            intelligence = status["intelligence"]
             return jsonify({
                 "version": status["version"],
                 "internet_status": internet["status"],
-                "health_score": internet["score"],
+                "health_score": intelligence["quality_score"],
+                "internet_quality_score": intelligence["quality_score"],
+                "isp_grade": intelligence["isp_grade"],
+                "reliability_trend": intelligence["trend"],
                 "latest_latency_ms": internet["latency"],
                 "packet_loss": internet["packet_loss"],
                 "dns_ok": internet["dns_ok"],

@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.7.0
+
+- Added Internet Intelligence using existing local HomePulse data only.
+- Replaced the dashboard Health Score display with a calculated Internet Quality Score.
+- Added 30-day reliability metrics for uptime, outage count, longest outage, and router reboot events.
+- Added ISP Grade, Reliability Trend, and local recommendations based on collected health and speed-test data.
+- Preserved existing Flask routes, SQLite schema compatibility, and local-only operation.
+
 ## v2.6.4
 
 - Added a compact Automation Rules dashboard section for scheduled speed-test and reboot-safety settings.

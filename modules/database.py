@@ -121,6 +121,65 @@ class Database:
         rows.reverse()
         return [self._health_row_to_dict(row) for row in rows]
 
+    def health_history_since(self, timestamp):
+        rows = self.conn.execute(
+            """
+            SELECT timestamp, latency, packet_loss, dns_ok, score, rebooted
+            FROM health_checks
+            WHERE timestamp >= ?
+            ORDER BY id ASC
+            """,
+            (timestamp,),
+        ).fetchall()
+        return [self._health_row_to_dict(row) for row in rows]
+
+    def speed_tests_since(self, timestamp):
+        rows = self.conn.execute(
+            """
+            SELECT timestamp, download, upload, ping, server
+            FROM speed_tests
+            WHERE timestamp >= ?
+            ORDER BY id ASC
+            """,
+            (timestamp,),
+        ).fetchall()
+        return [
+            {
+                "timestamp": row["timestamp"],
+                "download": row["download"],
+                "upload": row["upload"],
+                "ping": row["ping"],
+                "server": row["server"],
+            }
+            for row in rows
+        ]
+
+    def events_since(self, timestamp, event_type=None):
+        if event_type:
+            rows = self.conn.execute(
+                """
+                SELECT timestamp, event_type, message
+                FROM events
+                WHERE timestamp >= ? AND event_type = ?
+                ORDER BY id ASC
+                """,
+                (timestamp, event_type),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                """
+                SELECT timestamp, event_type, message
+                FROM events
+                WHERE timestamp >= ?
+                ORDER BY id ASC
+                """,
+                (timestamp,),
+            ).fetchall()
+        return [
+            {"timestamp": row["timestamp"], "event_type": row["event_type"], "message": row["message"]}
+            for row in rows
+        ]
+
     @staticmethod
     def _health_row_to_dict(row):
         return {

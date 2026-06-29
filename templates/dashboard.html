@@ -117,10 +117,10 @@
   <article class="status-card">
     <div class="card-title">
       <svg class="card-icon" aria-hidden="true"><use href="#icon-shield"></use></svg>
-      <div class="card-label">Health Score</div>
+      <div class="card-label">Internet Quality</div>
     </div>
-    <div class="card-value"><span id="health-score">{{ internet.score if internet.score is not none else "--" }}</span><span class="metric-unit"> / 100</span></div>
-    <div id="dns-status" class="card-foot">DNS: {{ internet.dns_ok }}</div>
+    <div class="card-value"><span id="health-score">{{ intelligence.quality_score if intelligence.quality_score is not none else "--" }}</span><span class="metric-unit"> / 100</span></div>
+    <div id="dns-status" class="card-foot">ISP grade: {{ intelligence.isp_grade }}</div>
   </article>
 
   <article class="status-card">
@@ -166,6 +166,25 @@
   </article>
 
   <aside class="side-stack">
+    <section class="dashboard-panel compact-panel intelligence-panel">
+      <h2>Internet Intelligence</h2>
+      <table>
+        <tr><td>ISP Grade</td><td id="isp-grade">{{ intelligence.isp_grade }}</td></tr>
+        <tr><td>Reliability Trend</td><td id="reliability-trend">{{ intelligence.trend }}</td></tr>
+        <tr><td>30-Day Samples</td><td>{{ intelligence.sample_count }}</td></tr>
+      </table>
+    </section>
+
+    <section class="dashboard-panel compact-panel reliability-panel">
+      <h2>30-Day Reliability</h2>
+      <table>
+        <tr><td>Uptime</td><td>{{ intelligence.reliability.uptime_percent if intelligence.reliability.uptime_percent is not none else "No data" }}{% if intelligence.reliability.uptime_percent is not none %}%{% endif %}</td></tr>
+        <tr><td>Outages</td><td>{{ intelligence.reliability.outages }}</td></tr>
+        <tr><td>Longest Outage</td><td>{{ intelligence.reliability.longest_outage }}</td></tr>
+        <tr><td>Router Reboots</td><td>{{ intelligence.reliability.router_reboots }}</td></tr>
+      </table>
+    </section>
+
     <section class="dashboard-panel compact-panel">
       <h2>Daily Speed Test</h2>
       <table>
@@ -204,6 +223,15 @@
         <div>Daytime speed tests never trigger router reboots.</div>
         <div>Automatic reboot is only allowed during the configured maintenance window.</div>
       </div>
+    </section>
+
+    <section class="dashboard-panel compact-panel recommendations-panel">
+      <h2>Recommendations</h2>
+      <ul class="recommendation-list">
+        {% for recommendation in intelligence.recommendations %}
+          <li>{{ recommendation }}</li>
+        {% endfor %}
+      </ul>
     </section>
 
     <section class="dashboard-panel compact-panel timeline-panel">
@@ -249,7 +277,7 @@
   </aside>
 </section>
 
-<p class="small">HomePulse v2.6.4 improves scheduled automation visibility while preserving the existing monitor, routes, and SQLite data.</p>
+<p class="small">HomePulse v2.7.0 adds Internet Intelligence from existing local HomePulse data.</p>
 <script src="{{ url_for('static', filename='js/dashboard_charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/live_dashboard.js') }}"></script>
 {% endblock %}
