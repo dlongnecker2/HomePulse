@@ -1,33 +1,70 @@
 {% extends "base.html" %}
 {% block title %}HomePulse History{% endblock %}
 {% block content %}
-<section class="page-heading">
+<section class="page-heading history-heading">
   <div>
     <h2>History</h2>
-    <p>Last 24 hours of HomePulse latency, quality, speed tests, and notable events.</p>
+    <p>Chart-first analytics from existing HomePulse data. Range controls are display-only for now.</p>
+  </div>
+  <div class="range-controls" aria-label="Time range controls">
+    <span>6H</span>
+    <span class="active">24H</span>
+    <span>7D</span>
+    <span>30D</span>
   </div>
 </section>
 
-<section class="insight-grid">
-  <article class="dashboard-panel compact-panel">
-    <h2>Latency Overview</h2>
-    <table>
-      <tr><td>Average</td><td>{{ history.average_latency if history.average_latency is not none else "No data" }}{% if history.average_latency is not none %} ms{% endif %}</td></tr>
-      <tr><td>Maximum</td><td>{{ history.maximum_latency if history.maximum_latency is not none else "No data" }}{% if history.maximum_latency is not none %} ms{% endif %}</td></tr>
-      <tr><td>Samples</td><td>{{ history.health_rows | length }}</td></tr>
-    </table>
+<section class="history-summary-grid">
+  <article class="summary-card">
+    <span>Internet Quality Avg</span>
+    <strong>{{ history.quality_average if history.quality_average is not none else "--" }}</strong>
   </article>
-  <article class="dashboard-panel compact-panel">
-    <h2>Quality Trend</h2>
-    <div class="insight-value text-value">{{ history.quality_trend }}</div>
-    <p>Average quality: {{ history.average_quality if history.average_quality is not none else "No data" }}</p>
+  <article class="summary-card">
+    <span>Latency Avg</span>
+    <strong>{{ history.average_latency if history.average_latency is not none else "--" }}{% if history.average_latency is not none %} ms{% endif %}</strong>
   </article>
-  <article class="dashboard-panel compact-panel">
-    <h2>Outages / Reboots</h2>
-    <table>
-      <tr><td>Outages</td><td>{{ history.outage_count }}</td></tr>
-      <tr><td>Events</td><td>{{ history.events | length }}</td></tr>
-    </table>
+  <article class="summary-card">
+    <span>Download Avg</span>
+    <strong>{{ history.average_download if history.average_download is not none else "--" }}{% if history.average_download is not none %} Mbps{% endif %}</strong>
+  </article>
+  <article class="summary-card">
+    <span>Upload Avg</span>
+    <strong>{{ history.average_upload if history.average_upload is not none else "--" }}{% if history.average_upload is not none %} Mbps{% endif %}</strong>
+  </article>
+  <article class="summary-card">
+    <span>Outages</span>
+    <strong>{{ history.outage_count }}</strong>
+  </article>
+  <article class="summary-card">
+    <span>Router Reboots</span>
+    <strong>{{ history.router_reboot_count }}</strong>
+  </article>
+</section>
+
+<section class="dashboard-panel history-chart-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Speed History</h2>
+      <p>Download and upload use the left axis. Latency uses the right axis.</p>
+    </div>
+  </div>
+  <div class="history-chart-box large">
+    <canvas id="speedHistoryChart"></canvas>
+  </div>
+</section>
+
+<section class="history-chart-grid">
+  <article class="dashboard-panel history-chart-panel">
+    <h2>Internet Quality History</h2>
+    <div class="history-chart-box small">
+      <canvas id="qualityHistoryChart"></canvas>
+    </div>
+  </article>
+  <article class="dashboard-panel history-chart-panel">
+    <h2>Latency History</h2>
+    <div class="history-chart-box small">
+      <canvas id="latencyHistoryChart"></canvas>
+    </div>
   </article>
 </section>
 
@@ -40,22 +77,40 @@
           <tr><td>{{ test.timestamp }}</td><td>{{ test.download }} down / {{ test.upload }} up / {{ test.ping }} ms</td></tr>
         {% endfor %}
       {% else %}
-        <tr><td colspan="2">No speed tests in the last 24 hours.</td></tr>
+        <tr><td colspan="2">No speed tests in the current 24-hour view.</td></tr>
       {% endif %}
     </table>
   </article>
 
   <article class="dashboard-panel">
-    <h2>Recent Outages / Reboots</h2>
+    <h2>Recent Events</h2>
     <table>
       {% if history.events %}
         {% for event in history.events %}
           <tr><td>{{ event.timestamp }}</td><td>{{ event.event_type }}: {{ event.message }}</td></tr>
         {% endfor %}
       {% else %}
-        <tr><td colspan="2">No outage or reboot events in the last 24 hours.</td></tr>
+        <tr><td colspan="2">No recent outage or reboot events in the current 24-hour view.</td></tr>
       {% endif %}
     </table>
   </article>
 </section>
+
+<section class="dashboard-panel">
+  <h2>Outage & Reboot History</h2>
+  <table>
+    {% if history.outage_reboot_history %}
+      {% for event in history.outage_reboot_history %}
+        <tr><td>{{ event.timestamp }}</td><td>{{ event.event_type }}: {{ event.message }}</td></tr>
+      {% endfor %}
+    {% else %}
+      <tr><td colspan="2">No outage or reboot history in the current 24-hour view.</td></tr>
+    {% endif %}
+  </table>
+</section>
+
+<script>
+  window.HomePulseHistory = {{ history.charts | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/history_charts.js') }}"></script>
 {% endblock %}

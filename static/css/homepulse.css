@@ -414,6 +414,96 @@ h2 {
   color: var(--muted);
 }
 
+.history-heading {
+  align-items: flex-start;
+}
+
+.range-controls {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+}
+
+.range-controls span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 30px;
+  padding: 5px 9px;
+  color: var(--muted);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.range-controls .active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.history-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.summary-card {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+}
+
+.summary-card span,
+.summary-card strong {
+  display: block;
+}
+
+.summary-card span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.summary-card strong {
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.history-chart-panel {
+  margin-bottom: 12px;
+}
+
+.history-chart-box {
+  position: relative;
+  margin-top: 10px;
+}
+
+.history-chart-box.large {
+  height: 380px;
+}
+
+.history-chart-box.small {
+  height: 245px;
+}
+
+.history-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .insight-grid,
 .content-grid {
   display: grid;
@@ -869,6 +959,8 @@ button:focus-visible {
 
   .insight-grid,
   .content-grid,
+  .history-summary-grid,
+  .history-chart-grid,
   .report-grid {
     grid-template-columns: 1fr;
   }

@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.8.1
+
+- Redesigned the History page into a chart-first analytics view.
+- Added top summary cards for quality, latency, download, upload, outages, and router reboots.
+- Added Speed History, Internet Quality History, and Latency History charts using existing Chart.js.
+- Added display-only time-range controls for 6H, 24H, 7D, and 30D.
+- Kept recent speed tests, recent events, and outage/reboot history below the charts.
+- Preserved existing routes and SQLite schema compatibility.
+
 ## v2.8.0
 
 - Added dedicated Internet, History, and Reports navigation pages.

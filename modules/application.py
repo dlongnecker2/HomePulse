@@ -27,7 +27,7 @@ class Application:
         self.log.info("=" * 60)
         self.log.info("HomePulse starting...")
         self.log.info("Home Reliability Dashboard")
-        self.log.info(f"Version: {self.config.get('version', default='2.8.0')}")
+        self.log.info(f"Version: {self.config.get('version', default='2.8.1')}")
         self.log.info("Dashboard: http://localhost:8080")
         self.log.info("Developer Console: http://localhost:8080/dev")
         self.log.info("Logs: http://localhost:8080/logs")
@@ -611,19 +611,42 @@ class Application:
             event for event in events
             if event["event_type"] in ("router_reboot", "router_reboot_recommended", "router_reboot_skipped")
         ]
-        outage_rows = [row for row in health_rows if self.is_outage_row(row)]
+        outage_runs = self.outage_runs(health_rows)
         latencies = [row["latency"] for row in health_rows if row["latency"] is not None]
         scores = [row["score"] for row in health_rows if row["score"] is not None]
+        downloads = [row["download"] for row in speed_rows if row["download"] is not None]
+        uploads = [row["upload"] for row in speed_rows if row["upload"] is not None]
 
         return {
             "health_rows": health_rows,
             "speed_tests": list(reversed(speed_rows[-10:])),
-            "events": list(reversed((reboot_events + self.outage_events_from_rows(outage_rows))[-10:])),
+            "events": list(reversed((reboot_events + self.outage_events_from_runs(outage_runs))[-10:])),
+            "outage_reboot_history": list(reversed((reboot_events + self.outage_events_from_runs(outage_runs))[-20:])),
+            "quality_average": round(mean(scores), 1) if scores else None,
             "average_latency": round(mean(latencies), 1) if latencies else None,
             "maximum_latency": round(max(latencies), 1) if latencies else None,
+            "average_download": round(mean(downloads), 1) if downloads else None,
+            "average_upload": round(mean(uploads), 1) if uploads else None,
             "quality_trend": self.reliability_trend(health_rows),
             "average_quality": round(mean(scores), 1) if scores else None,
-            "outage_count": len(self.outage_runs(health_rows)),
+            "outage_count": len(outage_runs),
+            "router_reboot_count": len(reboot_events),
+            "charts": {
+                "speed": {
+                    "labels": [self.short_time(row["timestamp"]) for row in speed_rows],
+                    "download": [row["download"] for row in speed_rows],
+                    "upload": [row["upload"] for row in speed_rows],
+                    "latency": [row["ping"] for row in speed_rows],
+                },
+                "quality": {
+                    "labels": [self.short_time(row["timestamp"]) for row in health_rows],
+                    "values": [row["score"] for row in health_rows],
+                },
+                "latency": {
+                    "labels": [self.short_time(row["timestamp"]) for row in health_rows],
+                    "values": [row["latency"] for row in health_rows],
+                },
+            },
         }
 
     def report_summary(self):
@@ -665,15 +688,23 @@ class Application:
             runs.append(current)
         return runs
 
-    def outage_events_from_rows(self, outage_rows):
+    def outage_events_from_runs(self, outage_runs):
         return [
             {
-                "timestamp": row["timestamp"],
+                "timestamp": run[0]["timestamp"],
                 "event_type": "outage",
-                "message": f"Internet quality outage detected: score {row['score']}",
+                "message": f"Internet quality outage detected across {len(run)} sample(s)",
             }
-            for row in outage_rows[-10:]
+            for run in outage_runs[-10:]
         ]
+
+    @staticmethod
+    def short_time(timestamp):
+        if not timestamp:
+            return ""
+        if len(timestamp) >= 16:
+            return timestamp[5:16]
+        return timestamp
 
     def start_dashboard(self):
         check_dashboard_port(self.config, self.log)
