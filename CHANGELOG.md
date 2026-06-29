@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.9.0
+
+- Added the HomePulse Lab diagnostics page for developer-only runtime visibility.
+- Added Lab navigation alongside the existing Dashboard, Internet, History, Reports, Settings, Developer Console, and Logs pages.
+- Added read-only runtime overview details including version, start time, uptime, Python version, SQLite status, database size, memory usage, scheduler status, thread count, and configuration load state.
+- Added scheduler diagnostics for next ping, next speed test, next maintenance, last speed test, last maintenance, and scheduled job count.
+- Added recent color-coded log entries, SQLite record counts, read-only runtime configuration values, and manual action buttons.
+- Preserved existing routes, SQLite schema compatibility, and dependency set.
+
 ## v2.8.1
 
 - Redesigned the History page into a chart-first analytics view.

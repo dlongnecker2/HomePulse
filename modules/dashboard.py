@@ -1,4 +1,8 @@
-from datetime import datetime
+import ctypes
+import os
+import sys
+import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, redirect, render_template, request, url_for, jsonify
 
@@ -118,6 +122,33 @@ class Dashboard:
             self.application.daily_speed_test()
             return redirect(url_for("dev"))
 
+        @self.app.route("/lab")
+        def lab():
+            return render_template(
+                "lab.html",
+                lab=self._lab_payload(),
+                message=request.args.get("message"),
+                now=datetime.now(),
+            )
+
+        @self.app.route("/lab/action", methods=["POST"])
+        def lab_action():
+            action = request.form.get("action")
+            actions = {
+                "run_ping": ("Ping check completed", self.application.health_check),
+                "run_speedtest": ("Speed test completed", self.application.daily_speed_test),
+                "run_maintenance": ("Maintenance check completed", self.application.maintenance_check),
+                "reload_config": ("Configuration reloaded", self.application.reload_configuration),
+            }
+            label, function = actions.get(action, ("Unknown Lab action", None))
+            if function:
+                try:
+                    function()
+                except Exception as exc:
+                    self.application.log.exception(f"Lab action failed: {action} - {exc}")
+                    label = f"Lab action failed: {exc}"
+            return redirect(url_for("lab", message=label))
+
         @self.app.route("/logs")
         def logs():
             log_file = Path("logs/routermonitor.log")
@@ -177,6 +208,200 @@ class Dashboard:
         @self.app.route("/health")
         def health():
             return jsonify({"status": self._dashboard_payload(), "timestamp": str(datetime.now())})
+
+    def _lab_payload(self):
+        status = self._dashboard_payload()
+        return {
+            "overview": self._lab_overview(status),
+            "scheduler": self._lab_scheduler(status),
+            "logs": self._recent_log_entries(),
+            "database": self._database_counts(),
+            "configuration": self._flatten_config(self.application.config.data),
+            "actions": [
+                ("run_ping", "Run Ping"),
+                ("run_speedtest", "Run Speed Test"),
+                ("run_maintenance", "Run Maintenance"),
+                ("reload_config", "Reload Configuration"),
+            ],
+        }
+
+    def _lab_overview(self, status):
+        started_at = status["system"].get("started_at")
+        started = self.application.parse_timestamp(started_at)
+        return [
+            ("Application Version", status["version"]),
+            ("Start Time", started_at or "Unknown"),
+            ("Uptime", self._format_uptime(started)),
+            ("Python Version", sys.version.split()[0]),
+            ("SQLite Status", self._sqlite_status()),
+            ("Database Size", self._database_size()),
+            ("Memory Usage", self._memory_usage()),
+            ("Scheduler Status", self._scheduler_status()),
+            ("Background Threads", max(threading.active_count() - 1, 0)),
+            ("Configuration Loaded", "Loaded" if self.application.config.data else "Unavailable"),
+        ]
+
+    def _lab_scheduler(self, status):
+        return [
+            ("Next Ping", self._next_interval_run("Internet Health Check")),
+            ("Next Speed Test", status["speedtest"].get("next_run") or "Disabled"),
+            ("Next Maintenance", self._next_maintenance()),
+            ("Last Speed Test", status["speedtest"].get("last_run") or "Never"),
+            ("Last Maintenance", self._last_maintenance()),
+            ("Queue Status", f"{len(self.application.scheduler.jobs)} scheduled job(s)"),
+        ]
+
+    def _scheduler_status(self):
+        return "Active" if self.application.scheduler.jobs else "No jobs registered"
+
+    def _next_interval_run(self, job_name):
+        now = datetime.now()
+        for job in self.application.scheduler.jobs:
+            if job["name"] == job_name and job["type"] == "interval":
+                last_run = job.get("last_run")
+                if not last_run:
+                    return "Due now"
+                return str(last_run + job["interval"])
+        return "Not scheduled"
+
+    def _next_maintenance(self):
+        time_value = self.application.config.get("reboot_window_time", default="04:00")
+        hour, minute = self.application.parse_clock_time(time_value)
+        now = datetime.now()
+        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        return str(candidate)
+
+    def _last_maintenance(self):
+        candidates = [
+            self.application.db.latest_event("maintenance_check"),
+            self.application.db.latest_event("router_reboot_recommended"),
+            self.application.db.latest_event("router_reboot_skipped"),
+        ]
+        candidates = [event for event in candidates if event]
+        if not candidates:
+            return "Never"
+        latest = max(candidates, key=lambda event: event["timestamp"])
+        return latest["timestamp"]
+
+    def _database_counts(self):
+        health_rows = self.application.db.health_history(limit=10000)
+        return [
+            ("Latency", self.application.db.count_rows("health_checks")),
+            ("Speed Tests", self.application.db.count_rows("speed_tests")),
+            ("Outages", len(self.application.outage_runs(health_rows))),
+            ("Router Reboots", self.application.db.count_events("router_reboot")),
+            ("Events", self.application.db.count_events()),
+        ]
+
+    def _recent_log_entries(self):
+        log_file = Path("logs/routermonitor.log")
+        if not log_file.exists():
+            return [{"severity": "info", "line": "No log file found."}]
+        lines = log_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+        return [
+            {"severity": self._line_severity(line), "line": line}
+            for line in lines[-80:]
+        ]
+
+    @staticmethod
+    def _line_severity(line):
+        upper = line.upper()
+        if "CRITICAL" in upper or "ERROR" in upper or "EXCEPTION" in upper:
+            return "error"
+        if "WARNING" in upper or "WARN" in upper:
+            return "warning"
+        if "DEBUG" in upper:
+            return "debug"
+        return "info"
+
+    def _sqlite_status(self):
+        try:
+            self.application.db.conn.execute("SELECT 1").fetchone()
+            return "Connected"
+        except Exception as exc:
+            return f"Unavailable: {exc}"
+
+    def _database_size(self):
+        path = Path(self.application.db.filename)
+        if not path.exists():
+            return "Not created"
+        return self._format_bytes(path.stat().st_size)
+
+    def _memory_usage(self):
+        rss = self._process_memory_bytes()
+        return self._format_bytes(rss) if rss else "Unavailable"
+
+    @staticmethod
+    def _process_memory_bytes():
+        if os.name == "nt":
+            try:
+                class ProcessMemoryCounters(ctypes.Structure):
+                    _fields_ = [
+                        ("cb", ctypes.c_ulong),
+                        ("PageFaultCount", ctypes.c_ulong),
+                        ("PeakWorkingSetSize", ctypes.c_size_t),
+                        ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t),
+                        ("PeakPagefileUsage", ctypes.c_size_t),
+                    ]
+
+                counters = ProcessMemoryCounters()
+                counters.cb = ctypes.sizeof(counters)
+                handle = ctypes.windll.kernel32.GetCurrentProcess()
+                ok = ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb)
+                return counters.WorkingSetSize if ok else None
+            except Exception:
+                return None
+
+        try:
+            import resource
+        except ImportError:
+            return None
+        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return usage * 1024
+
+    @staticmethod
+    def _format_bytes(value):
+        size = float(value)
+        for unit in ("B", "KB", "MB", "GB"):
+            if size < 1024 or unit == "GB":
+                return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
+            size /= 1024
+        return f"{size:.1f} GB"
+
+    @staticmethod
+    def _format_uptime(started):
+        if not started:
+            return "Unknown"
+        delta = datetime.now() - started
+        days = delta.days
+        hours, remainder = divmod(delta.seconds, 3600)
+        minutes = remainder // 60
+        if days:
+            return f"{days}d {hours}h {minutes}m"
+        if hours:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+
+    @classmethod
+    def _flatten_config(cls, data, prefix=""):
+        rows = []
+        for key in sorted(data):
+            value = data[key]
+            path = f"{prefix}.{key}" if prefix else key
+            if isinstance(value, dict):
+                rows.extend(cls._flatten_config(value, path))
+            elif isinstance(value, list):
+                rows.append((path, ", ".join(str(item) for item in value)))
+            else:
+                rows.append((path, value))
+        return rows
 
     def run(self):
         self.app.run(

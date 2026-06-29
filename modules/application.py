@@ -27,8 +27,9 @@ class Application:
         self.log.info("=" * 60)
         self.log.info("HomePulse starting...")
         self.log.info("Home Reliability Dashboard")
-        self.log.info(f"Version: {self.config.get('version', default='2.8.1')}")
+        self.log.info(f"Version: {self.config.get('version', default='2.9.0')}")
         self.log.info("Dashboard: http://localhost:8080")
+        self.log.info("Lab: http://localhost:8080/lab")
         self.log.info("Developer Console: http://localhost:8080/dev")
         self.log.info("Logs: http://localhost:8080/logs")
         self.log.info("=" * 60)
@@ -190,6 +191,15 @@ class Application:
         self.config.save()
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.register_speedtest_jobs()
+
+    def reload_configuration(self):
+        self.config = Config()
+        self.network.config = self.config
+        self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
+        self.scheduler.remove_jobs_by_prefix("Maintenance Check")
+        self.register_speedtest_jobs()
+        self.register_maintenance_job()
+        self.log.info("Configuration reloaded from config.json")
 
     def normalize_custom_speedtest_times(self, raw_times):
         pieces = raw_times.replace(",", "\n").splitlines()

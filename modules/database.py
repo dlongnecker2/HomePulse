@@ -110,6 +110,23 @@ class Database:
             return None
         return {"timestamp": row["timestamp"], "event_type": row["event_type"], "message": row["message"]}
 
+    def count_rows(self, table_name):
+        allowed_tables = {"health_checks", "speed_tests", "events"}
+        if table_name not in allowed_tables:
+            raise ValueError("Unsupported table")
+        row = self.conn.execute(f"SELECT COUNT(*) AS count FROM {table_name}").fetchone()
+        return row["count"] if row else 0
+
+    def count_events(self, event_type=None):
+        if event_type:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS count FROM events WHERE event_type = ?",
+                (event_type,),
+            ).fetchone()
+        else:
+            row = self.conn.execute("SELECT COUNT(*) AS count FROM events").fetchone()
+        return row["count"] if row else 0
+
     def health_history(self, limit=96):
         rows = self.conn.execute(
             """

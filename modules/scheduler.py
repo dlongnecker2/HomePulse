@@ -14,6 +14,7 @@ class Scheduler:
             "interval": timedelta(minutes=minutes),
             "function": function,
             "last_run": None,
+            "last_run_at": None,
         })
 
     def daily(self, name, hour, minute, function):
@@ -24,6 +25,7 @@ class Scheduler:
             "minute": minute,
             "function": function,
             "last_run_date": None,
+            "last_run_at": None,
         })
 
     def remove_jobs_by_prefix(self, prefix):
@@ -46,6 +48,7 @@ class Scheduler:
         self.log.info(f"Running scheduled job: {job['name']}")
         try:
             job["function"]()
+            job["last_run_at"] = datetime.now()
             self.log.info(f"Finished scheduled job: {job['name']}")
         except Exception as e:
             self.log.exception(f"Scheduled job failed: {job['name']} - {e}")
