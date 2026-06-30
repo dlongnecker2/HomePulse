@@ -47,8 +47,10 @@ class RouterRebooter:
         if recovery.get("recovery_control_mode"):
             return recovery["recovery_control_mode"]
         device_type = recovery.get("recovery_device_type") or recovery.get("method", "dry_run")
+        if device_type == "home_assistant":
+            return "home_assistant"
         if device_type in ("tapo_p125m_matter", "matter", "matter_bridge"):
-            return "matter_bridge"
+            return "home_assistant"
         if device_type in ("kasa_tapo", "kasa_legacy"):
             return "kasa_legacy"
         if device_type == "cloud":

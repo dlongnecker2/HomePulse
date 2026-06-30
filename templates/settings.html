@@ -5,7 +5,7 @@
   <div class="panel-heading">
     <div>
       <h2>Settings</h2>
-      <p>Configure scheduled speed tests. Router reboot safety remains limited to the maintenance window.</p>
+      <p>Configure the production recovery controller.</p>
     </div>
   </div>
 
@@ -16,80 +16,52 @@
     <div class="settings-message error">{{ error }}</div>
   {% endif %}
 
+  {% set entity_id = router_reboot.get("recovery_entity_id", router_reboot.get("matter_entity_id", "")) %}
+  {% set method = router_reboot.get("recovery_device_type", router_reboot.get("method", "home_assistant")) %}
+  {% set notifications = email.get("notifications", {}) %}
+
   <form method="post" action="{{ url_for('settings') }}" class="settings-form">
-    <section class="settings-section">
-      <h3>Speed Test Schedule</h3>
-      <p class="settings-help">Current schedule: <strong>{{ schedule_label }}</strong></p>
-
-      <label class="option-row">
-        <input type="radio" name="speedtest_schedule_mode" value="disabled" {% if schedule_mode == "disabled" %}checked{% endif %}>
-        <span>Disabled</span>
-      </label>
-      <label class="option-row">
-        <input type="radio" name="speedtest_schedule_mode" value="every_30_minutes" {% if schedule_mode == "every_30_minutes" %}checked{% endif %}>
-        <span>Every 30 minutes</span>
-      </label>
-      <label class="option-row">
-        <input type="radio" name="speedtest_schedule_mode" value="every_1_hour" {% if schedule_mode == "every_1_hour" %}checked{% endif %}>
-        <span>Every 1 hour</span>
-      </label>
-      <label class="option-row">
-        <input type="radio" name="speedtest_schedule_mode" value="every_3_hours" {% if schedule_mode == "every_3_hours" %}checked{% endif %}>
-        <span>Every 3 hours</span>
-      </label>
-      <label class="option-row">
-        <input type="radio" name="speedtest_schedule_mode" value="every_6_hours" {% if schedule_mode == "every_6_hours" %}checked{% endif %}>
-        <span>Every 6 hours</span>
-      </label>
-      <label class="option-row">
-        <input type="radio" name="speedtest_schedule_mode" value="custom" {% if schedule_mode == "custom" %}checked{% endif %}>
-        <span>Custom scheduled times</span>
-      </label>
-
-      <label class="field-label" for="custom-speedtest-times">Custom times</label>
-      <textarea id="custom-speedtest-times" name="custom_speedtest_times" rows="5" placeholder="04:00&#10;10:00&#10;16:00&#10;22:00">{{ speedtest_times | join("\n") }}</textarea>
-      <p class="settings-help">Use HH:MM times, one per line or comma-separated.</p>
-    </section>
-
     <section class="settings-section safety-summary">
-      <h3>Reboot Safety</h3>
-      <p>Speed tests may run anytime. Automatic router reboot is only allowed during the configured maintenance window.</p>
-      {% set device_type = router_reboot.get("recovery_device_type", router_reboot.get("method", "dry_run")) %}
-      {% set control_mode = router_reboot.get("recovery_control_mode", "") %}
-      {% set reboot_method = "tapo_p125m_matter" if control_mode in ("matter_bridge", "matter") or device_type == "tapo_p125m_matter" else "advanced" if device_type not in ("dry_run", "tapo_p125m_matter") else "dry_run" %}
-      <label class="field-label" for="recovery-device-type">Reboot Method</label>
+      <h3>Recovery</h3>
+
+      <label class="field-label" for="recovery-device-type">Recovery Method</label>
       <select id="recovery-device-type" name="recovery_device_type">
-        <option value="dry_run" {% if reboot_method == "dry_run" %}selected{% endif %}>Dry Run</option>
-        <option value="tapo_p125m_matter" {% if reboot_method == "tapo_p125m_matter" %}selected{% endif %}>Matter Bridge (Home Assistant)</option>
-        <option value="future_adapter" {% if reboot_method == "advanced" %}selected{% endif %}>Advanced (future use only)</option>
+        <option value="home_assistant" {% if method in ("home_assistant", "tapo_p125m_matter", "matter", "matter_bridge") %}selected{% endif %}>Home Assistant</option>
+        <option value="dry_run" {% if method == "dry_run" %}selected{% endif %}>Dry Run</option>
       </select>
-      <p class="settings-help">Dry Run remains the safe default. Real router reboot is still disabled until explicitly approved later.</p>
 
       <label class="field-label" for="home-assistant-url">Home Assistant URL</label>
-      <input id="home-assistant-url" name="home_assistant_url" type="text" value="{{ router_reboot.get("home_assistant_url", "") }}" placeholder="http://homeassistant.local:8123">
+      <input id="home-assistant-url" name="home_assistant_url" type="text" value="{{ router_reboot.get("home_assistant_url", "") }}" placeholder="http://192.168.0.92:8123">
 
-      <label class="field-label" for="home-assistant-token">Home Assistant token</label>
+      <label class="field-label" for="home-assistant-token">Access Token</label>
       <input id="home-assistant-token" name="home_assistant_token" type="password" value="" placeholder="Leave blank to keep existing token">
 
-      <label class="field-label" for="matter-entity-id">Matter switch entity ID</label>
-      <input id="matter-entity-id" name="matter_entity_id" type="text" value="{{ router_reboot.get("matter_entity_id", "") }}" placeholder="switch.router_plug">
+      <label class="field-label" for="recovery-entity-id">Recovery Entity ID</label>
+      <input id="recovery-entity-id" name="recovery_entity_id" type="text" value="{{ entity_id }}" placeholder="switch.office_router_plug">
 
-      <div id="tapo-settings" class="method-settings">
-        <div class="discovery-toolbar">
-          <button type="button" id="discover-tapo-devices">🔍 Discover Tapo Devices</button>
-          <span id="tapo-discovery-status" class="settings-help"></span>
-        </div>
-        <div id="tapo-discovery-results" class="discovery-results" hidden></div>
+      <div class="diagnostics-actions inline-diagnostics">
+        {{ render_test_button("Test Connection", url_for("test_home_assistant")) }}
+        <label class="option-row power-cycle-confirm">
+          <input type="checkbox" id="confirm-home-assistant-power-cycle">
+          <span>I confirm this will power cycle the configured recovery entity.</span>
+        </label>
+        <button type="button" class="diagnostic-test-button" data-endpoint="{{ url_for("test_home_assistant_power_cycle") }}" data-requires-power-confirm="home-assistant">Test Power Cycle</button>
+      </div>
 
-        <label class="field-label" for="recovery-device-ip">Device IP</label>
-        <input id="recovery-device-ip" name="recovery_device_ip" type="text" value="{{ router_reboot.get("recovery_device_ip", "") }}" placeholder="192.168.1.50">
+      <div class="diagnostics-results-panel" id="diagnostics-results">
+        <div><span>Last Test</span><strong id="diagnostics-last-test">{{ diagnostic_result.test_name if diagnostic_result else "None" }}</strong></div>
+        <div><span>Connection</span><strong id="connection-state">{{ "Connected" if diagnostic_result and diagnostic_result.status == "PASS" else "Not Connected" }}</strong></div>
+        <div><span>Status</span><strong id="diagnostics-status" class="{{ diagnostic_result.status|lower if diagnostic_result else "" }}">{{ diagnostic_result.status if diagnostic_result else "--" }}</strong></div>
+        <div><span>Timestamp</span><strong id="diagnostics-timestamp">{{ diagnostic_result.timestamp if diagnostic_result else "--" }}</strong></div>
+        <div><span>Message</span><strong id="diagnostics-message">{{ diagnostic_result.message if diagnostic_result else "No diagnostics have been run yet." }}</strong></div>
+      </div>
 
-        <label class="field-label" for="kasa-username">TP-Link email</label>
-        <input id="kasa-username" name="kasa_username" type="text" value="{{ router_reboot.get("kasa_username", "") }}">
+      <details id="advanced-reboot-settings" class="advanced-settings">
+        <summary>Advanced / Legacy</summary>
+        <p class="settings-help">Legacy python-kasa settings are preserved here but are no longer used by the production recovery path.</p>
 
-        <label class="field-label" for="kasa-password">TP-Link password</label>
-        <input id="kasa-password" name="kasa_password" type="password" value="" placeholder="Leave blank to keep existing password">
-        <p class="settings-help">Saved passwords are never displayed. The password changes only when a new value is entered.</p>
+        <input type="hidden" name="recovery_control_mode" value="">
+        <input type="hidden" name="matter_entity_id" value="{{ entity_id }}">
 
         <label class="field-label" for="recovery-power-off-seconds">Power off seconds</label>
         <input id="recovery-power-off-seconds" name="recovery_power_off_seconds" type="number" min="1" max="300" value="{{ router_reboot.get("recovery_power_off_seconds", 10) }}">
@@ -97,45 +69,17 @@
         <label class="field-label" for="recovery-wait-after-power-on-seconds">Power on wait seconds</label>
         <input id="recovery-wait-after-power-on-seconds" name="recovery_wait_after_power_on_seconds" type="number" min="10" max="1200" value="{{ router_reboot.get("recovery_wait_after_power_on_seconds", 180) }}">
 
-        <div class="diagnostics-actions inline-diagnostics">
-          {{ render_test_button("Test Connection", url_for("test_tapo")) }}
-          <label class="option-row power-cycle-confirm">
-            <input type="checkbox" id="confirm-inline-tapo-power-cycle">
-            <span>I confirm this is a lamp or safe test load.</span>
-          </label>
-          <button type="button" class="diagnostic-test-button" data-endpoint="{{ url_for("test_tapo_power_cycle") }}" data-requires-power-confirm="inline">Test Power Cycle (Lamp only)</button>
-        </div>
-      </div>
+        <label class="field-label" for="recovery-device-ip">Legacy device IP</label>
+        <input id="recovery-device-ip" name="recovery_device_ip" type="text" value="{{ router_reboot.get("recovery_device_ip", "") }}">
 
-      <details id="advanced-reboot-settings" class="advanced-settings">
-        <summary>Advanced (Future)</summary>
-        <p class="settings-help">These fields are preserved for future adapters and hidden from the default workflow.</p>
+        <label class="field-label" for="recovery-device-name">Legacy device name</label>
+        <input id="recovery-device-name" name="recovery_device_name" type="text" value="{{ router_reboot.get("recovery_device_name", "") }}">
 
-        <label class="field-label" for="recovery-control-mode">Recovery control mode</label>
-        <select id="recovery-control-mode" name="recovery_control_mode">
-          <option value="dry_run" {% if router_reboot.get("recovery_control_mode", "dry_run") == "dry_run" %}selected{% endif %}>dry_run</option>
-          <option value="matter_bridge" {% if router_reboot.get("recovery_control_mode") in ("matter", "matter_bridge") %}selected{% endif %}>matter_bridge</option>
-          <option value="cloud" {% if router_reboot.get("recovery_control_mode") == "cloud" %}selected{% endif %}>cloud</option>
-          <option value="kasa_legacy" {% if router_reboot.get("recovery_control_mode") == "kasa_legacy" %}selected{% endif %}>kasa_legacy (deprecated for P125M)</option>
-        </select>
+        <label class="field-label" for="kasa-username">python-kasa username</label>
+        <input id="kasa-username" name="kasa_username" type="text" value="{{ router_reboot.get("kasa_username", "") }}">
 
-        <label class="field-label" for="recovery-device-name">Recovery device name</label>
-        <input id="recovery-device-name" name="recovery_device_name" type="text" value="{{ router_reboot.get("recovery_device_name", "") }}" placeholder="Tapo P125M Router Plug">
-
-        <label class="field-label" for="router-http-url">HTTP/HTTPS reboot URL</label>
-        <input id="router-http-url" name="router_http_url" type="text" value="{{ router_reboot.get("http_url", "") }}" placeholder="https://router.local/reboot">
-
-        <label class="field-label" for="router-ssh-host">SSH host</label>
-        <input id="router-ssh-host" name="router_ssh_host" type="text" value="{{ router_reboot.get("ssh_host", "") }}" placeholder="192.168.1.1">
-
-        <label class="field-label" for="router-ssh-user">SSH user</label>
-        <input id="router-ssh-user" name="router_ssh_user" type="text" value="{{ router_reboot.get("ssh_user", "") }}" placeholder="admin">
-
-        <label class="field-label" for="router-ssh-command">SSH command</label>
-        <input id="router-ssh-command" name="router_ssh_command" type="text" value="{{ router_reboot.get("ssh_command", "reboot") }}">
-
-        <label class="field-label" for="smart-plug-url">Generic smart plug control URL</label>
-        <input id="smart-plug-url" name="smart_plug_url" type="text" value="{{ router_reboot.get("smart_plug_url", "") }}" placeholder="http://plug.local/api/power-cycle">
+        <label class="field-label" for="kasa-password">python-kasa password</label>
+        <input id="kasa-password" name="kasa_password" type="password" value="" placeholder="Leave blank to keep existing password">
 
         <label class="field-label" for="kasa-device-type">python-kasa device type</label>
         <input id="kasa-device-type" name="kasa_device_type" type="text" value="{{ router_reboot.get("kasa_device_type", "smart") }}">
@@ -151,72 +95,81 @@
 
         <label class="field-label" for="kasa-credentials-hash">python-kasa credentials hash</label>
         <input id="kasa-credentials-hash" name="kasa_credentials_hash" type="text" value="{{ router_reboot.get("kasa_credentials_hash", "") }}">
+
+        <input id="router-http-url" name="router_http_url" type="hidden" value="{{ router_reboot.get("http_url", "") }}">
+        <input id="router-ssh-host" name="router_ssh_host" type="hidden" value="{{ router_reboot.get("ssh_host", "") }}">
+        <input id="router-ssh-user" name="router_ssh_user" type="hidden" value="{{ router_reboot.get("ssh_user", "") }}">
+        <input id="router-ssh-command" name="router_ssh_command" type="hidden" value="{{ router_reboot.get("ssh_command", "reboot") }}">
+        <input id="smart-plug-url" name="smart_plug_url" type="hidden" value="{{ router_reboot.get("smart_plug_url", "") }}">
       </details>
     </section>
 
     <section class="settings-section">
       <h3>Email Notifications</h3>
+
       <label class="option-row">
-        <input type="checkbox" name="email_enabled" {% if email.get("enabled") %}checked{% endif %}>
-        <span>Send reboot email notifications</span>
+        <input type="checkbox" name="email_notifications_enabled" {% if email.get("email_notifications_enabled", email.get("enabled", false)) %}checked{% endif %}>
+        <span>Email notifications enabled</span>
       </label>
 
-      <label class="field-label" for="smtp-host">SMTP host</label>
-      <input id="smtp-host" name="smtp_host" type="text" value="{{ email.get("smtp_host", "") }}">
+      <label class="field-label" for="smtp-server">SMTP Server</label>
+      <input id="smtp-server" name="smtp_server" type="text" value="{{ email.get("smtp_server", email.get("smtp_host", "")) }}" placeholder="smtp.example.com">
 
-      <label class="field-label" for="smtp-port">SMTP port</label>
+      <label class="field-label" for="smtp-port">SMTP Port</label>
       <input id="smtp-port" name="smtp_port" type="number" min="1" max="65535" value="{{ email.get("smtp_port", 587) }}">
 
-      <label class="option-row">
-        <input type="checkbox" name="smtp_use_tls" {% if email.get("use_tls", true) %}checked{% endif %}>
-        <span>Use TLS</span>
-      </label>
+      <label class="field-label" for="smtp-username">SMTP Username</label>
+      <input id="smtp-username" name="smtp_username" type="text" value="{{ email.get("smtp_username", email.get("username", "")) }}">
 
-      <label class="field-label" for="smtp-username">SMTP username</label>
-      <input id="smtp-username" name="smtp_username" type="text" value="{{ email.get("username", "") }}">
-
-      <label class="field-label" for="smtp-password">SMTP password</label>
+      <label class="field-label" for="smtp-password">SMTP Password</label>
       <input id="smtp-password" name="smtp_password" type="password" value="" placeholder="Leave blank to keep existing password">
       <p class="settings-help">Saved passwords are never displayed. The password changes only when a new value is entered.</p>
 
-      <label class="field-label" for="email-from-address">From address</label>
-      <input id="email-from-address" name="email_from_address" type="email" value="{{ email.get("from_address", "") }}">
+      <label class="option-row">
+        <input type="checkbox" name="smtp_use_tls" {% if email.get("smtp_use_tls", email.get("use_tls", false)) %}checked{% endif %}>
+        <span>Use TLS</span>
+      </label>
 
-      <label class="field-label" for="email-to-address">To address</label>
-      <input id="email-to-address" name="email_to_address" type="email" value="{{ email.get("to_address", "") }}">
+      <label class="option-row">
+        <input type="checkbox" name="smtp_use_ssl" {% if email.get("smtp_use_ssl", false) %}checked{% endif %}>
+        <span>Use SSL</span>
+      </label>
+
+      <label class="field-label" for="smtp-from-email">From Email</label>
+      <input id="smtp-from-email" name="smtp_from_email" type="email" value="{{ email.get("smtp_from_email", email.get("from_address", "")) }}">
+
+      <label class="field-label" for="smtp-to-email">Notification Recipients</label>
+      <textarea id="smtp-to-email" name="smtp_to_email" rows="3" placeholder="address1@example.com&#10;address2@example.com">{{ email.get("smtp_to_email", email.get("to_address", "")) }}</textarea>
+
+      <h3>Notification Types</h3>
+      <label class="option-row">
+        <input type="checkbox" name="notify_recovery_started" {% if notifications.get("recovery_started", true) %}checked{% endif %}>
+        <span>Recovery started</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="notify_recovery_success" {% if notifications.get("recovery_success", true) %}checked{% endif %}>
+        <span>Recovery success</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="notify_recovery_failed" {% if notifications.get("recovery_failed", true) %}checked{% endif %}>
+        <span>Recovery failed</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="notify_diagnostics_failed" {% if notifications.get("diagnostics_failed", true) %}checked{% endif %}>
+        <span>Diagnostics failed</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="notify_daily_summary" {% if notifications.get("daily_summary", false) %}checked{% endif %}>
+        <span>Daily summary</span>
+      </label>
+
+      <div class="diagnostics-actions inline-diagnostics">
+        {{ render_test_button("Send Test Email", url_for("test_smtp")) }}
+      </div>
     </section>
 
     <button type="submit">Save Settings</button>
   </form>
-</section>
-
-<section class="dashboard-panel settings-panel diagnostics-panel">
-  <div class="panel-heading">
-    <div>
-      <h2>Diagnostics</h2>
-      <p>Run safe system tests using the unified HomePulse diagnostics framework.</p>
-    </div>
-  </div>
-
-  <div class="diagnostics-results-panel" id="diagnostics-results">
-    <div><span>Last Test</span><strong id="diagnostics-last-test">{{ diagnostic_result.test_name if diagnostic_result else "None" }}</strong></div>
-    <div><span>Status</span><strong id="diagnostics-status" class="{{ diagnostic_result.status|lower if diagnostic_result else "" }}">{{ diagnostic_result.status if diagnostic_result else "--" }}</strong></div>
-    <div><span>Timestamp</span><strong id="diagnostics-timestamp">{{ diagnostic_result.timestamp if diagnostic_result else "--" }}</strong></div>
-    <div><span>Message</span><strong id="diagnostics-message">{{ diagnostic_result.message if diagnostic_result else "No diagnostics have been run yet." }}</strong></div>
-  </div>
-
-  <div class="diagnostics-actions">
-    {{ render_test_button("Test SMTP Connection", url_for("test_smtp")) }}
-    {{ render_test_button("Test Internet Ping", url_for("test_ping")) }}
-    {{ render_test_button("Run Speed Test", url_for("test_speed")) }}
-    {{ render_test_button("Test Tapo Plug Connection", url_for("test_tapo")) }}
-    <label class="option-row power-cycle-confirm">
-      <input type="checkbox" id="confirm-panel-tapo-power-cycle">
-      <span>I confirm the plug is connected to a lamp or safe test load.</span>
-    </label>
-    <button type="button" class="diagnostic-test-button" data-endpoint="{{ url_for("test_tapo_power_cycle") }}" data-requires-power-confirm="panel">Test Lamp Power Cycle</button>
-    {{ render_test_button("Run Full Diagnostics", url_for("test_full_diagnostics")) }}
-  </div>
 </section>
 
 <script>
@@ -228,13 +181,15 @@
     return {
       router_reboot: {
         recovery_device_type: fieldValue("recovery-device-type"),
-        recovery_device_ip: fieldValue("recovery-device-ip"),
-        recovery_device_name: fieldValue("recovery-device-name"),
+        recovery_control_mode: "home_assistant",
         home_assistant_url: fieldValue("home-assistant-url"),
         home_assistant_token: fieldValue("home-assistant-token"),
-        matter_entity_id: fieldValue("matter-entity-id"),
+        recovery_entity_id: fieldValue("recovery-entity-id"),
+        matter_entity_id: fieldValue("recovery-entity-id"),
         recovery_power_off_seconds: Number(fieldValue("recovery-power-off-seconds") || 10),
         recovery_wait_after_power_on_seconds: Number(fieldValue("recovery-wait-after-power-on-seconds") || 180),
+        recovery_device_ip: fieldValue("recovery-device-ip"),
+        recovery_device_name: fieldValue("recovery-device-name"),
         kasa_username: fieldValue("kasa-username"),
         kasa_password: fieldValue("kasa-password"),
         kasa_device_type: fieldValue("kasa-device-type") || "smart",
@@ -244,14 +199,22 @@
         kasa_credentials_hash: fieldValue("kasa-credentials-hash")
       },
       email: {
-        enabled: document.querySelector("input[name='email_enabled']")?.checked || false,
-        smtp_host: fieldValue("smtp-host"),
+        email_notifications_enabled: document.querySelector("input[name='email_notifications_enabled']")?.checked || false,
+        smtp_server: fieldValue("smtp-server"),
         smtp_port: Number(fieldValue("smtp-port") || 587),
-        use_tls: document.querySelector("input[name='smtp_use_tls']")?.checked || false,
-        username: fieldValue("smtp-username"),
-        password: fieldValue("smtp-password"),
-        from_address: fieldValue("email-from-address"),
-        to_address: fieldValue("email-to-address")
+        smtp_username: fieldValue("smtp-username"),
+        smtp_password: fieldValue("smtp-password"),
+        smtp_use_tls: document.querySelector("input[name='smtp_use_tls']")?.checked || false,
+        smtp_use_ssl: document.querySelector("input[name='smtp_use_ssl']")?.checked || false,
+        smtp_from_email: fieldValue("smtp-from-email"),
+        smtp_to_email: fieldValue("smtp-to-email"),
+        notifications: {
+          recovery_started: document.querySelector("input[name='notify_recovery_started']")?.checked || false,
+          recovery_success: document.querySelector("input[name='notify_recovery_success']")?.checked || false,
+          recovery_failed: document.querySelector("input[name='notify_recovery_failed']")?.checked || false,
+          diagnostics_failed: document.querySelector("input[name='notify_diagnostics_failed']")?.checked || false,
+          daily_summary: document.querySelector("input[name='notify_daily_summary']")?.checked || false
+        }
       }
     };
   }
@@ -259,80 +222,28 @@
   document.querySelectorAll(".diagnostic-test-button").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.preventDefault();
-      const confirmSource = button.dataset.requiresPowerConfirm;
-      const confirmed = confirmSource === "inline"
-        ? document.getElementById("confirm-inline-tapo-power-cycle")?.checked
-        : confirmSource === "panel"
-          ? document.getElementById("confirm-panel-tapo-power-cycle")?.checked
-          : false;
+      const confirmed = button.dataset.requiresPowerConfirm === "home-assistant"
+        ? document.getElementById("confirm-home-assistant-power-cycle")?.checked
+        : false;
       const response = await fetch(button.dataset.endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           overrides: collectDiagnosticOverrides(),
-          confirm_tapo_power_cycle: confirmed === true
+          confirm_home_assistant_power_cycle: confirmed === true
         }),
         cache: "no-store",
       });
       const result = await response.json();
       document.getElementById("diagnostics-last-test").textContent = result.test_name || "diagnostic";
+      if (String(result.test_name || "").startsWith("home_assistant")) {
+        document.getElementById("connection-state").textContent = result.status === "PASS" ? "Connected" : "Not Connected";
+      }
       document.getElementById("diagnostics-status").textContent = result.status || "--";
       document.getElementById("diagnostics-status").className = String(result.status || "").toLowerCase();
       document.getElementById("diagnostics-timestamp").textContent = result.timestamp || "--";
       document.getElementById("diagnostics-message").textContent = result.message || "No message returned.";
     });
-  });
-
-  const methodSelector = document.getElementById("recovery-device-type");
-  const tapoSettings = document.getElementById("tapo-settings");
-  const advancedSettings = document.getElementById("advanced-reboot-settings");
-  function updateRebootMethodVisibility() {
-    const method = methodSelector?.value || "dry_run";
-    if (tapoSettings) tapoSettings.hidden = method !== "tapo_p125m_matter";
-    if (advancedSettings) advancedSettings.open = method === "future_adapter";
-  }
-  methodSelector?.addEventListener("change", updateRebootMethodVisibility);
-  updateRebootMethodVisibility();
-
-  const discoverButton = document.getElementById("discover-tapo-devices");
-  const discoveryStatus = document.getElementById("tapo-discovery-status");
-  const discoveryResults = document.getElementById("tapo-discovery-results");
-  const deviceIp = document.getElementById("recovery-device-ip");
-  const deviceName = document.getElementById("recovery-device-name");
-  discoverButton?.addEventListener("click", async () => {
-    discoveryStatus.textContent = "Scanning local network...";
-    discoveryResults.hidden = true;
-    discoveryResults.innerHTML = "";
-    try {
-      const response = await fetch("{{ url_for("discover_tapo") }}", { cache: "no-store" });
-      const devices = await response.json();
-      if (!devices.length) {
-        discoveryStatus.textContent = "No Tapo plugs found.";
-        return;
-      }
-      discoveryStatus.textContent = `${devices.length} device${devices.length === 1 ? "" : "s"} found.`;
-      discoveryResults.hidden = false;
-      devices.forEach((device) => {
-        const item = document.createElement("div");
-        item.className = "discovery-result";
-        const summary = document.createElement("div");
-        summary.innerHTML = `<strong>${device.name || "Unnamed plug"}</strong><span>${device.ip || "--"} · ${device.model || "Unknown model"} · ${device.type || "plug"}</span>`;
-        const useButton = document.createElement("button");
-        useButton.type = "button";
-        useButton.textContent = "Use This Device";
-        useButton.addEventListener("click", () => {
-          methodSelector.value = "tapo_p125m_matter";
-          updateRebootMethodVisibility();
-          if (deviceIp) deviceIp.value = device.ip || "";
-          if (deviceName) deviceName.value = device.name || device.model || "";
-          discoveryStatus.textContent = `Selected ${device.name || device.ip || "Tapo device"}.`;
-        });
-        item.append(summary, useButton);
-        discoveryResults.appendChild(item);
-      });
-    } catch (error) {
-      discoveryStatus.textContent = "Discovery failed. Check logs for details.";
-    }
   });
 </script>
 {% endblock %}

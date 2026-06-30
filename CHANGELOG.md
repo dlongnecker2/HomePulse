@@ -2,6 +2,7 @@
 
 ## v2.9.0
 
+- Added multi-recipient email notification support with comma, semicolon, and newline-separated recipient parsing.
 - Added the HomePulse Lab diagnostics page for developer-only runtime visibility.
 - Added Lab navigation alongside the existing Dashboard, Internet, History, Reports, Settings, Developer Console, and Logs pages.
 - Added read-only runtime overview details including version, start time, uptime, Python version, SQLite status, database size, memory usage, scheduler status, thread count, and configuration load state.

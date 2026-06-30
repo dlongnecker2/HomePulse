@@ -228,13 +228,23 @@ class Dashboard:
 
         @self.app.route("/test/tapo", methods=["POST"])
         def test_tapo():
-            return self._diagnostic_response("tapo_connection_test")
+            return self._diagnostic_response("home_assistant_connection_test")
 
         @self.app.route("/test/tapo_power_cycle", methods=["POST"])
         def test_tapo_power_cycle():
             payload = request.get_json(silent=True) or {}
             confirmed = payload.get("confirm_tapo_power_cycle") is True
-            return self._diagnostic_response("tapo_power_cycle_test", confirmed=confirmed)
+            return self._diagnostic_response("home_assistant_power_cycle_test", confirmed=confirmed)
+
+        @self.app.route("/test/home_assistant", methods=["POST"])
+        def test_home_assistant():
+            return self._diagnostic_response("home_assistant_connection_test")
+
+        @self.app.route("/test/home_assistant_power_cycle", methods=["POST"])
+        def test_home_assistant_power_cycle():
+            payload = request.get_json(silent=True) or {}
+            confirmed = payload.get("confirm_home_assistant_power_cycle") is True
+            return self._diagnostic_response("home_assistant_power_cycle_test", confirmed=confirmed)
 
         @self.app.route("/test/full_diagnostics", methods=["POST"])
         def test_full_diagnostics():
@@ -311,10 +321,11 @@ class Dashboard:
             ("Dry-run Active", "Yes" if status["dry_run_active"] else "No"),
             ("Device Name", router_reboot.get("recovery_device_name") or "Not configured"),
             ("Device IP", router_reboot.get("recovery_device_ip") or "Not configured"),
+            ("Home Assistant Entity", router_reboot.get("recovery_entity_id") or "Not configured"),
             ("Power Off Seconds", router_reboot.get("recovery_power_off_seconds", 10)),
             ("Wait After Power On", router_reboot.get("recovery_wait_after_power_on_seconds", 180)),
             ("Dry Run Mode", self.application.config.get("dry_run", default=True)),
-            ("Email Enabled", email.get("enabled", False)),
+            ("Email Enabled", email.get("email_notifications_enabled", email.get("enabled", False))),
             ("Last Reboot Event", latest["timestamp"] if latest else "None recorded"),
         ]
 

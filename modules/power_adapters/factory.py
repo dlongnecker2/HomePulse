@@ -1,18 +1,19 @@
 from modules.power_adapters.cloud import CloudAdapter
 from modules.power_adapters.dry_run import DryRunAdapter
+from modules.power_adapters.home_assistant import HomeAssistantAdapter
 from modules.power_adapters.kasa import KasaAdapter
-from modules.power_adapters.matter_adapter import MatterAdapter
 
 
 class PowerAdapterFactory:
     adapters = {
         "dry_run": DryRunAdapter,
-        "matter": MatterAdapter,
-        "matter_bridge": MatterAdapter,
+        "home_assistant": HomeAssistantAdapter,
+        "matter": HomeAssistantAdapter,
+        "matter_bridge": HomeAssistantAdapter,
         "cloud": CloudAdapter,
         "kasa_legacy": KasaAdapter,
         "kasa_tapo": KasaAdapter,
-        "tapo_p125m_matter": MatterAdapter,
+        "tapo_p125m_matter": HomeAssistantAdapter,
     }
 
     @classmethod

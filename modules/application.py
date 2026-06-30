@@ -26,7 +26,7 @@ class Application:
         self.network = NetworkMonitor(self.config, self.log)
         self.speedtest = SpeedTestEngine(self.log)
         self.router_rebooter = RouterRebooter(self.config, self.log)
-        self.email_notifier = EmailNotifier(self.config, self.log)
+        self.email_notifier = EmailNotifier(self.config, self.log, self.db)
         self.status = StatusManager()
         self.diagnostics = Diagnostics(self)
         self.tapo_discovery = TapoDiscovery(self.log)
@@ -205,6 +205,7 @@ class Application:
         self.network.config = self.config
         self.router_rebooter.config = self.config
         self.email_notifier.config = self.config
+        self.email_notifier.db = self.db
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.scheduler.remove_jobs_by_prefix("Maintenance Check")
         self.register_speedtest_jobs()
@@ -212,17 +213,21 @@ class Application:
         self.log.info("Configuration reloaded from config.json")
 
     def update_settings(self, form):
-        self.update_speedtest_schedule(
-            form.get("speedtest_schedule_mode", "every_30_minutes"),
-            form.get("custom_speedtest_times", ""),
-        )
+        if "speedtest_schedule_mode" in form:
+            self.update_speedtest_schedule(
+                form.get("speedtest_schedule_mode", "every_30_minutes"),
+                form.get("custom_speedtest_times", ""),
+            )
 
         router_reboot = self.config.data.setdefault("router_reboot", {})
-        device_type = form.get("recovery_device_type", form.get("router_reboot_method", "dry_run"))
+        device_type = form.get(
+            "recovery_device_type",
+            form.get("router_reboot_method", router_reboot.get("recovery_device_type", "home_assistant")),
+        )
         control_mode = form.get("recovery_control_mode")
         if not control_mode:
-            if device_type == "tapo_p125m_matter":
-                control_mode = "matter_bridge"
+            if device_type in ("home_assistant", "tapo_p125m_matter", "matter", "matter_bridge"):
+                control_mode = "home_assistant"
             elif device_type in ("kasa_tapo", "kasa_legacy"):
                 control_mode = "kasa_legacy"
             else:
@@ -243,7 +248,9 @@ class Application:
         router_reboot["ssh_command"] = form.get("router_ssh_command", "reboot").strip() or "reboot"
         router_reboot["smart_plug_url"] = form.get("smart_plug_url", "").strip()
         router_reboot["home_assistant_url"] = form.get("home_assistant_url", "").strip()
-        router_reboot["matter_entity_id"] = form.get("matter_entity_id", "").strip()
+        entity_id = form.get("recovery_entity_id", form.get("matter_entity_id", "")).strip()
+        router_reboot["recovery_entity_id"] = entity_id
+        router_reboot["matter_entity_id"] = entity_id
         new_ha_token = form.get("home_assistant_token", "")
         if new_ha_token:
             router_reboot["home_assistant_token"] = new_ha_token
@@ -257,17 +264,43 @@ class Application:
             router_reboot["kasa_password"] = new_kasa_password
         router_reboot["kasa_credentials_hash"] = form.get("kasa_credentials_hash", "").strip()
 
-        email = self.config.data.setdefault("email", {})
-        email["enabled"] = form.get("email_enabled") == "on"
-        email["smtp_host"] = form.get("smtp_host", "").strip()
-        email["smtp_port"] = int(form.get("smtp_port", "587") or 587)
-        email["use_tls"] = form.get("smtp_use_tls") == "on"
-        email["username"] = form.get("smtp_username", "").strip()
-        new_password = form.get("smtp_password", "")
-        if new_password:
-            email["password"] = new_password
-        email["from_address"] = form.get("email_from_address", "").strip()
-        email["to_address"] = form.get("email_to_address", "").strip()
+        email_form_keys = (
+            "email_notifications_enabled",
+            "smtp_server",
+            "smtp_port",
+            "smtp_username",
+            "smtp_password",
+            "smtp_use_tls",
+            "smtp_use_ssl",
+            "smtp_from_email",
+            "smtp_to_email",
+            "email_enabled",
+            "smtp_host",
+        )
+        if any(key in form for key in email_form_keys):
+            email = self.config.data.setdefault("email", {})
+            enabled = form.get("email_notifications_enabled") == "on" or form.get("email_enabled") == "on"
+            email["email_notifications_enabled"] = enabled
+            email["enabled"] = enabled
+            email["smtp_server"] = form.get("smtp_server", form.get("smtp_host", "")).strip()
+            email["smtp_host"] = email["smtp_server"]
+            email["smtp_port"] = int(form.get("smtp_port", "587") or 587)
+            email["smtp_username"] = form.get("smtp_username", "").strip()
+            email["username"] = email["smtp_username"]
+            email["smtp_use_tls"] = form.get("smtp_use_tls") == "on"
+            email["use_tls"] = email["smtp_use_tls"]
+            email["smtp_use_ssl"] = form.get("smtp_use_ssl") == "on"
+            new_password = form.get("smtp_password", "")
+            if new_password:
+                email["smtp_password"] = new_password
+                email["password"] = new_password
+            email["smtp_from_email"] = form.get("smtp_from_email", form.get("email_from_address", "")).strip()
+            email["from_address"] = email["smtp_from_email"]
+            email["smtp_to_email"] = form.get("smtp_to_email", form.get("email_to_address", "")).strip()
+            email["to_address"] = email["smtp_to_email"]
+            notifications = email.setdefault("notifications", {})
+            for key in self.email_notifier.NOTIFICATION_DEFAULTS:
+                notifications[key] = form.get(f"notify_{key}") == "on"
         self.config.save()
 
     def normalize_custom_speedtest_times(self, raw_times):
@@ -485,7 +518,10 @@ class Application:
 
     def execute_router_reboot(self, now, reasons):
         context = self.reboot_context(now, reasons)
+        context["start_time"] = str(now)
+        self.email_notifier.send_recovery_started(context)
         result = self.router_rebooter.execute(context["reason"])
+        context["end_time"] = str(datetime.now())
         message = self.reboot_event_message(context, result)
         self.db.add_event(timestamp=str(now), event_type="router_reboot", message=message)
         self.log.warning(message)
