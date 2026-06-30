@@ -19,6 +19,7 @@
   {% set entity_id = router_reboot.get("recovery_entity_id", router_reboot.get("matter_entity_id", "")) %}
   {% set method = router_reboot.get("recovery_device_type", router_reboot.get("method", "home_assistant")) %}
   {% set notifications = email.get("notifications", {}) %}
+  {% set energy_entities = energy.get("home_assistant_entities", {}) %}
 
   <form method="post" action="{{ url_for('settings') }}" class="settings-form">
     <section class="settings-section safety-summary">
@@ -26,9 +27,10 @@
 
       <label class="field-label" for="recovery-device-type">Recovery Method</label>
       <select id="recovery-device-type" name="recovery_device_type">
-        <option value="home_assistant" {% if method in ("home_assistant", "tapo_p125m_matter", "matter", "matter_bridge") %}selected{% endif %}>Home Assistant</option>
+        <option value="home_assistant" {% if method in ("home_assistant", "tapo_p125m_matter", "matter", "matter_bridge") %}selected{% endif %}>Home Assistant (Recommended)</option>
         <option value="dry_run" {% if method == "dry_run" %}selected{% endif %}>Dry Run</option>
       </select>
+      <p class="settings-help">Home Assistant is the recommended recovery controller. Automatic router recovery remains in Dry Run until real reboot is explicitly enabled later.</p>
 
       <label class="field-label" for="home-assistant-url">Home Assistant URL</label>
       <input id="home-assistant-url" name="home_assistant_url" type="text" value="{{ router_reboot.get("home_assistant_url", "") }}" placeholder="http://192.168.0.92:8123">
@@ -39,6 +41,13 @@
       <label class="field-label" for="recovery-entity-id">Recovery Entity ID</label>
       <input id="recovery-entity-id" name="recovery_entity_id" type="text" value="{{ entity_id }}" placeholder="switch.office_router_plug">
 
+      <div class="recovery-device-summary">
+        <div><span>Home Assistant URL</span><strong id="recovery-summary-url">{{ router_reboot.get("home_assistant_url", "Not configured") or "Not configured" }}</strong></div>
+        <div><span>Entity ID</span><strong id="recovery-summary-entity">{{ entity_id or "Not configured" }}</strong></div>
+        <div><span>Current State</span><strong id="recovery-summary-state">Unknown</strong></div>
+        <div><span>Last Test Result</span><strong id="recovery-summary-result">{{ diagnostic_result.status if diagnostic_result else "None" }}</strong></div>
+      </div>
+
       <div class="diagnostics-actions inline-diagnostics">
         <div class="diagnostic-action">
           {{ render_test_button("Test Home Assistant Connection", url_for("test_home_assistant")) }}
@@ -46,10 +55,17 @@
         </div>
         <label class="option-row power-cycle-confirm">
           <input type="checkbox" id="confirm-home-assistant-power-cycle">
-          <span>I confirm this will power cycle the configured recovery entity.</span>
+          <span>I confirm this will power cycle the configured recovery entity. This will turn off the selected Home Assistant switch.</span>
         </label>
         <div class="diagnostic-action">
-          <button type="button" class="diagnostic-test-button" data-endpoint="{{ url_for("test_home_assistant_power_cycle") }}" data-requires-power-confirm="home-assistant">Test Power Cycle</button>
+          <button
+            type="button"
+            class="diagnostic-test-button"
+            data-endpoint="{{ url_for("test_home_assistant_power_cycle") }}"
+            data-requires-power-confirm="home-assistant"
+            data-requires-ha-config="true"
+            data-token-configured="{{ 'true' if router_reboot.get("home_assistant_token") else 'false' }}"
+          >Test Power Cycle</button>
           <div class="inline-test-result" aria-live="polite" hidden></div>
         </div>
       </div>
@@ -178,6 +194,44 @@
     </section>
 
     <section class="settings-section">
+      <h3>Energy Center</h3>
+      <label class="option-row">
+        <input type="checkbox" name="energy_enabled" {% if energy.get("enabled") %}checked{% endif %}>
+        <span>Enable Energy Center</span>
+      </label>
+
+      <label class="field-label" for="energy-vehicle-name">Vehicle Name</label>
+      <input id="energy-vehicle-name" name="energy_vehicle_name" type="text" value="{{ energy.get("vehicle_name", "2025 Chevrolet Equinox EV") }}">
+
+      <label class="field-label" for="energy-charger-name">Charger Name</label>
+      <input id="energy-charger-name" name="energy_charger_name" type="text" value="{{ energy.get("charger_name", "ChargePoint Home Flex") }}">
+
+      <label class="field-label" for="energy-cost-per-kwh">Cost per kWh</label>
+      <input id="energy-cost-per-kwh" name="energy_cost_per_kwh" type="number" min="0" step="0.01" value="{{ energy.get("cost_per_kwh", 0.13) }}">
+
+      <label class="field-label" for="energy-estimated-miles-per-kwh">Estimated miles per kWh</label>
+      <input id="energy-estimated-miles-per-kwh" name="energy_estimated_miles_per_kwh" type="number" min="0" step="0.1" value="{{ energy.get("estimated_miles_per_kwh", 3.5) }}">
+
+      <label class="field-label" for="energy-entity-status">Home Assistant status entity</label>
+      <input id="energy-entity-status" name="energy_entity_status" type="text" value="{{ energy_entities.get("status", "") }}" placeholder="sensor.ev_charging_status">
+
+      <label class="field-label" for="energy-entity-power-kw">Home Assistant power entity</label>
+      <input id="energy-entity-power-kw" name="energy_entity_power_kw" type="text" value="{{ energy_entities.get("power_kw", "") }}" placeholder="sensor.ev_charger_power">
+
+      <label class="field-label" for="energy-entity-voltage">Home Assistant voltage entity</label>
+      <input id="energy-entity-voltage" name="energy_entity_voltage" type="text" value="{{ energy_entities.get("voltage", "") }}" placeholder="sensor.ev_charger_voltage">
+
+      <label class="field-label" for="energy-entity-current">Home Assistant current entity</label>
+      <input id="energy-entity-current" name="energy_entity_current" type="text" value="{{ energy_entities.get("current", "") }}" placeholder="sensor.ev_charger_current">
+
+      <label class="field-label" for="energy-entity-session-energy">Home Assistant session energy entity</label>
+      <input id="energy-entity-session-energy" name="energy_entity_session_energy_kwh" type="text" value="{{ energy_entities.get("session_energy_kwh", "") }}" placeholder="sensor.ev_session_energy">
+
+      <label class="field-label" for="energy-entity-battery-percent">Home Assistant battery percent entity</label>
+      <input id="energy-entity-battery-percent" name="energy_entity_battery_percent" type="text" value="{{ energy_entities.get("battery_percent", "") }}" placeholder="sensor.equinox_ev_battery">
+    </section>
+
+    <section class="settings-section">
       <h3>Diagnostics</h3>
       <div class="diagnostics-actions inline-diagnostics">
         <div class="diagnostic-action">
@@ -251,6 +305,12 @@
       event.preventDefault();
       const inlineResult = button.closest(".diagnostic-action")?.querySelector(".inline-test-result");
       const originalText = button.textContent;
+      const preflight = validateDiagnosticPreflight(button);
+      if (preflight) {
+        updateDiagnosticsPanel(preflight);
+        showInlineResult(inlineResult, preflight);
+        return;
+      }
       showInlineResult(inlineResult, { status: "RUNNING", message: "Running...", timestamp: "" });
       button.disabled = true;
       button.textContent = "Running...";
@@ -295,6 +355,7 @@
     document.getElementById("diagnostics-status").className = String(result.status || "").toLowerCase();
     document.getElementById("diagnostics-timestamp").textContent = result.timestamp || "--";
     document.getElementById("diagnostics-message").textContent = result.message || "No message returned.";
+    updateRecoverySummary(result);
   }
 
   function showInlineResult(element, result) {
@@ -311,6 +372,33 @@
     messageElement.textContent = result.message || "No message returned.";
     timeElement.textContent = timestamp;
     element.append(statusElement, messageElement, timeElement);
+  }
+
+  function validateDiagnosticPreflight(button) {
+    if (button.dataset.requiresHaConfig !== "true") return null;
+    const missing = [];
+    if (!fieldValue("home-assistant-url").trim()) missing.push("Home Assistant URL");
+    const tokenConfigured = button.dataset.tokenConfigured === "true";
+    if (!tokenConfigured && !fieldValue("home-assistant-token").trim()) missing.push("token");
+    if (!fieldValue("recovery-entity-id").trim()) missing.push("entity ID");
+    if (!missing.length) return null;
+    const detail = missing.includes("token")
+      ? "Missing token: enter a Home Assistant long-lived access token."
+      : `Missing Home Assistant configuration: ${missing.join(", ")}.`;
+    return {
+      status: "WARN",
+      message: detail,
+      timestamp: new Date().toLocaleString(),
+      test_name: "home_assistant_power_cycle_test"
+    };
+  }
+
+  function updateRecoverySummary(result) {
+    const state = result.metadata?.state || result.metadata?.confirmed_state?.state;
+    document.getElementById("recovery-summary-url").textContent = fieldValue("home-assistant-url") || "Not configured";
+    document.getElementById("recovery-summary-entity").textContent = fieldValue("recovery-entity-id") || "Not configured";
+    if (state) document.getElementById("recovery-summary-state").textContent = state;
+    document.getElementById("recovery-summary-result").textContent = `${result.status || "--"} - ${result.message || "No message returned."}`;
   }
 </script>
 {% endblock %}

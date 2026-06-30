@@ -150,6 +150,14 @@
     <div id="router-status" class="card-value no-wrap">{{ router.status or "Monitoring" }}</div>
     <div id="last-reboot" class="card-foot">Last reboot: {{ router.last_reboot or "None recorded" }}</div>
   </article>
+
+  <article class="status-card energy-card">
+    <div class="card-title">
+      <div class="card-label">⚡ Energy Center</div>
+    </div>
+    <div id="energy-status" class="card-value no-wrap">Disabled</div>
+    <div id="energy-message" class="card-foot">Energy Center is disabled. Configure it in Settings when ready.</div>
+  </article>
 </section>
 
 <section class="dashboard-main">
@@ -177,6 +185,22 @@
         <tr><td>Server</td><td id="speedtest-server">{{ speedtest.server or "Unavailable" }}</td></tr>
         <tr><td>Next Scheduled</td><td id="next-speedtest">{{ speedtest.next_run or "Schedule disabled" }}</td></tr>
       </table>
+    </section>
+
+    <section class="dashboard-panel compact-panel energy-panel">
+      <h2>⚡ Energy Center</h2>
+      <table>
+        <tr><td>Vehicle</td><td id="energy-vehicle">2025 Chevrolet Equinox EV</td></tr>
+        <tr><td>Charger</td><td id="energy-charger">ChargePoint Home Flex</td></tr>
+        <tr><td>Status</td><td id="energy-status-table">Disabled</td></tr>
+        <tr><td>Power</td><td id="energy-power">0 kW</td></tr>
+        <tr><td>Session Energy</td><td id="energy-session">0 kWh</td></tr>
+        <tr><td>Cost</td><td id="energy-cost">$0.00</td></tr>
+        <tr><td>Miles Added</td><td id="energy-miles">0 mi</td></tr>
+      </table>
+      <div id="energy-setup-message" class="rule-notes">
+        <div>Energy Center is disabled. Add Home Assistant EV charging entities in Settings when ready.</div>
+      </div>
     </section>
 
     <section class="dashboard-panel compact-panel">

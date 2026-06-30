@@ -100,6 +100,7 @@ class Dashboard:
                 speedtest_times=self.application.configured_speedtest_times(),
                 router_reboot=self.application.config.get("router_reboot", default={}),
                 email=self.application.config.get("email", default={}),
+                energy=self.application.energy.energy_config(),
                 diagnostic_result=self.application.diagnostics.latest_result(),
                 error=error,
                 saved=request.args.get("saved") == "1",
@@ -199,6 +200,30 @@ class Dashboard:
                 "last_update": system["last_update"],
                 "timestamp": str(datetime.now()),
             })
+
+        @self.app.route("/api/energy/status")
+        def api_energy_status():
+            try:
+                return jsonify(self.application.energy.get_status())
+            except Exception as exc:
+                self.application.log.exception(f"Energy API failed: {exc}")
+                return jsonify({
+                    "enabled": False,
+                    "configured": False,
+                    "vehicle_name": "2025 Chevrolet Equinox EV",
+                    "charger_name": "ChargePoint Home Flex",
+                    "status": "Unavailable",
+                    "is_charging": False,
+                    "power_kw": 0,
+                    "voltage": None,
+                    "current": None,
+                    "battery_percent": None,
+                    "session_energy_kwh": 0,
+                    "estimated_cost": 0,
+                    "estimated_miles_added": 0,
+                    "last_update": None,
+                    "message": f"Energy Center status unavailable: {exc}",
+                })
 
         @self.app.route("/api/charts/latency")
         def api_latency_chart():

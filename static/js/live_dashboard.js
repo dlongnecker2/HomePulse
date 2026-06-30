@@ -109,9 +109,60 @@ async function refreshDashboardStatus() {
   }
 }
 
+function formatCurrency(value) {
+  const number = Number(value || 0);
+  return `$${number.toFixed(2)}`;
+}
+
+async function refreshEnergyStatus() {
+  try {
+    const response = await fetch("/api/energy/status", { cache: "no-store" });
+    const data = await response.json();
+
+    setText("energy-vehicle", data.vehicle_name);
+    setText("energy-charger", data.charger_name);
+    const energyStatus = energyDisplayStatus(data);
+    setText("energy-status", energyStatus, "Unavailable");
+    setText("energy-status-table", energyStatus, "Unavailable");
+    setText("energy-power", formatMetric(data.power_kw, "kW", "0 kW"));
+    setText("energy-session", formatMetric(data.session_energy_kwh, "kWh", "0 kWh"));
+    setText("energy-cost", formatCurrency(data.estimated_cost));
+    setText("energy-miles", formatMetric(data.estimated_miles_added, "mi", "0 mi"));
+    setText("energy-message", energyDisplayMessage(data));
+    const setup = document.getElementById("energy-setup-message");
+    if (setup) {
+      setup.hidden = data.enabled && data.configured;
+      setup.querySelector("div").textContent = energyDisplayMessage(data);
+    }
+  } catch (error) {
+    console.error("HomePulse energy status refresh failed", error);
+    setText("energy-status", "Unavailable");
+    setText("energy-status-table", "Unavailable");
+    setText("energy-message", "Energy Center status unavailable.");
+  }
+}
+
+function energyDisplayStatus(data) {
+  if (!data.enabled) return "Disabled";
+  if (!data.configured) return "Unavailable";
+  if (data.is_charging) return "Charging";
+  if (data.status === "Unavailable") return "Unavailable";
+  return "Not Charging";
+}
+
+function energyDisplayMessage(data) {
+  if (!data.enabled) return "Energy Center is disabled. Configure it in Settings when ready.";
+  if (!data.configured) return "Energy Center enabled — add Home Assistant entity IDs in Settings.";
+  if (data.status === "Unavailable") return "Waiting for charger data.";
+  if (data.is_charging) return "Charging";
+  return "Not Charging";
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   refreshDashboardStatus();
+  refreshEnergyStatus();
   setInterval(refreshDashboardStatus, 10000);
+  setInterval(refreshEnergyStatus, 10000);
   setInterval(() => {
     const startedAt = document.getElementById("started-at")?.textContent;
     setText("application-uptime", formatUptime(startedAt));

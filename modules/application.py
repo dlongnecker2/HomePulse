@@ -7,6 +7,7 @@ from modules.dashboard import Dashboard
 from modules.database import Database
 from modules.diagnostics import Diagnostics
 from modules.email_notifier import EmailNotifier
+from modules.energy import EnergyManager
 from modules.logger import get_logger
 from modules.network import NetworkMonitor
 from modules.port_check import check_dashboard_port
@@ -27,6 +28,7 @@ class Application:
         self.speedtest = SpeedTestEngine(self.log)
         self.router_rebooter = RouterRebooter(self.config, self.log)
         self.email_notifier = EmailNotifier(self.config, self.log, self.db)
+        self.energy = EnergyManager(self.config, self.log)
         self.status = StatusManager()
         self.diagnostics = Diagnostics(self)
         self.tapo_discovery = TapoDiscovery(self.log)
@@ -208,6 +210,7 @@ class Application:
         self.router_rebooter.config = self.config
         self.email_notifier.config = self.config
         self.email_notifier.db = self.db
+        self.energy.config = self.config
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.scheduler.remove_jobs_by_prefix("Maintenance Check")
         self.register_speedtest_jobs()
@@ -303,6 +306,33 @@ class Application:
             notifications = email.setdefault("notifications", {})
             for key in self.email_notifier.NOTIFICATION_DEFAULTS:
                 notifications[key] = form.get(f"notify_{key}") == "on"
+        energy_form_keys = (
+            "energy_enabled",
+            "energy_vehicle_name",
+            "energy_charger_name",
+            "energy_cost_per_kwh",
+            "energy_estimated_miles_per_kwh",
+            "energy_entity_status",
+            "energy_entity_power_kw",
+            "energy_entity_voltage",
+            "energy_entity_current",
+            "energy_entity_session_energy_kwh",
+            "energy_entity_battery_percent",
+        )
+        if any(key in form for key in energy_form_keys):
+            energy = self.config.data.setdefault("energy", {})
+            energy["enabled"] = form.get("energy_enabled") == "on"
+            energy["vehicle_name"] = form.get("energy_vehicle_name", "2025 Chevrolet Equinox EV").strip()
+            energy["charger_name"] = form.get("energy_charger_name", "ChargePoint Home Flex").strip()
+            energy["cost_per_kwh"] = float(form.get("energy_cost_per_kwh", "0.13") or 0.13)
+            energy["estimated_miles_per_kwh"] = float(form.get("energy_estimated_miles_per_kwh", "3.5") or 3.5)
+            entities = energy.setdefault("home_assistant_entities", {})
+            entities["status"] = form.get("energy_entity_status", "").strip()
+            entities["power_kw"] = form.get("energy_entity_power_kw", "").strip()
+            entities["voltage"] = form.get("energy_entity_voltage", "").strip()
+            entities["current"] = form.get("energy_entity_current", "").strip()
+            entities["session_energy_kwh"] = form.get("energy_entity_session_energy_kwh", "").strip()
+            entities["battery_percent"] = form.get("energy_entity_battery_percent", "").strip()
         self.config.save()
 
     def normalize_custom_speedtest_times(self, raw_times):

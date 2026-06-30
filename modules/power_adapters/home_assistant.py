@@ -27,12 +27,12 @@ class HomeAssistantAdapter(PowerAdapter):
         return self.test_connection()
 
     def get_state(self):
-        missing = self._missing_settings()
-        if missing:
+        validation = self._validate_settings()
+        if validation:
             return PowerAdapterResult(
-                status="WARN",
-                message=f"Home Assistant is missing: {', '.join(missing)}.",
-                metadata={"adapter": self.adapter_type, "missing": missing},
+                status=validation["status"],
+                message=validation["message"],
+                metadata={"adapter": self.adapter_type, **validation["metadata"]},
             )
 
         recovery = self._recovery()
@@ -54,7 +54,9 @@ class HomeAssistantAdapter(PowerAdapter):
             )
         except HTTPError as exc:
             if exc.code == 404:
-                message = f"Home Assistant entity {entity_id} was not found."
+                message = f"Invalid entity ID: Home Assistant entity {entity_id} was not found."
+            elif exc.code in (401, 403):
+                message = "Home Assistant token was rejected. Check the configured access token."
             else:
                 message = f"Home Assistant state request failed: HTTP {exc.code}."
             return PowerAdapterResult(
@@ -66,7 +68,7 @@ class HomeAssistantAdapter(PowerAdapter):
         except URLError as exc:
             return PowerAdapterResult(
                 status="FAIL",
-                message=f"Home Assistant is not reachable: {exc.reason}.",
+                message=f"Home Assistant unreachable: {exc.reason}.",
                 metadata={"adapter": self.adapter_type, "entity_id": entity_id},
             )
         except Exception as exc:
@@ -86,20 +88,34 @@ class HomeAssistantAdapter(PowerAdapter):
         return self.cycle()
 
     def cycle(self):
+        validation = self._validate_settings()
+        if validation:
+            return PowerAdapterResult(
+                status=validation["status"],
+                message=validation["message"],
+                metadata={"adapter": self.adapter_type, **validation["metadata"]},
+            )
         recovery = self._recovery()
         off_seconds = int(recovery.get("recovery_power_off_seconds", 10))
         wait_after_on_seconds = int(recovery.get("recovery_wait_after_power_on_seconds", 180))
 
         off_result = self.turn_off()
         if off_result.status != "PASS":
-            return off_result
+            return PowerAdapterResult(
+                status=off_result.status,
+                message=f"Power cycle failure: Home Assistant switch could not be turned off. {off_result.message}",
+                command_sent=off_result.command_sent,
+                device_responded=off_result.device_responded,
+                power_restored=False,
+                metadata={"adapter": self.adapter_type, "off": off_result.metadata},
+            )
 
         time.sleep(off_seconds)
         on_result = self.turn_on()
         if on_result.status != "PASS":
             return PowerAdapterResult(
                 status=on_result.status,
-                message=f"Home Assistant power cycle failed during turn on: {on_result.message}",
+                message=f"Power cycle failure: Home Assistant switch could not be turned back on. {on_result.message}",
                 command_sent=off_result.command_sent or on_result.command_sent,
                 device_responded=on_result.device_responded,
                 power_restored=False,
@@ -112,9 +128,9 @@ class HomeAssistantAdapter(PowerAdapter):
         return PowerAdapterResult(
             status="PASS" if restored else "FAIL",
             message=(
-                "Home Assistant power cycle completed and entity returned to ON."
+                "Power cycle success: Home Assistant switch turned off, turned on, and returned to ON."
                 if restored
-                else f"Home Assistant power cycle sent, but ON confirmation failed: {state_result.message}"
+                else f"Power cycle failure: Home Assistant switch did not confirm ON. {state_result.message}"
             ),
             command_sent=True,
             device_responded=on_result.device_responded or state_result.device_responded,
@@ -132,12 +148,12 @@ class HomeAssistantAdapter(PowerAdapter):
         )
 
     def _call_switch_service(self, service):
-        missing = self._missing_settings()
-        if missing:
+        validation = self._validate_settings()
+        if validation:
             return PowerAdapterResult(
-                status="WARN",
-                message=f"Home Assistant is missing: {', '.join(missing)}.",
-                metadata={"adapter": self.adapter_type, "missing": missing, "service": service},
+                status=validation["status"],
+                message=validation["message"],
+                metadata={"adapter": self.adapter_type, "service": service, **validation["metadata"]},
             )
 
         recovery = self._recovery()
@@ -163,9 +179,15 @@ class HomeAssistantAdapter(PowerAdapter):
                 },
             )
         except HTTPError as exc:
+            if exc.code == 404:
+                message = f"Invalid entity ID: Home Assistant entity {entity_id} was not found."
+            elif exc.code in (401, 403):
+                message = "Home Assistant token was rejected. Check the configured access token."
+            else:
+                message = f"Home Assistant switch.{service} failed: HTTP {exc.code}."
             return PowerAdapterResult(
                 status="FAIL",
-                message=f"Home Assistant switch.{service} failed: HTTP {exc.code}.",
+                message=message,
                 command_sent=True,
                 device_responded=True,
                 metadata={"adapter": self.adapter_type, "service": service, "status_code": exc.code},
@@ -173,7 +195,7 @@ class HomeAssistantAdapter(PowerAdapter):
         except URLError as exc:
             return PowerAdapterResult(
                 status="FAIL",
-                message=f"Home Assistant switch.{service} failed: {exc.reason}.",
+                message=f"Home Assistant unreachable: {exc.reason}.",
                 metadata={"adapter": self.adapter_type, "service": service},
             )
         except Exception as exc:
@@ -210,10 +232,34 @@ class HomeAssistantAdapter(PowerAdapter):
             body = response.read().decode("utf-8", errors="replace")
             return json.loads(body) if body else {}
 
-    def _missing_settings(self):
+    def _validate_settings(self):
         recovery = self._recovery()
-        required = ("home_assistant_url", "home_assistant_token", "recovery_entity_id")
-        return [key for key in required if not recovery.get(key)]
+        if not recovery.get("home_assistant_url"):
+            return {
+                "status": "WARN",
+                "message": "Home Assistant URL is required.",
+                "metadata": {"missing": ["home_assistant_url"]},
+            }
+        if not recovery.get("home_assistant_token"):
+            return {
+                "status": "WARN",
+                "message": "Missing token: enter a Home Assistant long-lived access token.",
+                "metadata": {"missing": ["home_assistant_token"]},
+            }
+        entity_id = self._entity_id(recovery)
+        if not entity_id:
+            return {
+                "status": "WARN",
+                "message": "Recovery Entity ID is required.",
+                "metadata": {"missing": ["recovery_entity_id"]},
+            }
+        if not self._valid_entity_id(entity_id):
+            return {
+                "status": "FAIL",
+                "message": "Invalid entity ID: enter a Home Assistant switch entity such as switch.office_router_plug.",
+                "metadata": {"entity_id": entity_id},
+            }
+        return None
 
     def _recovery(self):
         recovery = dict(self.config.get("router_reboot", default={}))
@@ -224,3 +270,7 @@ class HomeAssistantAdapter(PowerAdapter):
     @staticmethod
     def _entity_id(recovery):
         return recovery.get("recovery_entity_id") or recovery.get("matter_entity_id")
+
+    @staticmethod
+    def _valid_entity_id(entity_id):
+        return isinstance(entity_id, str) and entity_id.startswith("switch.") and len(entity_id.split(".", 1)[1]) > 0

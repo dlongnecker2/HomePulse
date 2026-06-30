@@ -773,6 +773,39 @@ select {
   color: var(--unhealthy);
 }
 
+.recovery-device-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.recovery-device-summary div {
+  padding: 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+
+.recovery-device-summary span,
+.recovery-device-summary strong {
+  display: block;
+}
+
+.recovery-device-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.recovery-device-summary strong {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .diagnostics-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1330,6 +1363,7 @@ button:focus-visible {
   .status-grid,
   .dashboard-main,
   .side-stack,
+  .recovery-device-summary,
   .diagnostics-results-panel {
     grid-template-columns: 1fr;
   }
