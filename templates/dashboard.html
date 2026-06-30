@@ -11,6 +11,7 @@
   {% set status_class = "starting" %}
 {% endif %}
 {% set speed_available = speedtest.download is not none %}
+{% set speedtest_failed = speedtest.get("status") == "Failed" %}
 
 <svg class="icon-defs" aria-hidden="true" focusable="false">
   <symbol id="icon-wifi" viewBox="0 0 24 24">
@@ -128,7 +129,7 @@
       <svg class="card-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
       <div class="card-label">Speed Test</div>
     </div>
-    <div class="card-value"><span id="speed-download">{{ speedtest.download ~ " Mbps" if speed_available else "Waiting for first test" }}</span></div>
+    <div class="card-value"><span id="speed-download">{{ speedtest.download ~ " Mbps" if speed_available else "Failed" if speedtest_failed else "Waiting for first test" }}</span></div>
     <div id="last-speedtest" class="card-foot">Last run: {{ speedtest.last_run or "--" }}</div>
   </article>
 
@@ -137,8 +138,8 @@
       <svg class="card-icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
       <div class="card-label">Upload</div>
     </div>
-    <div class="card-value"><span id="speed-upload">{{ speedtest.upload ~ " Mbps" if speedtest.upload is not none else "Last test unavailable" }}</span></div>
-    <div id="speedtest-ping" class="card-foot">Ping: {{ speedtest.ping ~ " ms" if speedtest.ping is not none else "Last test unavailable" }}</div>
+    <div class="card-value"><span id="speed-upload">{{ speedtest.upload ~ " Mbps" if speedtest.upload is not none else "Unavailable" }}</span></div>
+    <div id="speedtest-ping" class="card-foot">Ping: {{ speedtest.ping ~ " ms" if speedtest.ping is not none else "Unavailable" }}</div>
   </article>
 
   <article class="status-card">
@@ -169,10 +170,11 @@
     <section class="dashboard-panel compact-panel">
       <h2>Daily Speed Test</h2>
       <table>
-        <tr><td>Download</td><td><span id="speed-download-table">{{ speedtest.download ~ " Mbps" if speedtest.download is not none else "Waiting for first test" }}</span></td></tr>
-        <tr><td>Upload</td><td><span id="speed-upload-table">{{ speedtest.upload ~ " Mbps" if speedtest.upload is not none else "Last test unavailable" }}</span></td></tr>
-        <tr><td>Ping</td><td><span id="speedtest-ping-table">{{ speedtest.ping ~ " ms" if speedtest.ping is not none else "Last test unavailable" }}</span></td></tr>
-        <tr><td>Server</td><td id="speedtest-server">{{ speedtest.server or "Last test unavailable" }}</td></tr>
+        <tr><td>Download</td><td><span id="speed-download-table">{{ speedtest.download ~ " Mbps" if speedtest.download is not none else "Failed" if speedtest_failed else "Waiting for first test" }}</span></td></tr>
+        <tr><td>Upload</td><td><span id="speed-upload-table">{{ speedtest.upload ~ " Mbps" if speedtest.upload is not none else "Unavailable" }}</span></td></tr>
+        <tr><td>Ping</td><td><span id="speedtest-ping-table">{{ speedtest.ping ~ " ms" if speedtest.ping is not none else "Unavailable" }}</span></td></tr>
+        <tr><td>Status</td><td id="speedtest-status">{{ speedtest.get("status", "Unavailable") }}</td></tr>
+        <tr><td>Server</td><td id="speedtest-server">{{ speedtest.server or "Unavailable" }}</td></tr>
         <tr><td>Next Scheduled</td><td id="next-speedtest">{{ speedtest.next_run or "Schedule disabled" }}</td></tr>
       </table>
     </section>

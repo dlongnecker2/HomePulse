@@ -780,8 +780,63 @@ select {
   align-items: flex-start;
 }
 
+.diagnostic-action {
+  display: grid;
+  gap: 8px;
+  max-width: 360px;
+}
+
 .diagnostic-test-button {
   margin: 0;
+}
+
+.inline-test-result {
+  padding: 10px 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.inline-test-result strong,
+.inline-test-result span,
+.inline-test-result time {
+  display: block;
+}
+
+.inline-test-result strong {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.inline-test-result span {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.inline-test-result time {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.inline-test-result.pass strong {
+  color: var(--healthy);
+}
+
+.inline-test-result.warn strong {
+  color: var(--degraded);
+}
+
+.inline-test-result.fail strong {
+  color: var(--unhealthy);
+}
+
+.inline-test-result.running strong {
+  color: var(--muted);
 }
 
 .power-cycle-confirm {

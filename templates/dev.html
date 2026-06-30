@@ -19,6 +19,7 @@
     <tr><td>Latency</td><td>{{ internet.latency }} ms</td></tr>
     <tr><td>Packet Loss</td><td>{{ internet.packet_loss }}%</td></tr>
     <tr><td>DNS</td><td>{{ internet.dns_ok }}</td></tr>
+    <tr><td>Speed Status</td><td>{{ speedtest.status or "Unavailable" }}</td></tr>
     <tr><td>Speed Download</td><td>{{ speedtest.download }} Mbps</td></tr>
     <tr><td>Speed Upload</td><td>{{ speedtest.upload }} Mbps</td></tr>
     <tr><td>Updated</td><td>{{ now }}</td></tr>

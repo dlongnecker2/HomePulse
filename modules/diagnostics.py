@@ -158,20 +158,16 @@ class Diagnostics:
 
     def speed_test(self, timestamp, **kwargs):
         result = self.application.speedtest.run()
-        self.application.status.update_speedtest(
-            download=result.download,
-            upload=result.upload,
-            ping=result.ping,
-            server=result.server,
-            last_run=result.timestamp,
-        )
-        self.application.db.add_speed_test(
-            timestamp=result.timestamp,
-            download=result.download,
-            upload=result.upload,
-            ping=result.ping,
-            server=result.server,
-        )
+        self.application.record_speedtest_result(result)
+        if result.failed:
+            return DiagnosticResult(
+                "speed_test",
+                "WARN",
+                result.error or "Speed test failed.",
+                0,
+                timestamp,
+                {"error": result.error},
+            )
         return DiagnosticResult(
             "speed_test",
             "PASS",

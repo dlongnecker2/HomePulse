@@ -188,6 +188,8 @@ class Dashboard:
                 "upload": speedtest["upload"],
                 "speedtest_ping": speedtest["ping"],
                 "speedtest_server": speedtest["server"],
+                "speedtest_status": speedtest.get("status", "Unavailable"),
+                "speedtest_error": speedtest.get("error", ""),
                 "last_speedtest": speedtest["last_run"],
                 "next_speedtest": speedtest.get("next_run"),
                 "speedtest_schedule_label": speedtest.get("schedule_label"),

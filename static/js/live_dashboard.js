@@ -70,13 +70,15 @@ async function refreshDashboardStatus() {
     setText("isp-grade", data.isp_grade);
     setText("reliability-trend", data.reliability_trend);
     setText("last-check", `Last check: ${data.last_check || "--"}`);
-    setText("speed-download", formatMetric(data.download, "Mbps", "Waiting for first test"));
-    setText("speed-download-table", formatMetric(data.download, "Mbps", "Waiting for first test"));
-    setText("speed-upload", formatMetric(data.upload, "Mbps", "Last test unavailable"));
-    setText("speed-upload-table", formatMetric(data.upload, "Mbps", "Last test unavailable"));
-    setText("speedtest-ping", `Ping: ${formatMetric(data.speedtest_ping, "ms", "Last test unavailable")}`);
-    setText("speedtest-ping-table", formatMetric(data.speedtest_ping, "ms", "Last test unavailable"));
-    setText("speedtest-server", data.speedtest_server, "Last test unavailable");
+    const speedFailed = data.speedtest_status === "Failed";
+    setText("speed-download", formatMetric(data.download, "Mbps", speedFailed ? "Failed" : "Waiting for first test"));
+    setText("speed-download-table", formatMetric(data.download, "Mbps", speedFailed ? "Failed" : "Waiting for first test"));
+    setText("speed-upload", formatMetric(data.upload, "Mbps", "Unavailable"));
+    setText("speed-upload-table", formatMetric(data.upload, "Mbps", "Unavailable"));
+    setText("speedtest-ping", `Ping: ${formatMetric(data.speedtest_ping, "ms", "Unavailable")}`);
+    setText("speedtest-ping-table", formatMetric(data.speedtest_ping, "ms", "Unavailable"));
+    setText("speedtest-status", data.speedtest_status, "Unavailable");
+    setText("speedtest-server", data.speedtest_server, "Unavailable");
     setText("next-speedtest", data.next_speedtest, "Schedule disabled");
     setText("automation-next-speedtest", data.next_speedtest, "Schedule disabled");
     setText("speedtest-schedule-label", data.speedtest_schedule_label, "Every 30 minutes");
@@ -89,7 +91,7 @@ async function refreshDashboardStatus() {
     setText("event-health-time", data.last_check);
     setText("event-health", `Status: ${data.internet_status || "--"}${data.latest_latency_ms === null || data.latest_latency_ms === undefined ? "" : ` - ${data.latest_latency_ms} ms`}`);
     setText("event-speedtest-time", data.last_speedtest);
-    setText("event-speedtest", data.download === null || data.download === undefined ? "Waiting for first test" : `${data.download} Mbps down / ${data.upload ?? "--"} Mbps up`);
+    setText("event-speedtest", data.download === null || data.download === undefined ? (speedFailed ? "Speed test failed" : "Waiting for first test") : `${data.download} Mbps down / ${data.upload ?? "--"} Mbps up`);
     setText("event-router-time", data.last_reboot);
     setText("event-router", `Last reboot: ${data.last_reboot || "None recorded"}`);
 

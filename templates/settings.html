@@ -40,12 +40,18 @@
       <input id="recovery-entity-id" name="recovery_entity_id" type="text" value="{{ entity_id }}" placeholder="switch.office_router_plug">
 
       <div class="diagnostics-actions inline-diagnostics">
-        {{ render_test_button("Test Connection", url_for("test_home_assistant")) }}
+        <div class="diagnostic-action">
+          {{ render_test_button("Test Home Assistant Connection", url_for("test_home_assistant")) }}
+          <div class="inline-test-result" aria-live="polite" hidden></div>
+        </div>
         <label class="option-row power-cycle-confirm">
           <input type="checkbox" id="confirm-home-assistant-power-cycle">
           <span>I confirm this will power cycle the configured recovery entity.</span>
         </label>
-        <button type="button" class="diagnostic-test-button" data-endpoint="{{ url_for("test_home_assistant_power_cycle") }}" data-requires-power-confirm="home-assistant">Test Power Cycle</button>
+        <div class="diagnostic-action">
+          <button type="button" class="diagnostic-test-button" data-endpoint="{{ url_for("test_home_assistant_power_cycle") }}" data-requires-power-confirm="home-assistant">Test Power Cycle</button>
+          <div class="inline-test-result" aria-live="polite" hidden></div>
+        </div>
       </div>
 
       <div class="diagnostics-results-panel" id="diagnostics-results">
@@ -164,7 +170,28 @@
       </label>
 
       <div class="diagnostics-actions inline-diagnostics">
-        {{ render_test_button("Send Test Email", url_for("test_smtp")) }}
+        <div class="diagnostic-action">
+          {{ render_test_button("Send Test Email", url_for("test_smtp")) }}
+          <div class="inline-test-result" aria-live="polite" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Diagnostics</h3>
+      <div class="diagnostics-actions inline-diagnostics">
+        <div class="diagnostic-action">
+          {{ render_test_button("Test Internet Ping", url_for("test_ping")) }}
+          <div class="inline-test-result" aria-live="polite" hidden></div>
+        </div>
+        <div class="diagnostic-action">
+          {{ render_test_button("Run Speed Test", url_for("test_speed")) }}
+          <div class="inline-test-result" aria-live="polite" hidden></div>
+        </div>
+        <div class="diagnostic-action">
+          {{ render_test_button("Full Diagnostics", url_for("test_full_diagnostics")) }}
+          <div class="inline-test-result" aria-live="polite" hidden></div>
+        </div>
       </div>
     </section>
 
@@ -222,28 +249,68 @@
   document.querySelectorAll(".diagnostic-test-button").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.preventDefault();
+      const inlineResult = button.closest(".diagnostic-action")?.querySelector(".inline-test-result");
+      const originalText = button.textContent;
+      showInlineResult(inlineResult, { status: "RUNNING", message: "Running...", timestamp: "" });
+      button.disabled = true;
+      button.textContent = "Running...";
       const confirmed = button.dataset.requiresPowerConfirm === "home-assistant"
         ? document.getElementById("confirm-home-assistant-power-cycle")?.checked
         : false;
-      const response = await fetch(button.dataset.endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          overrides: collectDiagnosticOverrides(),
-          confirm_home_assistant_power_cycle: confirmed === true
-        }),
-        cache: "no-store",
-      });
-      const result = await response.json();
-      document.getElementById("diagnostics-last-test").textContent = result.test_name || "diagnostic";
-      if (String(result.test_name || "").startsWith("home_assistant")) {
-        document.getElementById("connection-state").textContent = result.status === "PASS" ? "Connected" : "Not Connected";
+      try {
+        const response = await fetch(button.dataset.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            overrides: collectDiagnosticOverrides(),
+            confirm_home_assistant_power_cycle: confirmed === true
+          }),
+          cache: "no-store",
+        });
+        const result = await response.json();
+        updateDiagnosticsPanel(result);
+        showInlineResult(inlineResult, result);
+      } catch (error) {
+        const result = {
+          status: "FAIL",
+          message: "Test request failed. Check logs for details.",
+          timestamp: new Date().toLocaleString(),
+          test_name: "diagnostic"
+        };
+        updateDiagnosticsPanel(result);
+        showInlineResult(inlineResult, result);
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
       }
-      document.getElementById("diagnostics-status").textContent = result.status || "--";
-      document.getElementById("diagnostics-status").className = String(result.status || "").toLowerCase();
-      document.getElementById("diagnostics-timestamp").textContent = result.timestamp || "--";
-      document.getElementById("diagnostics-message").textContent = result.message || "No message returned.";
     });
   });
+
+  function updateDiagnosticsPanel(result) {
+    document.getElementById("diagnostics-last-test").textContent = result.test_name || "diagnostic";
+    if (String(result.test_name || "").startsWith("home_assistant")) {
+      document.getElementById("connection-state").textContent = result.status === "PASS" ? "Connected" : "Not Connected";
+    }
+    document.getElementById("diagnostics-status").textContent = result.status || "--";
+    document.getElementById("diagnostics-status").className = String(result.status || "").toLowerCase();
+    document.getElementById("diagnostics-timestamp").textContent = result.timestamp || "--";
+    document.getElementById("diagnostics-message").textContent = result.message || "No message returned.";
+  }
+
+  function showInlineResult(element, result) {
+    if (!element) return;
+    const status = result.status || "--";
+    const timestamp = result.timestamp || "";
+    element.hidden = false;
+    element.className = `inline-test-result ${String(status).toLowerCase()}`;
+    element.replaceChildren();
+    const statusElement = document.createElement("strong");
+    const messageElement = document.createElement("span");
+    const timeElement = document.createElement("time");
+    statusElement.textContent = status;
+    messageElement.textContent = result.message || "No message returned.";
+    timeElement.textContent = timestamp;
+    element.append(statusElement, messageElement, timeElement);
+  }
 </script>
 {% endblock %}

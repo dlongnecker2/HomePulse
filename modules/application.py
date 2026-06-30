@@ -59,6 +59,8 @@ class Application:
                 ping=latest["ping"],
                 server=latest["server"],
                 last_run=latest["timestamp"],
+                status="Available" if latest["download"] is not None else "Failed",
+                error="" if latest["download"] is not None else (latest["server"] or "Speed test failed"),
             )
 
     def load_latest_health_check(self):
@@ -380,25 +382,36 @@ class Application:
 
     def daily_speed_test(self):
         result = self.speedtest.run()
+        self.record_speedtest_result(result)
+
+    def record_speedtest_result(self, result):
         self.status.update_speedtest(
             download=result.download,
             upload=result.upload,
             ping=result.ping,
             server=result.server,
             last_run=result.timestamp,
+            status="Failed" if result.failed else "Available",
+            error=result.error,
         )
         self.db.add_speed_test(
             timestamp=result.timestamp,
             download=result.download,
             upload=result.upload,
             ping=result.ping,
-            server=result.server,
+            server=f"Failed: {result.error}" if result.failed else result.server,
         )
-        self.db.add_event(
-            timestamp=result.timestamp,
-            event_type="speed_test",
-            message=f"Speed test complete: {result.download} down / {result.upload} up",
-        )
+        if result.failed:
+            message = result.error or "Speed test failed."
+            self.log.warning(message)
+            self.db.add_event(timestamp=result.timestamp, event_type="speed_test_failed", message=message)
+        else:
+            self.db.add_event(
+                timestamp=result.timestamp,
+                event_type="speed_test",
+                message=f"Speed test complete: {result.download} down / {result.upload} up",
+            )
+        return result
 
     def maintenance_check(self):
         now = datetime.now()

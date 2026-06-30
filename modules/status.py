@@ -20,11 +20,13 @@ class StatusManager:
                 "last_check": None,
             },
             "speedtest": {
+                "status": "Unavailable",
                 "download": None,
                 "upload": None,
                 "ping": None,
                 "server": None,
                 "last_run": None,
+                "error": "",
             },
             "router": {
                 "status": "Monitoring",
@@ -50,14 +52,16 @@ class StatusManager:
             })
             self._status["system"]["last_update"] = str(datetime.now())
 
-    def update_speedtest(self, download, upload, ping, server, last_run):
+    def update_speedtest(self, download, upload, ping, server, last_run, status=None, error=""):
         with self._lock:
             self._status["speedtest"].update({
+                "status": status or ("Available" if download is not None else "Unavailable"),
                 "download": download,
                 "upload": upload,
                 "ping": ping,
                 "server": server,
                 "last_run": last_run,
+                "error": error or "",
             })
             self._status["system"]["last_update"] = str(datetime.now())
 
