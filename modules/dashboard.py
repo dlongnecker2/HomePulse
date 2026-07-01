@@ -271,6 +271,25 @@ class Dashboard:
                 "timestamp": str(datetime.now()),
             })
 
+        @self.app.route("/api/system/status")
+        def api_system_status():
+            try:
+                return jsonify(self.application.process_identity())
+            except Exception as exc:
+                self.application.log.exception(f"System status API failed: {exc}")
+                return jsonify({
+                    "app_name": APP_NAME,
+                    "version": APP_VERSION,
+                    "pid": os.getpid(),
+                    "started_at": None,
+                    "uptime_seconds": None,
+                    "executable": sys.executable,
+                    "argv": list(sys.argv),
+                    "working_directory": os.getcwd(),
+                    "restart_supported": False,
+                    "error": str(exc),
+                }), 500
+
         @self.app.route("/api/system/restart", methods=["POST"])
         def api_system_restart():
             if not self._valid_admin_action_request():
@@ -807,6 +826,7 @@ class Dashboard:
             "database": self._database_counts(),
             "history": self._history_status(),
             "platform": self._platform_status(),
+            "system_status": self._system_status_rows(),
             "reboot": self._reboot_status(),
             "reboot_events": self._recent_reboot_events(),
             "configuration": self._flatten_config(self.application.config.data),
@@ -817,6 +837,26 @@ class Dashboard:
                 ("reload_config", "Reload Configuration"),
             ],
         }
+
+    def _system_status_rows(self):
+        status = self.application.process_identity()
+        last_restart = status.get("last_restart_request")
+        last_restart_text = "None recorded"
+        if isinstance(last_restart, dict):
+            last_restart_text = (
+                f"{last_restart.get('timestamp', 'Unknown')} "
+                f"(PID {last_restart.get('pid', 'Unknown')})"
+            )
+        return [
+            ("PID", status.get("pid")),
+            ("Started At", status.get("started_at")),
+            ("Uptime", self._format_duration_seconds(status.get("uptime_seconds"))),
+            ("Version", status.get("version")),
+            ("Executable", status.get("executable")),
+            ("Working Directory", status.get("working_directory")),
+            ("Restart Supported", self._enabled_label(status.get("restart_supported"))),
+            ("Last Restart Request", last_restart_text),
+        ]
 
     def _email_center_status(self):
         email = self.application.config.get("email", default={})
@@ -1094,6 +1134,23 @@ class Dashboard:
         if hours:
             return f"{hours}h {minutes}m"
         return f"{minutes}m"
+
+    @staticmethod
+    def _format_duration_seconds(value):
+        try:
+            seconds = int(value)
+        except (TypeError, ValueError):
+            return "Unknown"
+        days, remainder = divmod(max(seconds, 0), 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if days:
+            return f"{days}d {hours}h {minutes}m"
+        if hours:
+            return f"{hours}h {minutes}m"
+        if minutes:
+            return f"{minutes}m {seconds}s"
+        return f"{seconds}s"
 
     @classmethod
     def _flatten_config(cls, data, prefix=""):

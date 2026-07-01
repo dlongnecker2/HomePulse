@@ -1,8 +1,11 @@
 import os
+import json
+import subprocess
 import sys
 import threading
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from statistics import mean
 
 from modules.config import Config
@@ -29,6 +32,7 @@ from version import APP_NAME, APP_VERSION
 
 class Application:
     def __init__(self):
+        self.started_at = datetime.now()
         self.log = get_logger()
         self.config = Config()
         self.db = Database(self.config.get("database"))
@@ -49,11 +53,34 @@ class Application:
         self.diagnostics = Diagnostics(self)
         self.tapo_discovery = TapoDiscovery(self.log)
 
+    def process_identity(self):
+        return {
+            "app_name": APP_NAME,
+            "version": APP_VERSION,
+            "pid": os.getpid(),
+            "started_at": str(self.started_at),
+            "uptime_seconds": max(0, int((datetime.now() - self.started_at).total_seconds())),
+            "executable": sys.executable,
+            "argv": list(sys.argv),
+            "working_directory": os.getcwd(),
+            "restart_supported": True,
+            "last_restart_request": self.latest_restart_request(),
+        }
+
     def startup_message(self):
+        identity = self.process_identity()
         self.log.info("=" * 60)
-        self.log.info(f"{APP_NAME} starting...")
+        self.log.info(
+            f"{APP_NAME} startup beginning | timestamp={self.started_at} | pid={identity['pid']} | "
+            f"version={APP_VERSION}"
+        )
         self.log.info("Home Reliability Dashboard")
         self.log.info(f"Version: {APP_VERSION}")
+        self.log.info(f"PID: {identity['pid']}")
+        self.log.info(f"Executable: {identity['executable']}")
+        self.log.info(f"Argv: {identity['argv']}")
+        self.log.info(f"Working directory: {identity['working_directory']}")
+        self.log.info(f"Startup time: {self.started_at}")
         self.log.info("Dashboard: http://localhost:8080")
         self.log.info("Lab: http://localhost:8080/lab")
         self.log.info("Developer Console: http://localhost:8080/dev")
@@ -69,6 +96,18 @@ class Application:
         self.load_latest_speedtest()
         self.load_latest_health_check()
         self.register_jobs()
+        self.write_restart_marker("restart_completed.json", {
+            "timestamp": str(datetime.now()),
+            "pid": os.getpid(),
+            "started_at": str(self.started_at),
+            "argv": list(sys.argv),
+            "executable": sys.executable,
+            "working_directory": os.getcwd(),
+        })
+        self.log.info(
+            f"{APP_NAME} startup completed | timestamp={datetime.now()} | pid={os.getpid()} | "
+            f"started_at={self.started_at}"
+        )
 
     def load_latest_speedtest(self):
         latest = self.db.latest_speed_test()
@@ -1202,30 +1241,55 @@ class Application:
         self.scheduler.run_forever(sleep_seconds=10)
 
     def request_restart(self, delay_seconds=2):
-        message = f"{APP_NAME} restart requested from Lab; restarting in {delay_seconds} seconds."
-        self.log.warning(message)
+        timestamp = str(datetime.now())
+        message = f"{APP_NAME} restart requested from Lab"
+        detail = f"{message} | timestamp={timestamp} | pid={os.getpid()} | argv={list(sys.argv)}"
+        self.log.warning(detail)
         self.db.add_event(timestamp=str(datetime.now()), event_type="system_restart_requested", message=message)
+        self.write_restart_marker("restart_requested.json", {
+            "timestamp": timestamp,
+            "pid": os.getpid(),
+            "argv": list(sys.argv),
+            "executable": sys.executable,
+            "working_directory": os.getcwd(),
+            "delay_seconds": delay_seconds,
+        })
+        self.log.warning(
+            f"{APP_NAME} restart scheduled | timestamp={datetime.now()} | pid={os.getpid()} | "
+            f"delay_seconds={delay_seconds}"
+        )
         thread = threading.Thread(target=self._delayed_restart, args=(delay_seconds,), daemon=True)
         thread.start()
-        return message
+        return f"{message}; restart scheduled in {delay_seconds} seconds."
 
     def request_shutdown(self, delay_seconds=2):
-        message = f"{APP_NAME} shutdown requested from Lab; stopping in {delay_seconds} seconds."
-        self.log.warning(message)
+        timestamp = str(datetime.now())
+        message = f"{APP_NAME} shutdown requested from Lab"
+        self.log.warning(
+            f"{message} | timestamp={timestamp} | pid={os.getpid()} | argv={list(sys.argv)}"
+        )
         self.db.add_event(timestamp=str(datetime.now()), event_type="system_shutdown_requested", message=message)
         thread = threading.Thread(target=self._delayed_shutdown, args=(delay_seconds,), daemon=True)
         thread.start()
-        return message
+        return f"{message}; shutdown scheduled in {delay_seconds} seconds."
 
     def _delayed_restart(self, delay_seconds):
         time.sleep(delay_seconds)
-        args = [sys.executable] + sys.argv
         try:
-            self.log.warning(f"Restarting {APP_NAME}: {' '.join(args)}")
+            self.log.warning(
+                f"{APP_NAME} process exiting for restart | timestamp={datetime.now()} | pid={os.getpid()}"
+            )
             self.db.add_event(
                 timestamp=str(datetime.now()),
                 event_type="system_restart_attempt",
-                message=f"Restarting with executable: {sys.executable}",
+                message=f"Restarting process {os.getpid()}",
+            )
+            if self.spawn_restart_launcher():
+                os._exit(0)
+            args = [sys.executable] + sys.argv
+            self.log.warning(
+                f"{APP_NAME} restart falling back to os.execv | timestamp={datetime.now()} | "
+                f"pid={os.getpid()} | argv={args}"
             )
             os.execv(sys.executable, args)
         except Exception as exc:
@@ -1239,5 +1303,50 @@ class Application:
 
     def _delayed_shutdown(self, delay_seconds):
         time.sleep(delay_seconds)
-        self.log.warning(f"Stopping {APP_NAME} process")
+        self.log.warning(
+            f"{APP_NAME} process exiting for shutdown | timestamp={datetime.now()} | pid={os.getpid()}"
+        )
         os._exit(0)
+
+    def spawn_restart_launcher(self):
+        launcher = Path("scripts/start_homepulse.bat").resolve()
+        if not launcher.exists():
+            return False
+        command = f'timeout /t 2 /nobreak >nul & "{launcher}"'
+        flags = 0
+        if os.name == "nt":
+            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        subprocess.Popen(
+            ["cmd.exe", "/c", command],
+            cwd=str(Path.cwd()),
+            creationflags=flags,
+            close_fds=True,
+        )
+        self.log.warning(
+            f"{APP_NAME} detached restart launcher spawned | timestamp={datetime.now()} | "
+            f"pid={os.getpid()} | launcher={launcher}"
+        )
+        return True
+
+    @staticmethod
+    def marker_path(filename):
+        return Path("logs") / filename
+
+    def write_restart_marker(self, filename, payload):
+        try:
+            Path("logs").mkdir(exist_ok=True)
+            payload = dict(payload)
+            payload["app_name"] = APP_NAME
+            payload["version"] = APP_VERSION
+            self.marker_path(filename).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as exc:
+            self.log.warning(f"Could not write restart marker {filename}: {exc}")
+
+    def latest_restart_request(self):
+        marker = self.marker_path("restart_requested.json")
+        if marker.exists():
+            try:
+                return json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return {"error": "restart marker could not be read"}
+        return None

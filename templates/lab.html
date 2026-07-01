@@ -121,6 +121,20 @@
   </table>
 </section>
 
+<section class="dashboard-panel lab-panel-wide">
+  <div class="panel-heading compact">
+    <div>
+      <h2>System Status</h2>
+      <p>Current process identity and restart observability.</p>
+    </div>
+  </div>
+  <table>
+    {% for label, value in lab.system_status %}
+    <tr><td>{{ label }}</td><td data-system-status="{{ label|lower|replace(' ', '_') }}">{{ value }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
 <section class="lab-grid">
   <article class="dashboard-panel">
     <div class="panel-heading compact">

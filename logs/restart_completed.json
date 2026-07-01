@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-07-01 12:57:16.195174",
+  "pid": 23068,
+  "started_at": "2026-07-01 12:57:16.179604",
+  "argv": [
+    "-"
+  ],
+  "executable": "C:\\Users\\Dennis\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+  "working_directory": "C:\\RouterMonitorV2",
+  "app_name": "HomePulse",
+  "version": "3.4.0"
+}

@@ -11,6 +11,7 @@
 - Added reusable 1D / 1W / 1M / 6M / 1Y time-range selectors for history-backed charts with range-aware History API aggregation.
 - Added Windows Task Scheduler startup helper scripts and documented automatic startup setup.
 - Added Lab Admin Actions for token-guarded HomePulse restart and shutdown requests.
+- Improved restart observability with PID/argv startup logs, restart marker files, `/api/system/status`, and a Lab System Status panel.
 
 ## v3.2.0
 
