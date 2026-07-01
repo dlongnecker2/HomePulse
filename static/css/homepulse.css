@@ -922,7 +922,7 @@ h2 {
 .energy-card.is-charging,
 .energy-panel.is-charging {
   border-color: rgba(22, 128, 60, 0.42);
-  background: linear-gradient(180deg, #ffffff 0%, #f2fbf5 100%);
+  background: linear-gradient(180deg, #10251d 0%, #101827 100%);
   box-shadow: 0 14px 34px rgba(22, 128, 60, 0.13);
 }
 
@@ -947,7 +947,7 @@ h2 {
 .solar-card.is-producing,
 .solar-panel.is-producing {
   border-color: rgba(22, 128, 60, 0.38);
-  background: linear-gradient(180deg, #ffffff 0%, #f2fbf5 100%);
+  background: linear-gradient(180deg, #10251d 0%, #101827 100%);
   box-shadow: 0 14px 34px rgba(22, 128, 60, 0.11);
 }
 
@@ -963,7 +963,7 @@ h2 {
 .solar-card.is-standby,
 .solar-panel.is-standby {
   border-color: rgba(37, 99, 168, 0.28);
-  background: linear-gradient(180deg, #ffffff 0%, #f6f9fd 100%);
+  background: linear-gradient(180deg, #102033 0%, #101827 100%);
 }
 
 .solar-card.is-standby::before,
@@ -978,7 +978,7 @@ h2 {
 .vehicle-card.is-live,
 .vehicle-panel.is-live {
   border-color: rgba(37, 99, 168, 0.34);
-  background: linear-gradient(180deg, #ffffff 0%, #f3f8fd 100%);
+  background: linear-gradient(180deg, #102033 0%, #101827 100%);
 }
 
 .vehicle-card.is-live::before,
@@ -993,7 +993,7 @@ h2 {
 .vehicle-card.is-partial,
 .vehicle-panel.is-partial {
   border-color: rgba(183, 121, 31, 0.34);
-  background: linear-gradient(180deg, #ffffff 0%, #fffaf0 100%);
+  background: linear-gradient(180deg, #2a2113 0%, #101827 100%);
 }
 
 .vehicle-card.is-partial::before,
@@ -2332,9 +2332,22 @@ textarea {
   border-color: #2a3950;
 }
 
+select option {
+  color: #eef5ff;
+  background: #0d1626;
+}
+
 input::placeholder,
 textarea::placeholder {
   color: #73849c;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #eef5ff;
+  box-shadow: 0 0 0 1000px #0d1626 inset;
+  caret-color: #eef5ff;
 }
 
 .option-row {

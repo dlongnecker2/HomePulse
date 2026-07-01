@@ -19,6 +19,7 @@ from modules.speedtest_engine import SpeedTestEngine
 from modules.status import StatusManager
 from modules.tapo_discovery import TapoDiscovery
 from modules.vehicle import VehicleManager
+from modules.weather import WeatherManager
 from version import APP_NAME, APP_VERSION
 
 
@@ -35,6 +36,7 @@ class Application:
         self.energy = EnergyManager(self.config, self.log)
         self.vehicle = VehicleManager(self.config, self.log)
         self.solar = SolarManager(self.config, self.log)
+        self.weather = WeatherManager(self.config, self.log)
         self.history = HistoryService(self.config, self.log)
         self._last_energy_charging_state = None
         self.status = StatusManager()
@@ -297,6 +299,7 @@ class Application:
         self.energy.config = self.config
         self.vehicle.config = self.config
         self.solar.config = self.config
+        self.weather.config = self.config
         self.history.refresh_config(self.config)
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.scheduler.remove_jobs_by_prefix("History Snapshot")
@@ -337,6 +340,23 @@ class Application:
             self.history.refresh_config(self.config)
             self.scheduler.remove_jobs_by_prefix("History Snapshot")
             self.register_history_job()
+
+        weather_form_keys = (
+            "weather_enabled",
+            "weather_location_name",
+            "weather_latitude",
+            "weather_longitude",
+            "weather_provider",
+        )
+        if any(key in form for key in weather_form_keys):
+            weather = self.config.data.setdefault("weather", {})
+            weather["enabled"] = form.get("weather_enabled") == "on"
+            weather["location_name"] = form.get("weather_location_name", "Home").strip() or "Home"
+            weather["latitude"] = form.get("weather_latitude", "").strip()
+            weather["longitude"] = form.get("weather_longitude", "").strip()
+            provider = form.get("weather_provider", "placeholder").strip() or "placeholder"
+            weather["provider"] = provider
+            self.weather.config = self.config
 
         router_reboot = self.config.data.setdefault("router_reboot", {})
         device_type = form.get(

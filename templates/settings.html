@@ -24,6 +24,7 @@
   {% set vehicle_entities = vehicle.get("entities", {}) %}
   {% set solar_entities = solar.get("entities", {}) %}
   {% set history_config = config.get("history", default={}) %}
+  {% set weather_config = weather %}
 
   <form method="post" action="{{ url_for('settings') }}" class="settings-form">
     <section class="settings-section safety-summary">
@@ -335,6 +336,31 @@
         <label class="field-label" for="solar-entity-production-ct-energy-delivered">Production CT delivered entity</label>
         <input id="solar-entity-production-ct-energy-delivered" name="solar_entity_production_ct_energy_delivered" type="text" value="{{ solar_entities.get("production_ct_energy_delivered", "") }}" placeholder="sensor.envoy_202306120601_production_ct_energy_delivered">
       </details>
+    </section>
+
+    <section class="settings-section">
+      <h3>Weather / Forecast</h3>
+      <label class="option-row">
+        <input type="checkbox" name="weather_enabled" {% if weather_config.get("enabled", true) %}checked{% endif %}>
+        <span>Enable Weather Center</span>
+      </label>
+
+      <label class="field-label" for="weather-location-name">Location label</label>
+      <input id="weather-location-name" name="weather_location_name" type="text" value="{{ weather_config.get("location_name", "Home") }}" placeholder="Home">
+
+      <label class="field-label" for="weather-latitude">Latitude</label>
+      <input id="weather-latitude" name="weather_latitude" type="number" step="0.000001" value="{{ weather_config.get("latitude", "") }}" placeholder="Optional">
+
+      <label class="field-label" for="weather-longitude">Longitude</label>
+      <input id="weather-longitude" name="weather_longitude" type="number" step="0.000001" value="{{ weather_config.get("longitude", "") }}" placeholder="Optional">
+
+      <label class="field-label" for="weather-provider">Provider</label>
+      <select id="weather-provider" name="weather_provider">
+        {% set weather_provider = weather_config.get("provider", "placeholder") %}
+        <option value="placeholder" {% if weather_provider == "placeholder" %}selected{% endif %}>Placeholder / future provider</option>
+        <option value="manual" {% if weather_provider == "manual" %}selected{% endif %}>Manual placeholder</option>
+      </select>
+      <p class="settings-help">Weather data is currently placeholder-ready. A live provider such as Open-Meteo, Weather.gov, or Home Assistant weather entities can be added later.</p>
     </section>
 
     <section class="settings-section">

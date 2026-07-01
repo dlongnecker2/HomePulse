@@ -154,6 +154,7 @@ class Dashboard:
                 energy=self.application.energy.energy_config(),
                 vehicle=self.application.vehicle.vehicle_config(),
                 solar=self.application.solar.solar_config(),
+                weather=self.application.weather.weather_config(),
                 diagnostic_result=self.application.diagnostics.latest_result(),
                 error=error,
                 saved=request.args.get("saved") == "1",
@@ -373,6 +374,30 @@ class Dashboard:
                     "weather": {"message": "Weather integration is not configured yet."},
                 })
 
+        @self.app.route("/api/weather/status")
+        def api_weather_status():
+            try:
+                return jsonify(self.application.weather.get_status())
+            except Exception as exc:
+                self.application.log.exception(f"Weather API failed: {exc}")
+                return jsonify({
+                    "enabled": False,
+                    "configured": False,
+                    "location_name": "Home",
+                    "temperature_f": None,
+                    "condition": "Unavailable",
+                    "cloud_cover_percent": None,
+                    "sunshine_percent": None,
+                    "humidity_percent": None,
+                    "wind_mph": None,
+                    "uv_index": None,
+                    "sunrise": None,
+                    "sunset": None,
+                    "last_updated": None,
+                    "source": "Unavailable",
+                    "error": str(exc),
+                })
+
         @self.app.route("/api/history/latest")
         def api_history_latest():
             try:
@@ -545,10 +570,10 @@ class Dashboard:
     @staticmethod
     def _solar_placeholder_weather():
         return [
-            {"label": "Sun", "solar": 82, "weather": 76, "mock": True},
-            {"label": "Clouds", "solar": 18, "weather": 24, "mock": True},
-            {"label": "Heat", "solar": 64, "weather": 68, "mock": True},
-            {"label": "UV", "solar": 71, "weather": 70, "mock": True},
+            {"label": "Sunshine", "solar": None, "weather": None, "placeholder": True},
+            {"label": "Cloud Cover", "solar": None, "weather": None, "placeholder": True},
+            {"label": "Temperature", "solar": None, "weather": None, "placeholder": True},
+            {"label": "UV Index", "solar": None, "weather": None, "placeholder": True},
         ]
 
     def _lab_payload(self):
@@ -614,6 +639,7 @@ class Dashboard:
         energy = config.get("energy", default={})
         solar = config.get("solar", default={})
         history = config.get("history", default={})
+        weather = config.get("weather", default={})
         return [
             ("Dashboard", self._enabled_label(config.get("dashboard", "enabled", default=True))),
             ("Internet Health", self._enabled_label(bool(config.get("monitor_interval_minutes", default=0)))),
@@ -624,6 +650,7 @@ class Dashboard:
             ("Vehicle Center", self._enabled_label(config.get("vehicle", "enabled", default=False))),
             ("Solar Center", self._enabled_label(solar.get("enabled", False))),
             ("History / Analytics", self._enabled_label(history.get("enabled", True))),
+            ("Weather Center", self._enabled_label(weather.get("enabled", True))),
         ]
 
     @staticmethod

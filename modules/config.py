@@ -12,6 +12,13 @@ DEFAULT_CONFIG = {
         "retention_days": 365,
         "database": "data/homepulse_history.db",
     },
+    "weather": {
+        "enabled": True,
+        "location_name": "Home",
+        "latitude": "",
+        "longitude": "",
+        "provider": "placeholder",
+    },
     "solar": {
         "enabled": False,
         "name": "Solar Center",

@@ -6,6 +6,9 @@
 - Fixed the Solar overview API crash caused by a missing timestamp formatting helper.
 - Added functional left-navigation pages for Energy Center, Vehicle Center, Speed Test, Email Center, and About.
 - Standardized main pages to the darker HomePulse theme.
+- Fixed Settings input readability and kept Solar/Vehicle dashboard cards on the dark card treatment in active states.
+- Added a Weather Center foundation with placeholder/manual configuration and `/api/weather/status`.
+- Connected Solar Center's Weather & Solar Correlation panel to the Weather Center status API with placeholder source labeling.
 - Added Internet Center history chart panels for latency, health score, packet loss, download, and upload history.
 - Added module-specific Energy, Vehicle, and Speed Test chart placeholders backed by the History Service when data exists.
 - Added the Analytics Foundation with a central History Service for Solar, Vehicle, Energy, and Internet metrics.

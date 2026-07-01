@@ -46,21 +46,23 @@ function setupSolarTabs() {
 
 async function refreshSolarCenterOverview() {
   try {
-    const [overviewResponse, historyResponse, energyResponse, vehicleResponse] = await Promise.all([
+    const [overviewResponse, historyResponse, energyResponse, vehicleResponse, weatherResponse] = await Promise.all([
       fetch("/api/solar/overview", { cache: "no-store" }),
       fetch("/api/history/metrics?module=solar&metric=current_production_kw&hours=24", { cache: "no-store" }),
       fetch("/api/energy/status", { cache: "no-store" }),
       fetch("/api/vehicle/status", { cache: "no-store" }),
+      fetch("/api/weather/status", { cache: "no-store" }),
     ]);
     const overview = overviewResponse.ok ? await overviewResponse.json() : {};
     const history = historyResponse.ok ? await historyResponse.json() : {};
     const energy = energyResponse.ok ? await energyResponse.json() : {};
     const vehicle = vehicleResponse.ok ? await vehicleResponse.json() : {};
+    const weather = weatherResponse.ok ? await weatherResponse.json() : {};
     const solar = overview.status || {};
     updateSolarOverview(solar);
     renderSolarProductionChart(history.points || overview.production_chart || []);
-    updateWeatherPlaceholder();
-    updateForecastPlaceholder();
+    updateWeatherPanel(weather);
+    updateForecastPlaceholder(weather);
     updateSolarFlowPanel(solar, energy, vehicle);
     updateSolarEvPanel(energy, vehicle);
   } catch (error) {
@@ -138,19 +140,41 @@ function shortTime(timestamp) {
   return String(timestamp).slice(11, 16);
 }
 
-// Placeholder only. Replace these fields when the future weather integration is available.
-function updateWeatherPlaceholder() {
-  solarSetText("solar-weather-sunshine", "Pending");
-  solarSetText("solar-weather-clouds", "Pending");
-  solarSetText("solar-weather-temperature", "Pending");
-  solarSetText("solar-weather-uv", "Pending");
+// Placeholder-ready. Replace these fields when a live weather provider is wired in.
+function updateWeatherPanel(weather) {
+  const source = weather?.source || "Placeholder";
+  const placeholder = String(source).toLowerCase().includes("placeholder");
+  solarSetText("solar-weather-sunshine", formatWeatherPercent(weather?.sunshine_percent, placeholder));
+  solarSetText("solar-weather-clouds", formatWeatherPercent(weather?.cloud_cover_percent, placeholder));
+  solarSetText("solar-weather-temperature", formatWeatherTemperature(weather?.temperature_f, placeholder));
+  solarSetText("solar-weather-uv", weatherValue(weather?.uv_index, placeholder));
+  solarSetText("solar-weather-source", source);
 }
 
-// Placeholder only. Replace these fields when forecast data is wired to Solar Center.
-function updateForecastPlaceholder() {
-  solarSetText("solar-forecast-sun", "Awaiting weather service");
+// Placeholder-ready. Replace these fields when forecast data is wired to Solar Center.
+function updateForecastPlaceholder(weather) {
+  const sunrise = weatherValue(weather?.sunrise, true);
+  const sunset = weatherValue(weather?.sunset, true);
+  solarSetText("solar-forecast-sun", sunrise === "Pending" && sunset === "Pending" ? "Awaiting weather service" : `${sunrise} / ${sunset}`);
   solarSetText("solar-forecast-production", "Pending");
   solarSetText("solar-forecast-cloud", "Pending");
+}
+
+function weatherValue(value, placeholder) {
+  if (value === null || value === undefined || value === "") return placeholder ? "Pending" : SOLAR_EMPTY;
+  return String(value);
+}
+
+function formatWeatherPercent(value, placeholder) {
+  const number = solarNumber(value);
+  if (number === null) return placeholder ? "Pending" : SOLAR_EMPTY;
+  return `${number.toFixed(0)}%`;
+}
+
+function formatWeatherTemperature(value, placeholder) {
+  const number = solarNumber(value);
+  if (number === null) return placeholder ? "Pending" : SOLAR_EMPTY;
+  return `${number.toFixed(0)} F`;
 }
 
 function updateSolarFlowPanel(solar, energy, vehicle) {
