@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-07-01 12:57:16.476251",
-  "pid": 23068,
+  "timestamp": "2026-07-01 13:27:56.622134",
+  "pid": 5680,
   "argv": [
-    "-"
+    "router_monitor.py"
   ],
   "executable": "C:\\Users\\Dennis\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
   "working_directory": "C:\\RouterMonitorV2",

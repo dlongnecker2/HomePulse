@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -10,6 +11,7 @@ from statistics import mean
 
 from modules.config import Config
 from modules.core import PluginManager
+from modules.core.analytics import AnalyticsService
 from modules.dashboard import Dashboard
 from modules.database import Database
 from modules.diagnostics import Diagnostics
@@ -52,8 +54,13 @@ class Application:
         self.status = StatusManager()
         self.diagnostics = Diagnostics(self)
         self.tapo_discovery = TapoDiscovery(self.log)
+        self.analytics = AnalyticsService(self, self.log)
+        self._last_restart_method = None
+        self._scheduled_task_name = "HomePulse"
+        self._restart_exit_delay_seconds = 4
 
     def process_identity(self):
+        task_status = self.scheduled_task_status()
         return {
             "app_name": APP_NAME,
             "version": APP_VERSION,
@@ -65,6 +72,10 @@ class Application:
             "working_directory": os.getcwd(),
             "restart_supported": True,
             "last_restart_request": self.latest_restart_request(),
+            "scheduled_task_exists": task_status["exists"],
+            "scheduled_task_last_result": task_status["last_result"],
+            "restart_method_preferred": task_status["preferred_restart_method"],
+            "last_restart_method": self._last_restart_method,
         }
 
     def startup_message(self):
@@ -1241,9 +1252,11 @@ class Application:
         self.scheduler.run_forever(sleep_seconds=10)
 
     def request_restart(self, delay_seconds=2):
+        self._last_restart_method = None
         timestamp = str(datetime.now())
         message = f"{APP_NAME} restart requested from Lab"
         detail = f"{message} | timestamp={timestamp} | pid={os.getpid()} | argv={list(sys.argv)}"
+        preferred_method = self.scheduled_task_status()["preferred_restart_method"]
         self.log.warning(detail)
         self.db.add_event(timestamp=str(datetime.now()), event_type="system_restart_requested", message=message)
         self.write_restart_marker("restart_requested.json", {
@@ -1253,10 +1266,11 @@ class Application:
             "executable": sys.executable,
             "working_directory": os.getcwd(),
             "delay_seconds": delay_seconds,
+            "preferred_restart_method": preferred_method,
         })
         self.log.warning(
             f"{APP_NAME} restart scheduled | timestamp={datetime.now()} | pid={os.getpid()} | "
-            f"delay_seconds={delay_seconds}"
+            f"delay_seconds={delay_seconds} | preferred_restart_method={preferred_method}"
         )
         thread = threading.Thread(target=self._delayed_restart, args=(delay_seconds,), daemon=True)
         thread.start()
@@ -1284,9 +1298,49 @@ class Application:
                 event_type="system_restart_attempt",
                 message=f"Restarting process {os.getpid()}",
             )
+
+            task_status = self.scheduled_task_status()
+            if task_status["exists"]:
+                self.log.warning("Restart using Task Scheduler")
+                try:
+                    completed = subprocess.run(
+                        ["schtasks", "/Run", "/TN", self._scheduled_task_name],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                except FileNotFoundError:
+                    completed = None
+
+                if completed is not None:
+                    self.log.warning(
+                        f"Task Scheduler restart command returned code {completed.returncode}"
+                    )
+                    if completed.stdout:
+                        self.log.warning(completed.stdout.strip())
+                    if completed.stderr:
+                        self.log.warning(completed.stderr.strip())
+
+                    if completed.returncode == 0:
+                        self._last_restart_method = "Task Scheduler"
+                        self.log.warning(
+                            "Exiting old HomePulse process after scheduled restart"
+                        )
+                        time.sleep(self._restart_exit_delay_seconds)
+                        os._exit(0)
+
+                self.log.warning("Task Scheduler restart failed or was unavailable; falling back to batch launcher")
+
             if self.spawn_restart_launcher():
+                self._last_restart_method = "Batch launcher"
+                self.log.warning(
+                    "Exiting old HomePulse process after batch launcher restart"
+                )
+                time.sleep(self._restart_exit_delay_seconds)
                 os._exit(0)
+
             args = [sys.executable] + sys.argv
+            self._last_restart_method = "os.execv fallback"
             self.log.warning(
                 f"{APP_NAME} restart falling back to os.execv | timestamp={datetime.now()} | "
                 f"pid={os.getpid()} | argv={args}"
@@ -1307,6 +1361,45 @@ class Application:
             f"{APP_NAME} process exiting for shutdown | timestamp={datetime.now()} | pid={os.getpid()}"
         )
         os._exit(0)
+
+    def scheduled_task_status(self):
+        task_name = getattr(self, "_scheduled_task_name", "HomePulse")
+        if os.name != "nt":
+            return {
+                "exists": False,
+                "last_result": None,
+                "preferred_restart_method": "Batch launcher",
+                "task_name": task_name,
+            }
+
+        try:
+            completed = subprocess.run(
+                ["schtasks", "/Query", "/TN", task_name, "/FO", "LIST"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            return {
+                "exists": False,
+                "last_result": None,
+                "preferred_restart_method": "Batch launcher",
+                "task_name": task_name,
+            }
+
+        output = "\n".join([completed.stdout or "", completed.stderr or ""]).strip()
+        exists = completed.returncode == 0 and task_name.lower() in output.lower()
+        last_result = None
+        if exists:
+            match = re.search(r"Last Result:\s*(.+)", output, re.IGNORECASE)
+            if match:
+                last_result = match.group(1).strip()
+        return {
+            "exists": exists,
+            "last_result": last_result,
+            "preferred_restart_method": "Task Scheduler" if exists else "Batch launcher",
+            "task_name": task_name,
+        }
 
     def spawn_restart_launcher(self):
         launcher = Path("scripts/start_homepulse.bat").resolve()

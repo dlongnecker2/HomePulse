@@ -1,5 +1,20 @@
 # Changelog
 
+## v3.5.0
+
+- **UI Polish & Consistency**: Standardized page layouts, card styling, spacing, typography, and dark theme across all pages (Dashboard, Home Center, Internet Center, Solar Center, Energy Center, Vehicle Center, Weather, Speed Test, Email Center, Settings, Lab, Logs, About).
+- **Insights Foundation**: Created `modules/core/analytics.py` with deterministic, rule-based Insights service that analyzes current system state and history to generate observations.
+- **Insights Service**: Initial insights include Internet latency/packet loss warnings, Solar production status with cloud cover correlation, ChargePoint charging status, Vehicle battery level alerts, Weather alerts (temperature, wind), system uptime, and router reboot tracking.
+- **Insights API**: Added `/api/insights/status` endpoint returning current insights with categories, titles, descriptions, severity levels, and timestamps. Insights cached for 1-minute efficiency.
+- **Dashboard Insights Card**: Added new "HomePulse Insights" card to main Dashboard showing 3–5 current insights with color-coded severity (critical/warning/info). Shows "No current issues detected" empty state when healthy.
+- **Chart Improvements**: Standardized chart styling with clear x-axis/y-axis labels, visible y-axis values, improved tooltips, min/max/average summaries, and friendly empty states. Reusable 1D|1W|1M|6M|1Y time-range controls.
+- **Home Center Polish**: Improved tile styling, consistency, and visual feedback. Tiles now use uniform cards with proper spacing and status badges.
+- **Weather Display Polish**: Enhanced weather condition icons, temperature display, cloud cover, humidity, wind, UV, sunrise/sunset with graceful unavailable state degradation.
+- **Navigation Polish**: Verified active navigation states on all pages. Secondary tabs only appear in centers that use them (no duplication).
+- **CSS & Component Updates**: Added consistent page heading styles, dashboard panel styles, insights card styles with severity coloring, and responsive layout improvements.
+- **Logging & System Status**: Maintained restart/system status panel, startup/restart logs, and ensured history polling doesn't increase log spam.
+- No breaking changes to existing features, APIs, or integrations.
+
 ## v3.4.0
 
 - Added Home Center with `/home` for a unified, at-a-glance operational view of Internet, Solar, Energy, Vehicle, Weather, Lighting, and Home Status.
@@ -12,6 +27,7 @@
 - Added Windows Task Scheduler startup helper scripts and documented automatic startup setup.
 - Added Lab Admin Actions for token-guarded HomePulse restart and shutdown requests.
 - Improved restart observability with PID/argv startup logs, restart marker files, `/api/system/status`, and a Lab System Status panel.
+- Switched HomePulse restart to prefer Windows Task Scheduler via `schtasks /Run /TN HomePulse`, with batch-launcher and `os.execv` fallbacks and explicit restart-method logging.
 
 ## v3.2.0
 

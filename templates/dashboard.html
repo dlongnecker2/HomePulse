@@ -211,6 +211,36 @@
   </article>
 </section>
 
+<section class="dashboard-panel insights-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>HomePulse Insights</h2>
+      <p>Current observations and recommendations from your home automation.</p>
+    </div>
+  </div>
+  <div id="insights-container" class="insights-list">
+    {% if insights %}
+      {% for insight in insights %}
+        <div class="insight-item insight-{{ insight.severity }}">
+          <div class="insight-header">
+            <span class="insight-category">{{ insight.category|upper }}</span>
+            <span class="insight-severity {{ insight.severity }}">{{ insight.severity|upper }}</span>
+          </div>
+          <div class="insight-title">{{ insight.title }}</div>
+          <div class="insight-description">{{ insight.description }}</div>
+          <div class="insight-time">{{ insight.timestamp }}</div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="insights-empty">
+        <div class="empty-icon">✓</div>
+        <div class="empty-title">No current issues detected</div>
+        <div class="empty-message">Everything is running smoothly!</div>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
 <section class="dashboard-panel solar-ev-analytics-panel">
   <div class="panel-heading">
     <div>

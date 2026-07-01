@@ -38,6 +38,7 @@ class Dashboard:
         status["intelligence"] = self.application.internet_intelligence()
         status["events"] = self.application.db.recent_events(limit=5)
         status["dashboard_widgets"] = self.application.plugin_manager.widget_registry.all()
+        status["insights"] = [i.to_dict() for i in self.application.analytics.get_insights(max_insights=5)]
         return status
 
     def register_routes(self):
@@ -55,6 +56,7 @@ class Dashboard:
                 intelligence=status["intelligence"],
                 events=status["events"],
                 widgets=status["dashboard_widgets"],
+                insights=status["insights"],
                 now=datetime.now(),
             )
 
@@ -494,6 +496,25 @@ class Dashboard:
                     "error": str(exc),
                 })
 
+        @self.app.route("/api/insights/status")
+        def api_insights_status():
+            try:
+                max_insights = request.args.get("max", 5, type=int)
+                insights = self.application.analytics.get_insights(max_insights=max_insights)
+                return jsonify({
+                    "insights": [i.to_dict() for i in insights],
+                    "count": len(insights),
+                    "timestamp": str(datetime.now()),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"Insights API failed: {exc}")
+                return jsonify({
+                    "insights": [],
+                    "count": 0,
+                    "error": str(exc),
+                    "timestamp": str(datetime.now()),
+                }), 500
+
         @self.app.route("/api/history/latest")
         def api_history_latest():
             try:
@@ -855,7 +876,11 @@ class Dashboard:
             ("Executable", status.get("executable")),
             ("Working Directory", status.get("working_directory")),
             ("Restart Supported", self._enabled_label(status.get("restart_supported"))),
+            ("Scheduled Task Exists", self._enabled_label(status.get("scheduled_task_exists"))),
+            ("Preferred Restart Method", status.get("restart_method_preferred")),
+            ("Scheduled Task Last Result", status.get("scheduled_task_last_result")),
             ("Last Restart Request", last_restart_text),
+            ("Last Restart Method", status.get("last_restart_method") or "None"),
         ]
 
     def _email_center_status(self):
