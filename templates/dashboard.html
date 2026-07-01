@@ -151,6 +151,18 @@
     <div id="last-reboot" class="card-foot">Last reboot: {{ router.last_reboot or "None recorded" }}</div>
   </article>
 
+  <article class="status-card weather-card">
+    <div class="card-topline">
+      <div class="card-title">
+        <div id="weather-icon" class="weather-icon" aria-hidden="true">?</div>
+        <div class="card-label">Weather</div>
+      </div>
+    </div>
+    <div id="weather-temperature" class="card-value no-wrap">Weather unavailable</div>
+    <div id="weather-condition" class="card-foot">Waiting for weather data</div>
+    <div id="weather-location" class="card-foot">Location: --</div>
+  </article>
+
   <article class="status-card energy-card">
     <div class="card-topline">
       <div class="card-title">

@@ -46,32 +46,22 @@ function setupSolarTabs() {
 
 async function refreshSolarCenterOverview() {
   try {
-    const [overviewResponse, historyResponse, evHistoryResponse, energyResponse, vehicleResponse, weatherResponse] = await Promise.all([
+    const [overviewResponse, historyResponse, weatherResponse] = await Promise.all([
       fetch("/api/solar/overview", { cache: "no-store" }),
       fetch("/api/history/metrics?module=solar&metric=current_production_kw&hours=24", { cache: "no-store" }),
-      fetch("/api/history/metrics?module=energy&metric=charging_power_kw&hours=24", { cache: "no-store" }),
-      fetch("/api/energy/status", { cache: "no-store" }),
-      fetch("/api/vehicle/status", { cache: "no-store" }),
       fetch("/api/weather/status", { cache: "no-store" }),
     ]);
     const overview = overviewResponse.ok ? await overviewResponse.json() : {};
     const history = historyResponse.ok ? await historyResponse.json() : {};
-    const evHistory = evHistoryResponse.ok ? await evHistoryResponse.json() : {};
-    const energy = energyResponse.ok ? await energyResponse.json() : {};
-    const vehicle = vehicleResponse.ok ? await vehicleResponse.json() : {};
     const weather = weatherResponse.ok ? await weatherResponse.json() : {};
     const solar = overview.status || {};
     updateSolarOverview(solar);
     renderSolarProductionChart(history.points || overview.production_chart || []);
-    renderSolarEvOverlap(history.points || [], evHistory.points || []);
     updateWeatherPanel(weather, solar);
     updateForecastPlaceholder(weather);
-    updateSolarFlowPanel(solar, energy, vehicle);
-    updateSolarEvPanel(energy, vehicle);
   } catch (error) {
     solarSetText("solar-overview-message", "Solar Center data is taking longer than expected. The page will keep trying.");
     renderSolarProductionChart([]);
-    renderSolarEvOverlap([], []);
   }
 }
 
@@ -114,9 +104,12 @@ function updateSolarBadges(status) {
 function renderSolarProductionChart(points) {
   const chart = document.getElementById("solar-production-chart");
   if (!chart) return;
-  if (window.HomePulseHistory?.renderBarChart) {
-    window.HomePulseHistory.renderBarChart(chart, normalizeHistoryPoints(points), {
+  if (window.HomePulseHistory?.renderLineChart) {
+    window.HomePulseHistory.renderLineChart(chart, normalizeHistoryPoints(points), {
       digits: 2,
+      yLabel: "kW",
+      unit: "kW",
+      xLabel: "Time",
       emptyMessage: "Collecting solar history...",
     });
     return;
@@ -137,44 +130,6 @@ function normalizeHistoryPoints(points) {
       unit: point.unit || "kW",
     }))
     .filter((point) => solarNumber(point.value) !== null);
-}
-
-function renderSolarEvOverlap(solarPoints, evPoints) {
-  const chart = document.getElementById("solar-ev-overlap-chart");
-  if (window.HomePulseHistory?.renderComparisonChart) {
-    window.HomePulseHistory.renderComparisonChart(
-      chart,
-      { first: normalizeHistoryPoints(solarPoints), second: normalizeHistoryPoints(evPoints) },
-      {
-        firstLabel: "Solar kW",
-        secondLabel: "EV charging kW",
-        emptyMessage: "Collecting solar and charging history...",
-      }
-    );
-  }
-  updateSolarEvOverlapMetrics(solarPoints, evPoints);
-}
-
-function updateSolarEvOverlapMetrics(solarPoints, evPoints) {
-  const solarValues = normalizeHistoryPoints(solarPoints).map((point) => solarNumber(point.value)).filter((value) => value !== null);
-  const evValues = normalizeHistoryPoints(evPoints).map((point) => solarNumber(point.value)).filter((value) => value !== null);
-  const length = Math.min(solarValues.length, evValues.length);
-  if (length < 2) {
-    solarSetText("solar-overlap-window", "Collecting data");
-    solarSetText("solar-overlap-peak-solar", SOLAR_EMPTY);
-    solarSetText("solar-overlap-peak-ev", SOLAR_EMPTY);
-    solarSetText("solar-overlap-kwh", "Collecting data");
-    return;
-  }
-  const solar = solarValues.slice(-length);
-  const ev = evValues.slice(-length);
-  const activePairs = solar.map((value, index) => ({ solar: value, ev: ev[index] })).filter((pair) => pair.solar > 0.1 && pair.ev > 0.5);
-  const intervalHours = 24 / Math.max(length, 1);
-  const overlapKwh = activePairs.reduce((total, pair) => total + Math.min(pair.solar, pair.ev) * intervalHours, 0);
-  solarSetText("solar-overlap-window", activePairs.length ? `${activePairs.length} sample(s)` : "No overlap yet");
-  solarSetText("solar-overlap-peak-solar", solarMetric(Math.max(...solar), "kW", 2));
-  solarSetText("solar-overlap-peak-ev", solarMetric(Math.max(...ev), "kW", 2));
-  solarSetText("solar-overlap-kwh", activePairs.length ? solarMetric(overlapKwh, "kWh", 2) : "No overlap yet");
 }
 
 function shortTime(timestamp) {
@@ -218,31 +173,6 @@ function formatWeatherTemperature(value, placeholder) {
   const number = solarNumber(value);
   if (number === null) return placeholder ? "Pending" : SOLAR_EMPTY;
   return `${number.toFixed(0)} F`;
-}
-
-function updateSolarFlowPanel(solar, energy, vehicle) {
-  const hasSolar = Boolean(solar && solar.enabled && solar.current_production_kw !== null && solar.current_production_kw !== undefined);
-  const hasEnergy = Boolean(energy && energy.enabled && energy.configured);
-  const hasVehicle = Boolean(vehicle && vehicle.enabled && vehicle.configured);
-  solarSetText("solar-flow-production", hasSolar ? solarMetric(solar.current_production_kw, "kW", 2) : SOLAR_EMPTY);
-  solarSetText("solar-flow-ev", hasEnergy ? solarMetric(energy.power_kw, "kW", 2) : SOLAR_EMPTY);
-  solarSetText("solar-flow-home", "Not enough data");
-  solarSetText("solar-flow-grid", "Not enough data");
-  const message = hasSolar || hasEnergy || hasVehicle
-    ? "Using available Solar, Energy Center, and Vehicle Center data."
-    : "Not enough data yet.";
-  solarSetText("solar-flow-message", message);
-}
-
-function updateSolarEvPanel(energy, vehicle) {
-  const hasEnergy = Boolean(energy && energy.enabled && energy.configured);
-  const hasVehicle = Boolean(vehicle && vehicle.enabled && vehicle.configured);
-  solarSetText("solar-ev-power", hasEnergy ? solarMetric(energy.power_kw, "kW", 2) : SOLAR_EMPTY);
-  solarSetText("solar-ev-energy", hasEnergy ? solarMetric(energy.session_energy_kwh, "kWh", 2) : SOLAR_EMPTY);
-  solarSetText("solar-ev-miles", hasEnergy ? solarMetric(energy.miles_added || energy.estimated_miles_added, "mi", 1) : SOLAR_EMPTY);
-  solarSetText("solar-ev-battery", hasVehicle && vehicle.battery_percent !== null ? `${vehicle.battery_percent}%` : SOLAR_EMPTY);
-  solarSetText("solar-ev-solar-estimate", "Awaiting flow data");
-  solarSetText("solar-ev-message", hasEnergy || hasVehicle ? "Using current Energy Center and Vehicle Center data." : "Not enough data yet.");
 }
 
 document.addEventListener("DOMContentLoaded", () => {

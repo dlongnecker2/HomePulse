@@ -473,15 +473,63 @@ function updateSolarCardState(data, status) {
   else badge.classList.add("offline");
 }
 
+async function refreshWeatherStatus() {
+  try {
+    const response = await fetch("/api/weather/status", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Weather status returned ${response.status}`);
+    const data = await response.json();
+    setText("weather-temperature", formatWeatherTemperature(data.temperature_f));
+    setText("weather-condition", weatherSummary(data));
+    setText("weather-location", `Location: ${cleanText(data.location_name, "--")}`);
+    setText("weather-icon", weatherIcon(data));
+  } catch (error) {
+    setText("weather-temperature", "Weather unavailable");
+    setText("weather-condition", "Weather data is unavailable");
+    setText("weather-location", "Location: --");
+    setText("weather-icon", "?");
+  }
+}
+
+function formatWeatherTemperature(value) {
+  const number = cleanNumber(value);
+  if (number === null) return "Weather unavailable";
+  return `${number.toFixed(0)} F`;
+}
+
+function weatherSummary(data) {
+  if (!data?.enabled) return "Weather disabled";
+  if (!data?.live_data) return data?.source ? `${data.source} - not live` : "Weather unavailable";
+  const condition = cleanText(data.condition, "Weather");
+  const clouds = cleanNumber(data.cloud_cover_percent);
+  return clouds === null ? condition : `${condition} - clouds ${clouds.toFixed(0)}%`;
+}
+
+function weatherIcon(data) {
+  const condition = String(data?.condition || "").toLowerCase();
+  const clouds = cleanNumber(data?.cloud_cover_percent);
+  if (!data?.enabled || (!data?.live_data && data?.source !== "Open-Meteo cached")) return "?";
+  if (condition.includes("rain")) return "Rain";
+  if (clouds !== null) {
+    if (clouds <= 20) return "Sun";
+    if (clouds <= 65) return "Partly";
+    return "Cloud";
+  }
+  if (condition.includes("sun")) return "Sun";
+  if (condition.includes("cloud")) return "Cloud";
+  return "Weather";
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   refreshDashboardStatus();
   refreshEnergyStatus();
   refreshVehicleStatus();
   refreshSolarStatus();
+  refreshWeatherStatus();
   setInterval(refreshDashboardStatus, 10000);
   setInterval(refreshEnergyStatus, 10000);
   setInterval(refreshVehicleStatus, 10000);
   setInterval(refreshSolarStatus, 10000);
+  setInterval(refreshWeatherStatus, 60000);
   setInterval(() => {
     const startedAt = document.getElementById("started-at")?.textContent;
     setText("application-uptime", formatUptime(startedAt));

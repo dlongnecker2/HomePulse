@@ -13,6 +13,10 @@
 - Added Solar Center overlap summary metrics for solar/EV overlap, peak solar, peak charging, and estimated solar-supported charging.
 - Added weather metrics to History Service snapshots when Weather Center is enabled.
 - Connected Solar Center's Weather & Solar Correlation panel to the Weather Center status API with placeholder source labeling.
+- Improved UI readability by hardening dark-theme Settings form controls, placeholders, disabled fields, select options, and autofill states.
+- Added a compact Dashboard Weather card backed by `/api/weather/status`.
+- Changed Solar and Internet history visuals to labeled dark line charts with x-axis time labels and y-axis values.
+- Refocused Solar Center on solar production, weather, forecast, and Enphase health by removing EV charging panels from the Solar page.
 - Added Internet Center history chart panels for latency, health score, packet loss, download, and upload history.
 - Added module-specific Energy, Vehicle, and Speed Test chart placeholders backed by the History Service when data exists.
 - Added the Analytics Foundation with a central History Service for Solar, Vehicle, Energy, and Internet metrics.

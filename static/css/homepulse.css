@@ -699,6 +699,14 @@ h2 {
   min-height: 220px;
 }
 
+.history-line-svg {
+  width: 100%;
+  min-height: 220px;
+}
+
+.history-line,
+.axis-base,
+.axis-grid,
 .comparison-grid,
 .comparison-line {
   fill: none;
@@ -706,9 +714,50 @@ h2 {
   stroke-linejoin: round;
 }
 
-.comparison-grid {
-  stroke: rgba(255, 255, 255, 0.12);
+.history-line.primary {
+  stroke: #58b5ef;
+  stroke-width: 4;
+}
+
+.history-point {
+  fill: #f7d66a;
+  stroke: #101827;
   stroke-width: 2;
+}
+
+.comparison-grid,
+.axis-grid {
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
+}
+
+.axis-base {
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 1.5;
+}
+
+.axis-label,
+.axis-title {
+  fill: #9cadc4;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.axis-title {
+  fill: #c7d4e5;
+  font-size: 13px;
+}
+
+.x-axis {
+  text-anchor: middle;
+}
+
+.y-axis {
+  text-anchor: end;
+}
+
+.x-title {
+  text-anchor: middle;
 }
 
 .comparison-line {
@@ -752,6 +801,23 @@ h2 {
 
 .solar-overlap-metrics {
   margin-top: 12px;
+}
+
+.weather-card {
+  border-color: rgba(88, 181, 239, 0.20);
+}
+
+.weather-icon {
+  display: inline-grid;
+  place-items: center;
+  min-width: 38px;
+  height: 28px;
+  padding: 0 8px;
+  color: #101827;
+  background: #f7d66a;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 850;
 }
 
 .solar-history-chart .mock-bar {
@@ -2424,6 +2490,44 @@ input:-webkit-autofill:focus {
   -webkit-text-fill-color: #eef5ff;
   box-shadow: 0 0 0 1000px #0d1626 inset;
   caret-color: #eef5ff;
+}
+
+.settings-panel input:not([type="radio"]):not([type="checkbox"]),
+.settings-panel select,
+.settings-panel textarea,
+.settings-form input:not([type="radio"]):not([type="checkbox"]),
+.settings-form select,
+.settings-form textarea {
+  color: #eef5ff !important;
+  background-color: #0d1626 !important;
+  border-color: #2a3950 !important;
+  caret-color: #eef5ff;
+}
+
+.settings-panel input:disabled,
+.settings-panel select:disabled,
+.settings-panel textarea:disabled,
+.settings-form input:disabled,
+.settings-form select:disabled,
+.settings-form textarea:disabled {
+  color: #9cadc4 !important;
+  background-color: #111a2b !important;
+  border-color: #243348 !important;
+  opacity: 1;
+}
+
+.settings-panel input::placeholder,
+.settings-panel textarea::placeholder,
+.settings-form input::placeholder,
+.settings-form textarea::placeholder {
+  color: #8ea0b8 !important;
+  opacity: 1;
+}
+
+.settings-panel select option,
+.settings-form select option {
+  color: #eef5ff !important;
+  background-color: #0d1626 !important;
 }
 
 .option-row {

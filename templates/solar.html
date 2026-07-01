@@ -6,7 +6,7 @@
     <div>
       <div class="eyebrow">Local Enphase Envoy</div>
       <h2>&#9728; Solar Center</h2>
-      <p>Solar production, system health, weather context, energy flow, and EV charging analytics.</p>
+      <p>Solar production, Enphase health, weather context, and forecast readiness.</p>
     </div>
     <span id="solar-module-status-badge" class="energy-status-badge disabled">Disabled</span>
   </header>
@@ -16,8 +16,6 @@
     ("enphase", "Enphase Details"),
     ("production", "Production Details"),
     ("weather", "Weather"),
-    ("energy-flow", "Energy Flow"),
-    ("ev-performance", "EV Performance"),
     ("reports", "Reports")
   ] %}
   <nav class="secondary-nav" aria-label="Solar Center sections">
@@ -70,23 +68,6 @@
         <div id="solar-production-chart" class="solar-history-chart" data-placeholder="solar-history"></div>
       </article>
 
-      <article class="solar-glass-card solar-ev-overlap-card">
-        <div class="solar-card-heading">
-          <div>
-            <span class="solar-kicker">Solar + Charging</span>
-            <h3>Solar vs EV Charging</h3>
-          </div>
-          <span class="solar-data-pill">Last 24 hours</span>
-        </div>
-        <div id="solar-ev-overlap-chart" class="comparison-chart"></div>
-        <div class="solar-stat-grid solar-overlap-metrics">
-          <div><span>EV During Solar Window</span><strong id="solar-overlap-window">-</strong></div>
-          <div><span>Peak Solar Today</span><strong id="solar-overlap-peak-solar">-</strong></div>
-          <div><span>Peak EV Charging</span><strong id="solar-overlap-peak-ev">-</strong></div>
-          <div><span>Solar-Supported Charging</span><strong id="solar-overlap-kwh">-</strong></div>
-        </div>
-      </article>
-
       <article class="solar-glass-card solar-weather-card">
         <div class="solar-card-heading">
           <div>
@@ -116,42 +97,6 @@
           <div><span>Expected Production</span><strong id="solar-forecast-production">Pending</strong></div>
           <div><span>Cloud Impact</span><strong id="solar-forecast-cloud">Pending</strong></div>
         </div>
-      </article>
-
-      <article class="solar-glass-card solar-flow-card">
-        <div class="solar-card-heading">
-          <div>
-            <span class="solar-kicker">Live Flow</span>
-            <h3>Energy Flow</h3>
-          </div>
-        </div>
-        <div class="solar-flow-map">
-          <div class="flow-node source"><span>Solar</span><strong id="solar-flow-production">-</strong></div>
-          <div class="flow-lines" aria-hidden="true"><i></i><i></i><i></i></div>
-          <div class="flow-destinations">
-            <div class="flow-node"><span>Home</span><strong id="solar-flow-home">Not enough data</strong></div>
-            <div class="flow-node"><span>EV</span><strong id="solar-flow-ev">-</strong></div>
-            <div class="flow-node"><span>Grid</span><strong id="solar-flow-grid">Not enough data</strong></div>
-          </div>
-        </div>
-        <p id="solar-flow-message" class="solar-card-note">Energy flow will become richer when home and grid data are available.</p>
-      </article>
-
-      <article class="solar-glass-card solar-ev-card">
-        <div class="solar-card-heading">
-          <div>
-            <span class="solar-kicker">EV Context</span>
-            <h3>EV Performance Today</h3>
-          </div>
-        </div>
-        <div class="solar-detail-list">
-          <div><span>Charging Power</span><strong id="solar-ev-power">-</strong></div>
-          <div><span>Session Energy</span><strong id="solar-ev-energy">-</strong></div>
-          <div><span>Miles Added</span><strong id="solar-ev-miles">-</strong></div>
-          <div><span>Battery</span><strong id="solar-ev-battery">-</strong></div>
-          <div><span>Solar Charging Estimate</span><strong id="solar-ev-solar-estimate">Awaiting flow data</strong></div>
-        </div>
-        <p id="solar-ev-message" class="solar-card-note">Not enough data yet.</p>
       </article>
 
       <article class="solar-glass-card solar-health-card">

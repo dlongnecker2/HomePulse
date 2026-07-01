@@ -48,11 +48,11 @@ function hpSetBadge(id, status) {
   else badge.classList.add("idle");
 }
 
-function hpRenderChart(id, points, emptyMessage) {
+function hpRenderChart(id, points, emptyMessage, options = {}) {
   const element = document.getElementById(id);
   if (!element) return;
-  if (window.HomePulseHistory?.renderBarChart) {
-    window.HomePulseHistory.renderBarChart(element, points || [], { digits: 1, emptyMessage });
+  if (window.HomePulseHistory?.renderLineChart) {
+    window.HomePulseHistory.renderLineChart(element, points || [], { digits: 1, emptyMessage, ...options });
   }
 }
 
@@ -119,11 +119,11 @@ async function initVehiclePage() {
 
 async function initInternetCharts() {
   if (!document.getElementById("internet-latency-chart")) return;
-  hpRenderChart("internet-latency-chart", await hpHistory("internet", "latency_ms", 24), "Collecting internet history...");
-  hpRenderChart("internet-health-chart", await hpHistory("internet", "health_score", 24), "Collecting internet history...");
-  hpRenderChart("internet-packet-loss-chart", await hpHistory("internet", "packet_loss_percent", 24), "Collecting internet history...");
-  hpRenderChart("internet-speed-chart", await hpHistory("internet", "download_mbps", 24), "Collecting speed test history...");
-  hpRenderChart("internet-upload-chart", await hpHistory("internet", "upload_mbps", 24), "Collecting speed test history...");
+  hpRenderChart("internet-latency-chart", await hpHistory("internet", "latency_ms", 24), "Collecting internet history...", { yLabel: "ms", unit: "ms" });
+  hpRenderChart("internet-health-chart", await hpHistory("internet", "health_score", 24), "Collecting internet history...", { yLabel: "%", unit: "%" });
+  hpRenderChart("internet-packet-loss-chart", await hpHistory("internet", "packet_loss_percent", 24), "Collecting internet history...", { yLabel: "%", unit: "%" });
+  hpRenderChart("internet-speed-chart", await hpHistory("internet", "download_mbps", 24), "Collecting speed test history...", { yLabel: "Mbps", unit: "Mbps" });
+  hpRenderChart("internet-upload-chart", await hpHistory("internet", "upload_mbps", 24), "Collecting speed test history...", { yLabel: "Mbps", unit: "Mbps" });
 }
 
 async function initSpeedPage() {
