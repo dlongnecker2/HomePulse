@@ -56,14 +56,27 @@ function hpRenderChart(id, points, emptyMessage, options = {}) {
   }
 }
 
-async function hpHistory(moduleName, metricName, hours = 24) {
+async function hpHistory(moduleName, metricName, rangeOrHours = "1d") {
   if (!window.HomePulseHistory?.fetchMetrics) return [];
   try {
-    const payload = await window.HomePulseHistory.fetchMetrics(moduleName, metricName, hours);
+    const payload = await window.HomePulseHistory.fetchMetrics(moduleName, metricName, { range: rangeOrHours });
     return payload.points || [];
   } catch (error) {
     return [];
   }
+}
+
+async function hpRenderHistoryChart(id, moduleName, metricName, emptyMessage, options = {}) {
+  const element = document.getElementById(id);
+  if (!element || !window.HomePulseHistory) return;
+  const range = window.HomePulseHistory.selectedRange(element);
+  const points = await hpHistory(moduleName, metricName, range);
+  hpRenderChart(id, points, emptyMessage, {
+    ...options,
+    range,
+    emptyMessage: points.length ? emptyMessage : "No data available for this range yet.",
+    onRangeChange: () => hpRenderHistoryChart(id, moduleName, metricName, emptyMessage, options),
+  });
 }
 
 async function initEnergyPage() {
@@ -87,7 +100,7 @@ async function initEnergyPage() {
     hpSetBadge("energy-page-status", "Waiting for Data");
     hpText("energy-page-message", "Energy Center data is unavailable right now.");
   }
-  hpRenderChart("energy-power-chart", await hpHistory("energy", "charging_power_kw", 24), "Collecting charging history...");
+  hpRenderHistoryChart("energy-power-chart", "energy", "charging_power_kw", "Collecting charging history...", { yLabel: "kW", unit: "kW" });
 }
 
 async function initVehiclePage() {
@@ -112,24 +125,24 @@ async function initVehiclePage() {
     hpSetBadge("vehicle-page-status", "Waiting for Data");
     hpText("vehicle-page-message", "Vehicle Center data is unavailable right now.");
   }
-  hpRenderChart("vehicle-battery-chart", await hpHistory("vehicle", "battery_percent", 24), "Collecting battery history...");
-  hpRenderChart("vehicle-range-chart", await hpHistory("vehicle", "ev_range_mi", 24), "Collecting range history...");
-  hpRenderChart("vehicle-efficiency-chart", await hpHistory("vehicle", "lifetime_efficiency_mi_per_kwh", 24), "Collecting efficiency history...");
+  hpRenderHistoryChart("vehicle-battery-chart", "vehicle", "battery_percent", "Collecting battery history...", { yLabel: "%", unit: "%" });
+  hpRenderHistoryChart("vehicle-range-chart", "vehicle", "ev_range_mi", "Collecting range history...", { yLabel: "mi", unit: "mi" });
+  hpRenderHistoryChart("vehicle-efficiency-chart", "vehicle", "lifetime_efficiency_mi_per_kwh", "Collecting efficiency history...", { yLabel: "mi/kWh", unit: "mi/kWh" });
 }
 
 async function initInternetCharts() {
   if (!document.getElementById("internet-latency-chart")) return;
-  hpRenderChart("internet-latency-chart", await hpHistory("internet", "latency_ms", 24), "Collecting internet history...", { yLabel: "ms", unit: "ms" });
-  hpRenderChart("internet-health-chart", await hpHistory("internet", "health_score", 24), "Collecting internet history...", { yLabel: "%", unit: "%" });
-  hpRenderChart("internet-packet-loss-chart", await hpHistory("internet", "packet_loss_percent", 24), "Collecting internet history...", { yLabel: "%", unit: "%" });
-  hpRenderChart("internet-speed-chart", await hpHistory("internet", "download_mbps", 24), "Collecting speed test history...", { yLabel: "Mbps", unit: "Mbps" });
-  hpRenderChart("internet-upload-chart", await hpHistory("internet", "upload_mbps", 24), "Collecting speed test history...", { yLabel: "Mbps", unit: "Mbps" });
+  hpRenderHistoryChart("internet-latency-chart", "internet", "latency_ms", "Collecting internet history...", { yLabel: "ms", unit: "ms" });
+  hpRenderHistoryChart("internet-health-chart", "internet", "health_score", "Collecting internet history...", { yLabel: "%", unit: "%" });
+  hpRenderHistoryChart("internet-packet-loss-chart", "internet", "packet_loss_percent", "Collecting internet history...", { yLabel: "%", unit: "%" });
+  hpRenderHistoryChart("internet-speed-chart", "internet", "download_mbps", "Collecting speed test history...", { yLabel: "Mbps", unit: "Mbps" });
+  hpRenderHistoryChart("internet-upload-chart", "internet", "upload_mbps", "Collecting speed test history...", { yLabel: "Mbps", unit: "Mbps" });
 }
 
 async function initSpeedPage() {
   if (!document.getElementById("speed-download-chart")) return;
-  hpRenderChart("speed-download-chart", await hpHistory("internet", "download_mbps", 168), "Collecting speed test history...");
-  hpRenderChart("speed-upload-chart", await hpHistory("internet", "upload_mbps", 168), "Collecting speed test history...");
+  hpRenderHistoryChart("speed-download-chart", "internet", "download_mbps", "Collecting speed test history...", { yLabel: "Mbps", unit: "Mbps" });
+  hpRenderHistoryChart("speed-upload-chart", "internet", "upload_mbps", "Collecting speed test history...", { yLabel: "Mbps", unit: "Mbps" });
 }
 
 document.addEventListener("DOMContentLoaded", () => {

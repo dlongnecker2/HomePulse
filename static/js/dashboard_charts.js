@@ -49,8 +49,16 @@ async function loadLatencyChart() {
     return;
   }
 
-  const response = await fetch("/api/charts/latency");
-  const data = await response.json();
+  const data = await loadLatencyHistoryData(canvas);
+  const empty = ensureLatencyEmptyState(canvas);
+  if (!data.values.length) {
+    canvas.hidden = true;
+    empty.hidden = false;
+    empty.textContent = "No data available for this range yet.";
+    return;
+  }
+  canvas.hidden = false;
+  empty.hidden = true;
   const averageLatency = average(data.values);
 
   if (latencyChart) {
@@ -160,6 +168,68 @@ async function loadLatencyChart() {
       }
     }
   });
+}
+
+async function loadLatencyHistoryData(canvas) {
+  const container = canvas.parentElement;
+  const range = window.HomePulseHistory?.selectedRange(container) || "1d";
+  ensureLatencyRangeControls(container, range);
+  if (window.HomePulseHistory?.fetchMetrics) {
+    try {
+      const payload = await window.HomePulseHistory.fetchMetrics("internet", "latency_ms", { range });
+      const points = Array.isArray(payload.points) ? payload.points : [];
+      return {
+        labels: points.map((point) => latencyLabel(point.timestamp)),
+        values: points.map((point) => point.value).filter((value) => Number.isFinite(Number(value))),
+      };
+    } catch (error) {
+      return { labels: [], values: [] };
+    }
+  }
+  const response = await fetch("/api/charts/latency");
+  return response.json();
+}
+
+function ensureLatencyRangeControls(container, activeRange) {
+  if (!container || container.querySelector(".chart-time-range")) return;
+  const controls = document.createElement("div");
+  controls.className = "chart-time-range";
+  controls.setAttribute("role", "group");
+  controls.setAttribute("aria-label", "Latency chart time range");
+  [["1d", "1D"], ["1w", "1W"], ["1m", "1M"], ["6m", "6M"], ["1y", "1Y"]].forEach(([range, label]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.className = range === activeRange ? "active" : "";
+    button.setAttribute("aria-pressed", String(range === activeRange));
+    button.addEventListener("click", () => {
+      window.HomePulseHistory?.setSelectedRange(container, range);
+      controls.querySelectorAll("button").forEach((item) => {
+        item.classList.toggle("active", item === button);
+        item.setAttribute("aria-pressed", String(item === button));
+      });
+      loadLatencyChart();
+    });
+    controls.appendChild(button);
+  });
+  container.prepend(controls);
+}
+
+function ensureLatencyEmptyState(canvas) {
+  let empty = canvas.parentElement?.querySelector(".chart-empty-state");
+  if (!empty) {
+    empty = document.createElement("div");
+    empty.className = "chart-empty-state";
+    canvas.parentElement?.appendChild(empty);
+  }
+  return empty;
+}
+
+function latencyLabel(timestamp) {
+  if (!timestamp) return "";
+  const text = String(timestamp);
+  if (text.length >= 16 && text.slice(11, 16) !== "00:00") return text.slice(11, 16);
+  return text.length >= 10 ? text.slice(5, 10) : text;
 }
 
 document.addEventListener("DOMContentLoaded", loadLatencyChart);

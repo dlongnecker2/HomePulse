@@ -489,7 +489,8 @@ h2 {
 
 .module-history-chart {
   display: flex;
-  align-items: end;
+  flex-direction: column;
+  align-items: stretch;
   gap: 7px;
   min-height: 250px;
   padding: 14px;
@@ -498,8 +499,53 @@ h2 {
   border-radius: 12px;
 }
 
+.chart-render-area {
+  min-height: 220px;
+}
+
+.chart-time-range {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(13, 22, 38, 0.86);
+}
+
+.chart-time-range button {
+  min-width: 38px;
+  min-height: 28px;
+  padding: 5px 9px;
+  color: #9cadc4;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chart-time-range button:hover {
+  color: #eef5ff;
+  border-color: rgba(88, 181, 239, 0.28);
+}
+
+.chart-time-range button.active {
+  color: #dff3ff;
+  background: rgba(88, 181, 239, 0.16);
+  border-color: rgba(88, 181, 239, 0.38);
+}
+
 .module-history-chart.small {
   min-height: 160px;
+}
+
+.module-history-chart.small .chart-render-area {
+  min-height: 120px;
 }
 
 .module-history-chart.small .mock-bar {
@@ -675,7 +721,8 @@ h2 {
 
 .solar-history-chart {
   display: flex;
-  align-items: end;
+  flex-direction: column;
+  align-items: stretch;
   gap: 7px;
   min-height: 284px;
   padding: 14px;

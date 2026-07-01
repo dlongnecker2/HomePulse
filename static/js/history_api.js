@@ -1,10 +1,22 @@
 window.HomePulseHistory = (() => {
-  async function fetchMetrics(moduleName, metricName, hours = 24) {
+  const RANGE_OPTIONS = [
+    ["1d", "1D"],
+    ["1w", "1W"],
+    ["1m", "1M"],
+    ["6m", "6M"],
+    ["1y", "1Y"],
+  ];
+
+  async function fetchMetrics(moduleName, metricName, hoursOrOptions = 24) {
+    const options = typeof hoursOrOptions === "object" && hoursOrOptions !== null
+      ? hoursOrOptions
+      : { hours: hoursOrOptions };
     const params = new URLSearchParams({
       module: moduleName,
       metric: metricName,
-      hours: String(hours),
     });
+    if (options.range) params.set("range", normalizeRange(options.range));
+    else params.set("hours", String(options.hours ?? 24));
     const response = await fetch(`/api/history/metrics?${params.toString()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`History request failed: ${response.status}`);
     return response.json();
@@ -22,10 +34,10 @@ window.HomePulseHistory = (() => {
 
   function renderLineChart(element, points, options = {}) {
     if (!element) return;
-    element.replaceChildren();
+    const target = renderTarget(element, options);
     const rows = normalizedPoints(points);
     if (rows.length < (options.minimumPoints || 2)) {
-      renderEmpty(element, options.emptyMessage || "Collecting data...");
+      renderEmpty(target, options.emptyMessage || "No data available for this range yet.");
       return;
     }
 
@@ -68,17 +80,17 @@ window.HomePulseHistory = (() => {
         return `<circle class="history-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3"><title>${escapeText(row.label)}: ${formatTick(row.value, options.digits ?? 2)} ${escapeText(options.unit || row.unit || "")}</title></circle>`;
       }).join("")}
     `;
-    element.appendChild(svg);
+    target.appendChild(svg);
   }
 
   function renderComparisonChart(element, series, options = {}) {
     if (!element) return;
-    element.replaceChildren();
+    const target = renderTarget(element, options);
     const first = normalizedPoints(series?.first);
     const second = normalizedPoints(series?.second);
     const length = Math.min(first.length, second.length);
     if (length < (options.minimumPoints || 2)) {
-      renderEmpty(element, options.emptyMessage || "Collecting data...");
+      renderEmpty(target, options.emptyMessage || "No data available for this range yet.");
       return;
     }
 
@@ -122,7 +134,58 @@ window.HomePulseHistory = (() => {
     const legend = document.createElement("div");
     legend.className = "comparison-legend";
     legend.innerHTML = `<span class="solar">${escapeText(options.firstLabel || "Solar")}</span><span class="ev">${escapeText(options.secondLabel || "EV Charging")}</span>`;
-    element.append(svg, legend);
+    target.append(svg, legend);
+  }
+
+  function renderTarget(element, options = {}) {
+    element.replaceChildren();
+    if (!options.onRangeChange) return element;
+    const activeRange = normalizeRange(options.range || selectedRange(element));
+    element.dataset.historyRange = activeRange;
+    const controls = document.createElement("div");
+    controls.className = "chart-time-range";
+    controls.setAttribute("role", "group");
+    controls.setAttribute("aria-label", "Chart time range");
+    RANGE_OPTIONS.forEach(([value, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.dataset.range = value;
+      button.className = value === activeRange ? "active" : "";
+      button.setAttribute("aria-pressed", String(value === activeRange));
+      button.addEventListener("click", () => {
+        if (value === selectedRange(element)) return;
+        setSelectedRange(element, value);
+        options.onRangeChange(value);
+      });
+      controls.appendChild(button);
+    });
+    const chartArea = document.createElement("div");
+    chartArea.className = "chart-render-area";
+    element.append(controls, chartArea);
+    return chartArea;
+  }
+
+  function selectedRange(element) {
+    if (!element) return "1d";
+    const key = rangeStorageKey(element);
+    return normalizeRange(sessionStorage.getItem(key) || element.dataset.historyRange || "1d");
+  }
+
+  function setSelectedRange(element, range) {
+    if (!element) return;
+    const normalized = normalizeRange(range);
+    element.dataset.historyRange = normalized;
+    sessionStorage.setItem(rangeStorageKey(element), normalized);
+  }
+
+  function rangeStorageKey(element) {
+    return `homepulse.history.range.${element.id || element.dataset.chartKey || "chart"}`;
+  }
+
+  function normalizeRange(range) {
+    const normalized = String(range || "1d").toLowerCase();
+    return RANGE_OPTIONS.some(([value]) => value === normalized) ? normalized : "1d";
   }
 
   function renderEmpty(element, message) {
@@ -165,7 +228,9 @@ window.HomePulseHistory = (() => {
   function shortTime(timestamp) {
     if (!timestamp) return "";
     const text = String(timestamp);
-    return text.length >= 16 ? text.slice(11, 16) : text;
+    if (text.length >= 16 && text.slice(11, 16) !== "00:00") return text.slice(11, 16);
+    if (text.length >= 10) return text.slice(5, 10);
+    return text;
   }
 
   function formatTick(value, digits) {
@@ -193,5 +258,8 @@ window.HomePulseHistory = (() => {
     renderBarChart,
     renderLineChart,
     renderComparisonChart,
+    selectedRange,
+    setSelectedRange,
+    normalizeRange,
   };
 })();

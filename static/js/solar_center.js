@@ -46,9 +46,11 @@ function setupSolarTabs() {
 
 async function refreshSolarCenterOverview() {
   try {
+    const chart = document.getElementById("solar-production-chart");
+    const range = window.HomePulseHistory?.selectedRange(chart) || "1d";
     const [overviewResponse, historyResponse, weatherResponse] = await Promise.all([
       fetch("/api/solar/overview", { cache: "no-store" }),
-      fetch("/api/history/metrics?module=solar&metric=current_production_kw&hours=24", { cache: "no-store" }),
+      fetch(`/api/history/metrics?module=solar&metric=current_production_kw&range=${encodeURIComponent(range)}`, { cache: "no-store" }),
       fetch("/api/weather/status", { cache: "no-store" }),
     ]);
     const overview = overviewResponse.ok ? await overviewResponse.json() : {};
@@ -56,7 +58,7 @@ async function refreshSolarCenterOverview() {
     const weather = weatherResponse.ok ? await weatherResponse.json() : {};
     const solar = overview.status || {};
     updateSolarOverview(solar);
-    renderSolarProductionChart(history.points || overview.production_chart || []);
+    renderSolarProductionChart(history.points || overview.production_chart || [], range);
     updateWeatherPanel(weather, solar);
     updateForecastPlaceholder(weather);
   } catch (error) {
@@ -101,7 +103,7 @@ function updateSolarBadges(status) {
   });
 }
 
-function renderSolarProductionChart(points) {
+function renderSolarProductionChart(points, range = "1d") {
   const chart = document.getElementById("solar-production-chart");
   if (!chart) return;
   if (window.HomePulseHistory?.renderLineChart) {
@@ -110,7 +112,9 @@ function renderSolarProductionChart(points) {
       yLabel: "kW",
       unit: "kW",
       xLabel: "Time",
-      emptyMessage: "Collecting solar history...",
+      range,
+      emptyMessage: "No data available for this range yet.",
+      onRangeChange: refreshSolarCenterOverview,
     });
     return;
   }

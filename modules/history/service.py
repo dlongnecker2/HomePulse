@@ -10,6 +10,14 @@ INVALID_VALUES = {"", "unknown", "unavailable", "none", "null", "nan", "--", "â€
 
 
 class HistoryService:
+    RANGE_SETTINGS = {
+        "1d": (timedelta(hours=24), "raw"),
+        "1w": (timedelta(days=7), "hour"),
+        "1m": (timedelta(days=30), "day"),
+        "6m": (timedelta(days=180), "day"),
+        "1y": (timedelta(days=365), "week"),
+    }
+
     def __init__(self, config, log):
         self.config = config
         self.log = log
@@ -68,6 +76,16 @@ class HistoryService:
             snapshot.to_dict()
             for snapshot in self.database.query_metrics(module, metric, start_time, end_time, limit)
         ]
+
+    def get_metrics_for_range(self, module, metric, range_key="1d", limit=None):
+        normalized_range = self.normalize_range(range_key)
+        duration, bucket = self.RANGE_SETTINGS[normalized_range]
+        end_time = datetime.now()
+        start_time = end_time - duration
+        points = self.get_metrics(module, metric, start_time=start_time, end_time=end_time, limit=limit)
+        if bucket == "raw":
+            return points, normalized_range, bucket
+        return self.aggregate_points(points, bucket), normalized_range, bucket
 
     def get_latest(self, module, metric):
         snapshot = self.database.latest_metric(module, metric)
@@ -266,3 +284,59 @@ class HistoryService:
         if period == "30d":
             return now - timedelta(days=30), now
         return now - timedelta(hours=24), now
+
+    @classmethod
+    def normalize_range(cls, range_key):
+        normalized = str(range_key or "1d").strip().lower()
+        return normalized if normalized in cls.RANGE_SETTINGS else "1d"
+
+    def aggregate_points(self, points, bucket):
+        buckets = {}
+        order = []
+        for point in points or []:
+            timestamp = self.parse_timestamp(point.get("timestamp"))
+            value = self.numeric_value(point.get("value"))
+            if timestamp is None or value is None:
+                continue
+            key = self.bucket_key(timestamp, bucket)
+            if key not in buckets:
+                buckets[key] = {
+                    "timestamp": key,
+                    "module": point.get("module"),
+                    "metric": point.get("metric"),
+                    "unit": point.get("unit"),
+                    "source": point.get("source"),
+                    "values": [],
+                }
+                order.append(key)
+            buckets[key]["values"].append(value)
+
+        aggregated = []
+        for key in order:
+            item = buckets[key]
+            values = item.pop("values")
+            item["value"] = sum(values) / len(values)
+            item["metadata"] = {"aggregation": bucket, "samples": len(values)}
+            aggregated.append(item)
+        return aggregated
+
+    @staticmethod
+    def parse_timestamp(value):
+        if not value:
+            return None
+        text = str(value).strip().replace("T", " ")
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def bucket_key(timestamp, bucket):
+        if bucket == "hour":
+            return timestamp.replace(minute=0, second=0, microsecond=0).isoformat(sep=" ")
+        if bucket == "week":
+            week_start = timestamp - timedelta(days=timestamp.weekday())
+            return week_start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(sep=" ")
+        return timestamp.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(sep=" ")

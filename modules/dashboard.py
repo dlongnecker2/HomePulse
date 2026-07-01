@@ -449,22 +449,37 @@ class Dashboard:
             if not module or not metric:
                 return jsonify({"error": "module and metric are required", "points": []}), 400
             try:
-                hours = float(request.args.get("hours", "24") or 24)
-            except ValueError:
-                hours = 24
-            try:
                 limit = request.args.get("limit")
-                start_time = datetime.now() - timedelta(hours=max(hours, 0.1))
-                points = self.application.history.get_metrics(
-                    module,
-                    metric,
-                    start_time=start_time,
-                    limit=int(limit) if limit else None,
-                )
+                normalized_limit = int(limit) if limit else None
+                range_key = request.args.get("range")
+                if range_key:
+                    points, normalized_range, aggregation = self.application.history.get_metrics_for_range(
+                        module,
+                        metric,
+                        range_key=range_key,
+                        limit=normalized_limit,
+                    )
+                    hours = None
+                else:
+                    try:
+                        hours = float(request.args.get("hours", "24") or 24)
+                    except ValueError:
+                        hours = 24
+                    start_time = datetime.now() - timedelta(hours=max(hours, 0.1))
+                    points = self.application.history.get_metrics(
+                        module,
+                        metric,
+                        start_time=start_time,
+                        limit=normalized_limit,
+                    )
+                    normalized_range = None
+                    aggregation = "raw"
                 return jsonify({
                     "module": module,
                     "metric": metric,
                     "hours": hours,
+                    "range": normalized_range,
+                    "aggregation": aggregation,
                     "points": points,
                     "count": len(points),
                 })
