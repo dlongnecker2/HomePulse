@@ -1,10 +1,12 @@
 import logging
 from pathlib import Path
 
+from version import APP_NAME
+
 
 def get_logger():
     Path("logs").mkdir(exist_ok=True)
-    logger = logging.getLogger("HomePulse")
+    logger = logging.getLogger(APP_NAME)
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)

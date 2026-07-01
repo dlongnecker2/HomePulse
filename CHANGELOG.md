@@ -1,12 +1,23 @@
 # Changelog
 
-## Upcoming v2.10.0 - Energy Center polish
+## v3.0.0
 
+- Added the new modular Vehicle Center for HomePulse.
+- Added Home Assistant vehicle integration using OnStar2MQTT-exposed entities.
+- Added a Vehicle Center dashboard card with battery, range, plug, charging, odometer, lifetime energy, efficiency, cost, and cost-per-mile values.
+- Added Vehicle Center settings for enablement, vehicle name, Home Assistant entity IDs, and electricity-rate override support.
+- Added the `/api/vehicle/status` endpoint for live vehicle telemetry.
+- Added lifetime efficiency calculations using odometer miles and lifetime energy.
+- Added lifetime electricity cost calculations using the shared Energy Center electricity rate or a Vehicle Center override.
+- Added cost per mile calculations for long-term EV operating visibility.
+- Improved the modular architecture with a dedicated `modules.vehicle` package and defensive manager/model boundaries.
 - Added ChargePoint live data polish for the HomePulse Energy Center dashboard card.
 - Improved Energy Center value formatting, loading states, missing-value handling, and active charging presentation.
 - Added Lab/About runtime visibility for HomePulse application identity, enabled modules, database status, and scheduler status.
 - Improved speed test failure handling with provider fallback and clearer provider-unavailable states.
 - Use HTTPS secure mode for Speedtest.net checks to avoid HTTP 403 failures.
+- Improved Vehicle Center formatting, last-updated display, partial-data states, and throttled refresh-failure logging.
+- Centralized HomePulse application name and version constants in `version.py`.
 
 ## v2.9.0
 

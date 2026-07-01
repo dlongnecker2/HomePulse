@@ -16,6 +16,8 @@ from modules.scheduler import Scheduler
 from modules.speedtest_engine import SpeedTestEngine
 from modules.status import StatusManager
 from modules.tapo_discovery import TapoDiscovery
+from modules.vehicle import VehicleManager
+from version import APP_NAME, APP_VERSION
 
 
 class Application:
@@ -29,6 +31,7 @@ class Application:
         self.router_rebooter = RouterRebooter(self.config, self.log)
         self.email_notifier = EmailNotifier(self.config, self.log, self.db)
         self.energy = EnergyManager(self.config, self.log)
+        self.vehicle = VehicleManager(self.config, self.log)
         self._last_energy_charging_state = None
         self.status = StatusManager()
         self.diagnostics = Diagnostics(self)
@@ -36,9 +39,9 @@ class Application:
 
     def startup_message(self):
         self.log.info("=" * 60)
-        self.log.info("HomePulse starting...")
+        self.log.info(f"{APP_NAME} starting...")
         self.log.info("Home Reliability Dashboard")
-        self.log.info(f"Version: {self.config.get('version', default='2.9.0')}")
+        self.log.info(f"Version: {APP_VERSION}")
         self.log.info("Dashboard: http://localhost:8080")
         self.log.info("Lab: http://localhost:8080/lab")
         self.log.info("Developer Console: http://localhost:8080/dev")
@@ -214,6 +217,7 @@ class Application:
         self.email_notifier.config = self.config
         self.email_notifier.db = self.db
         self.energy.config = self.config
+        self.vehicle.config = self.config
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.scheduler.remove_jobs_by_prefix("Maintenance Check")
         self.register_speedtest_jobs()
@@ -353,6 +357,29 @@ class Application:
             alerts["enabled"] = form.get("energy_alerts_enabled") == "on"
             alerts["notify_on_start"] = form.get("energy_alert_notify_on_start") == "on"
             alerts["notify_on_stop"] = form.get("energy_alert_notify_on_stop") == "on"
+        vehicle_form_keys = (
+            "vehicle_enabled",
+            "vehicle_name",
+            "vehicle_cost_per_kwh_override",
+            "vehicle_entity_battery_percent",
+            "vehicle_entity_ev_range",
+            "vehicle_entity_plug_state",
+            "vehicle_entity_charging_state",
+            "vehicle_entity_odometer",
+            "vehicle_entity_lifetime_energy",
+        )
+        if any(key in form for key in vehicle_form_keys):
+            vehicle = self.config.data.setdefault("vehicle", {})
+            vehicle["enabled"] = form.get("vehicle_enabled") == "on"
+            vehicle["name"] = form.get("vehicle_name", "2025 Chevrolet Equinox EV").strip()
+            vehicle["cost_per_kwh_override"] = form.get("vehicle_cost_per_kwh_override", "").strip()
+            entities = vehicle.setdefault("entities", {})
+            entities["battery_percent"] = form.get("vehicle_entity_battery_percent", "").strip()
+            entities["ev_range"] = form.get("vehicle_entity_ev_range", "").strip()
+            entities["plug_state"] = form.get("vehicle_entity_plug_state", "").strip()
+            entities["charging_state"] = form.get("vehicle_entity_charging_state", "").strip()
+            entities["odometer"] = form.get("vehicle_entity_odometer", "").strip()
+            entities["lifetime_energy"] = form.get("vehicle_entity_lifetime_energy", "").strip()
         self.config.save()
 
     def energy_status(self):
@@ -850,7 +877,7 @@ class Application:
         minimum_upload = self.config.get("minimum_upload_mbps", default=10)
 
         if not health_rows:
-            return ["Keep HomePulse running to build a 30-day reliability baseline."]
+            return [f"Keep {APP_NAME} running to build a 30-day reliability baseline."]
 
         latencies = [row["latency"] for row in health_rows if row["latency"] is not None]
         packet_losses = [row["packet_loss"] for row in health_rows if row["packet_loss"] is not None]

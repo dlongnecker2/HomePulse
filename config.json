@@ -1,5 +1,4 @@
 {
-  "version": "2.9.0",
   "database": "data/homepulse.db",
   "monitor_interval_minutes": 5,
   "speedtest_schedule_enabled": true,
@@ -143,6 +142,19 @@
       "miles_per_hour_added": "sensor.juice_box_cph50_miles_hour_added",
       "charge_cost": "sensor.juice_box_cph50_charge_cost",
       "network": "sensor.juice_box_cph50_network"
+    }
+  },
+  "vehicle": {
+    "enabled": true,
+    "name": "2025 Chevrolet Equinox EV",
+    "cost_per_kwh_override": "",
+    "entities": {
+      "battery_percent": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_charge_state",
+      "ev_range": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_range_mi",
+      "plug_state": "binary_sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_plug_state",
+      "charging_state": "binary_sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_charge_state",
+      "odometer": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_odo_read_mi",
+      "lifetime_energy": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_lifetime_energy_used"
     }
   }
 }

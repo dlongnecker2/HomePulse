@@ -1,4 +1,4 @@
-# HomePulse v2.6.0
+# HomePulse
 
 HomePulse is a home reliability dashboard.
 

@@ -7,6 +7,8 @@ from pathlib import Path
 from flask import Flask, redirect, render_template, request, url_for, jsonify
 from markupsafe import Markup, escape
 
+from version import APP_AUTHOR, APP_COPYRIGHT, APP_NAME, APP_VERSION
+
 
 class Dashboard:
     def __init__(self, application):
@@ -16,6 +18,10 @@ class Dashboard:
             template_folder="../templates",
             static_folder="../static",
         )
+        self.app.jinja_env.globals["app_name"] = APP_NAME
+        self.app.jinja_env.globals["app_version"] = APP_VERSION
+        self.app.jinja_env.globals["app_author"] = APP_AUTHOR
+        self.app.jinja_env.globals["app_copyright"] = APP_COPYRIGHT
         self.app.jinja_env.globals["render_test_button"] = self.render_test_button
         self.register_routes()
 
@@ -101,6 +107,7 @@ class Dashboard:
                 router_reboot=self.application.config.get("router_reboot", default={}),
                 email=self.application.config.get("email", default={}),
                 energy=self.application.energy.energy_config(),
+                vehicle=self.application.vehicle.vehicle_config(),
                 diagnostic_result=self.application.diagnostics.latest_result(),
                 error=error,
                 saved=request.args.get("saved") == "1",
@@ -212,6 +219,7 @@ class Dashboard:
                 return jsonify({
                     "enabled": False,
                     "configured": False,
+                    "availability": "unavailable",
                     "vehicle_name": "2025 Chevrolet Equinox EV",
                     "charger_name": "Juice Box",
                     "status": "Unavailable",
@@ -230,6 +238,30 @@ class Dashboard:
                     "estimated_miles_added": 0,
                     "last_update": None,
                     "message": f"Energy Center status unavailable: {exc}",
+                })
+
+        @self.app.route("/api/vehicle/status")
+        def api_vehicle_status():
+            try:
+                return jsonify(self.application.vehicle.get_status())
+            except Exception as exc:
+                self.application.log.exception(f"Vehicle API failed: {exc}")
+                return jsonify({
+                    "enabled": False,
+                    "configured": False,
+                    "availability": "unavailable",
+                    "vehicle_name": "2025 Chevrolet Equinox EV",
+                    "battery_percent": None,
+                    "range_mi": None,
+                    "plug_state": None,
+                    "charging_state": None,
+                    "odometer_mi": None,
+                    "lifetime_energy_kwh": None,
+                    "lifetime_efficiency_mi_per_kwh": None,
+                    "estimated_lifetime_cost": None,
+                    "cost_per_mile": None,
+                    "last_update": None,
+                    "message": f"Vehicle Center status unavailable: {exc}",
                 })
 
         @self.app.route("/api/charts/latency")
@@ -323,11 +355,12 @@ class Dashboard:
         }
 
     def _lab_about(self, status):
-        version = self._version_source()
         return {
             "application": [
-                ("Application Name", "HomePulse"),
-                ("Version", version),
+                ("Application Name", APP_NAME),
+                ("Version", APP_VERSION),
+                ("Author", APP_AUTHOR),
+                ("Copyright", APP_COPYRIGHT),
                 ("Environment", f"{sys.platform} / Python {sys.version.split()[0]}"),
                 ("Runtime", f"PID {os.getpid()}"),
                 ("Project Folder", str(Path.cwd())),
@@ -342,14 +375,6 @@ class Dashboard:
             ],
         }
 
-    def _version_source(self):
-        version_file = Path("VERSION")
-        if version_file.exists():
-            value = version_file.read_text(encoding="utf-8", errors="ignore").strip()
-            if value:
-                return value
-        return self.application.config.get("version", default="Unknown")
-
     def _lab_module_status(self, status):
         config = self.application.config
         recovery = config.get("router_reboot", default={})
@@ -362,6 +387,7 @@ class Dashboard:
             ("Home Assistant", self._enabled_label(bool(recovery.get("home_assistant_url") and recovery.get("recovery_entity_id")))),
             ("Email Alerts", self._enabled_label(email.get("email_notifications_enabled", email.get("enabled", False)))),
             ("Energy Center", self._enabled_label(energy.get("enabled", False))),
+            ("Vehicle Center", self._enabled_label(config.get("vehicle", "enabled", default=False))),
         ]
 
     @staticmethod

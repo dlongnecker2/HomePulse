@@ -117,6 +117,39 @@ function formatCurrency(value) {
   return `$${number.toFixed(2)}`;
 }
 
+function formatCurrencyPrecision(value, digits, emptyState = "—") {
+  const number = cleanNumber(value);
+  if (number === null) return emptyState;
+  return `$${number.toFixed(digits)}`;
+}
+
+function formatPercent(value, emptyState = "—") {
+  const number = cleanNumber(value);
+  if (number === null) return emptyState;
+  return `${number.toFixed(number % 1 === 0 ? 0 : 1)}%`;
+}
+
+function formatVehicleMetric(value, unit, digits = 1, emptyState = "—") {
+  const number = cleanNumber(value);
+  if (number === null) return emptyState;
+  return `${number.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })} ${unit}`;
+}
+
+function formatVehicleRate(value, emptyState = "—") {
+  const number = cleanNumber(value);
+  if (number === null) return emptyState;
+  return `$${number.toFixed(3)}/mi`;
+}
+
+function formatLastUpdated(value) {
+  const parsed = parseTimestamp(value);
+  if (!parsed) return "—";
+  return parsed.toLocaleString();
+}
+
 function cleanNumber(value) {
   if (value === null || value === undefined) return null;
   const text = String(value).trim().replace("$", "").replace(",", "");
@@ -234,11 +267,103 @@ function updateEnergyCardState(data, status) {
   else badge.classList.add("idle");
 }
 
+async function refreshVehicleStatus() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    setText("vehicle-message", "Updating Vehicle Center...");
+    const response = await fetch("/api/vehicle/status", { cache: "no-store", signal: controller.signal });
+    if (!response.ok) throw new Error(`Vehicle status returned ${response.status}`);
+    const data = await response.json();
+
+    const status = vehicleDisplayStatus(data);
+    setText("vehicle-name", data.vehicle_name);
+    setText("vehicle-battery", data.enabled ? formatPercent(data.battery_percent, "—") : "Disabled");
+    setText("vehicle-battery-table", formatPercent(data.battery_percent));
+    setText("vehicle-range", formatVehicleMetric(data.range_mi, "mi", 1));
+    setText("vehicle-plug-state", cleanText(data.plug_state, "—"));
+    setText("vehicle-charging-state", cleanText(data.charging_state, "—"));
+    setText("vehicle-odometer", formatVehicleMetric(data.odometer_mi, "mi", 1));
+    setText("vehicle-lifetime-energy", formatVehicleMetric(data.lifetime_energy_kwh, "kWh", 1));
+    setText("vehicle-efficiency", formatVehicleMetric(data.lifetime_efficiency_mi_per_kwh, "mi/kWh", 2));
+    setText("vehicle-lifetime-cost", formatCurrencyPrecision(data.estimated_lifetime_cost, 2));
+    setText("vehicle-cost-per-mile", formatVehicleRate(data.cost_per_mile));
+    setText("vehicle-last-updated", formatLastUpdated(data.last_update));
+    setText("vehicle-last-updated-card", `Last updated: ${formatLastUpdated(data.last_update)}`);
+    setText("vehicle-message", vehicleDisplayMessage(data));
+    updateVehicleCardState(data, status);
+    const setup = document.getElementById("vehicle-setup-message");
+    if (setup) {
+      setup.hidden = data.enabled && data.configured;
+      setup.querySelector("div").textContent = vehicleDisplayMessage(data);
+    }
+  } catch (error) {
+    setText("vehicle-battery", "Waiting for Data");
+    setText("vehicle-battery-table", "—");
+    setText("vehicle-range", "—");
+    setText("vehicle-plug-state", "—");
+    setText("vehicle-charging-state", "—");
+    setText("vehicle-odometer", "—");
+    setText("vehicle-lifetime-energy", "—");
+    setText("vehicle-efficiency", "—");
+    setText("vehicle-lifetime-cost", "—");
+    setText("vehicle-cost-per-mile", "—");
+    setText("vehicle-last-updated", "—");
+    setText("vehicle-last-updated-card", "Last updated: —");
+    setText("vehicle-message", "Vehicle Center data is taking longer than expected. The dashboard will keep trying.");
+    updateVehicleCardState({ enabled: true, configured: true, availability: "home_assistant_unavailable" }, "Home Assistant Unavailable");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function vehicleDisplayStatus(data) {
+  if (!data.enabled) return "Disabled";
+  if (!data.configured) return "Waiting for Data";
+  if (data.availability === "home_assistant_unavailable") return "Home Assistant Unavailable";
+  if (data.availability === "partial") return "Partial Data";
+  if (data.availability === "waiting" || data.message === "Waiting for vehicle data.") return "Waiting for Data";
+  return "Live";
+}
+
+function vehicleDisplayMessage(data) {
+  if (!data.enabled) return "Vehicle Center is disabled. Configure it in Settings when ready.";
+  if (!data.configured) return "Vehicle Center enabled - add Home Assistant entity IDs in Settings.";
+  if (data.availability === "home_assistant_unavailable") return "Home Assistant is unavailable for Vehicle Center.";
+  if (data.availability === "partial") return "Vehicle Center is receiving partial vehicle data.";
+  if (data.availability === "waiting" || data.message === "Waiting for vehicle data.") return "Waiting for vehicle data.";
+  return data.message || "Vehicle Center is receiving live vehicle data.";
+}
+
+function updateVehicleCardState(data, status) {
+  const card = document.querySelector(".vehicle-card");
+  const panel = document.querySelector(".vehicle-panel");
+  const badge = document.getElementById("vehicle-status-badge");
+  const live = status === "Live";
+  const partial = status === "Partial Data";
+  const waiting = status === "Waiting for Data" || status === "Home Assistant Unavailable";
+  [card, panel].forEach((element) => {
+    if (!element) return;
+    element.classList.toggle("is-live", live);
+    element.classList.toggle("is-partial", partial);
+    element.classList.toggle("is-offline", waiting);
+  });
+  if (!badge) return;
+  badge.textContent = status;
+  badge.className = "energy-status-badge";
+  if (!data?.enabled) badge.classList.add("disabled");
+  else if (waiting) badge.classList.add("offline");
+  else if (partial) badge.classList.add("partial");
+  else badge.classList.add("idle");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   refreshDashboardStatus();
   refreshEnergyStatus();
+  refreshVehicleStatus();
   setInterval(refreshDashboardStatus, 10000);
   setInterval(refreshEnergyStatus, 10000);
+  setInterval(refreshVehicleStatus, 10000);
   setInterval(() => {
     const startedAt = document.getElementById("started-at")?.textContent;
     setText("application-uptime", formatUptime(startedAt));

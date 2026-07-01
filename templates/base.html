@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}HomePulse{% endblock %}</title>
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
   {% block refresh %}{% endblock %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/homepulse.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -13,7 +13,7 @@
     <div class="brand-lockup">
       <div class="brand-mark">HP</div>
       <div>
-        <h1>HomePulse</h1>
+        <h1>{{ app_name }}</h1>
         <div class="subtitle">Home Reliability Dashboard</div>
       </div>
     </div>

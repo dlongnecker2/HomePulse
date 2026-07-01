@@ -312,7 +312,9 @@ h2 {
 }
 
 .energy-card,
-.energy-panel {
+.energy-panel,
+.vehicle-card,
+.vehicle-panel {
   position: relative;
   overflow: hidden;
 }
@@ -334,8 +336,40 @@ h2 {
 }
 
 .energy-card.is-offline,
-.energy-panel.is-offline {
+.energy-panel.is-offline,
+.vehicle-card.is-offline,
+.vehicle-panel.is-offline {
   border-color: rgba(183, 121, 31, 0.36);
+}
+
+.vehicle-card.is-live,
+.vehicle-panel.is-live {
+  border-color: rgba(37, 99, 168, 0.34);
+  background: linear-gradient(180deg, #ffffff 0%, #f3f8fd 100%);
+}
+
+.vehicle-card.is-live::before,
+.vehicle-panel.is-live::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--accent);
+}
+
+.vehicle-card.is-partial,
+.vehicle-panel.is-partial {
+  border-color: rgba(183, 121, 31, 0.34);
+  background: linear-gradient(180deg, #ffffff 0%, #fffaf0 100%);
+}
+
+.vehicle-card.is-partial::before,
+.vehicle-panel.is-partial::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--degraded);
 }
 
 .energy-status-badge {
@@ -368,6 +402,12 @@ h2 {
 }
 
 .energy-status-badge.offline {
+  color: var(--degraded);
+  background: #fff8eb;
+  border-color: #f0d8a8;
+}
+
+.energy-status-badge.partial {
   color: var(--degraded);
   background: #fff8eb;
   border-color: #f0d8a8;
@@ -694,14 +734,16 @@ h2 {
   font-weight: 650;
 }
 
-.energy-panel table td:first-child {
+.energy-panel table td:first-child,
+.vehicle-panel table td:first-child {
   color: var(--muted);
   font-size: 12px;
   font-weight: 760;
   text-transform: uppercase;
 }
 
-.energy-panel table td:last-child {
+.energy-panel table td:last-child,
+.vehicle-panel table td:last-child {
   font-weight: 740;
 }
 

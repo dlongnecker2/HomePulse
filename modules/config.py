@@ -30,6 +30,19 @@ DEFAULT_CONFIG = {
             "network": "sensor.juice_box_cph50_network",
         },
     },
+    "vehicle": {
+        "enabled": False,
+        "name": "2025 Chevrolet Equinox EV",
+        "cost_per_kwh_override": "",
+        "entities": {
+            "battery_percent": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_charge_state",
+            "ev_range": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_range_mi",
+            "plug_state": "binary_sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_plug_state",
+            "charging_state": "binary_sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_charge_state",
+            "odometer": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_odo_read_mi",
+            "lifetime_energy": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_lifetime_energy_used",
+        },
+    },
 }
 
 ENERGY_ENTITY_DEFAULTS = DEFAULT_CONFIG["energy"]["home_assistant_entities"]

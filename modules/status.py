@@ -1,15 +1,17 @@
 from datetime import datetime
 from threading import Lock
 
+from version import APP_NAME, APP_VERSION
+
 
 class StatusManager:
     def __init__(self):
         now = str(datetime.now())
         self._lock = Lock()
         self._status = {
-            "app_name": "HomePulse",
+            "app_name": APP_NAME,
             "app_subtitle": "Home Reliability Dashboard",
-            "version": "2.9.0",
+            "version": APP_VERSION,
             "internet": {
                 "status": "Starting",
                 "score": None,

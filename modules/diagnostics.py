@@ -4,6 +4,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from modules.power_adapters import HomeAssistantAdapter, KasaAdapter
+from version import APP_NAME
 
 
 @dataclass
@@ -246,7 +247,7 @@ class Diagnostics:
         )
 
     def log_write_test(self, timestamp, **kwargs):
-        self.log.info("HomePulse diagnostic log_write_test marker")
+        self.log.info(f"{APP_NAME} diagnostic log_write_test marker")
         return DiagnosticResult(
             "log_write_test",
             "PASS",

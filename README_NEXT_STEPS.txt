@@ -1,4 +1,4 @@
-HomePulse v2.6.0 next steps
+HomePulse next steps
 
 1. Run python router_monitor.py
 2. Open http://localhost:8080

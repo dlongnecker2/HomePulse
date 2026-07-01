@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}HomePulse Settings{% endblock %}
+{% block title %}{{ app_name }} Settings{% endblock %}
 {% block content %}
 <section class="dashboard-panel settings-panel">
   <div class="panel-heading">
@@ -21,6 +21,7 @@
   {% set notifications = email.get("notifications", {}) %}
   {% set energy_entities = energy.get("home_assistant_entities", {}) %}
   {% set energy_alerts = energy.get("alerts", {}) %}
+  {% set vehicle_entities = vehicle.get("entities", {}) %}
 
   <form method="post" action="{{ url_for('settings') }}" class="settings-form">
     <section class="settings-section safety-summary">
@@ -262,6 +263,39 @@
         <label class="field-label" for="energy-entity-battery-percent">Home Assistant battery percent entity</label>
         <input id="energy-entity-battery-percent" name="energy_entity_battery_percent" type="text" value="{{ energy_entities.get("battery_percent", "") }}" placeholder="sensor.equinox_ev_battery">
       </details>
+    </section>
+
+    <section class="settings-section">
+      <h3>Vehicle Center</h3>
+      <label class="option-row">
+        <input type="checkbox" name="vehicle_enabled" {% if vehicle.get("enabled") %}checked{% endif %}>
+        <span>Enable Vehicle Center</span>
+      </label>
+
+      <label class="field-label" for="vehicle-name">Vehicle Name</label>
+      <input id="vehicle-name" name="vehicle_name" type="text" value="{{ vehicle.get("name", "2025 Chevrolet Equinox EV") }}">
+
+      <label class="field-label" for="vehicle-cost-per-kwh-override">Electricity rate override</label>
+      <input id="vehicle-cost-per-kwh-override" name="vehicle_cost_per_kwh_override" type="number" min="0" step="0.01" value="{{ vehicle.get("cost_per_kwh_override", "") }}" placeholder="Uses Energy Center rate if blank">
+      <p class="settings-help">Leave blank to use the Energy Center cost per kWh.</p>
+
+      <label class="field-label" for="vehicle-entity-battery-percent">Home Assistant battery percent entity</label>
+      <input id="vehicle-entity-battery-percent" name="vehicle_entity_battery_percent" type="text" value="{{ vehicle_entities.get("battery_percent", "") }}" placeholder="sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_charge_state">
+
+      <label class="field-label" for="vehicle-entity-ev-range">Home Assistant range entity</label>
+      <input id="vehicle-entity-ev-range" name="vehicle_entity_ev_range" type="text" value="{{ vehicle_entities.get("ev_range", "") }}" placeholder="sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_range_mi">
+
+      <label class="field-label" for="vehicle-entity-plug-state">Home Assistant plug state entity</label>
+      <input id="vehicle-entity-plug-state" name="vehicle_entity_plug_state" type="text" value="{{ vehicle_entities.get("plug_state", "") }}" placeholder="binary_sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_plug_state">
+
+      <label class="field-label" for="vehicle-entity-charging-state">Home Assistant charging state entity</label>
+      <input id="vehicle-entity-charging-state" name="vehicle_entity_charging_state" type="text" value="{{ vehicle_entities.get("charging_state", "") }}" placeholder="binary_sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_ev_charge_state">
+
+      <label class="field-label" for="vehicle-entity-odometer">Home Assistant odometer entity</label>
+      <input id="vehicle-entity-odometer" name="vehicle_entity_odometer" type="text" value="{{ vehicle_entities.get("odometer", "") }}" placeholder="sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_odo_read_mi">
+
+      <label class="field-label" for="vehicle-entity-lifetime-energy">Home Assistant lifetime energy entity</label>
+      <input id="vehicle-entity-lifetime-energy" name="vehicle_entity_lifetime_energy" type="text" value="{{ vehicle_entities.get("lifetime_energy", "") }}" placeholder="sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_lifetime_energy_used">
     </section>
 
     <section class="settings-section">

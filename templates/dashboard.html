@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}HomePulse Dashboard{% endblock %}
+{% block title %}{{ app_name }} Dashboard{% endblock %}
 {% block content %}
 {% set health_status = internet.status %}
 {% set status_class = "healthy" %}
@@ -161,6 +161,18 @@
     <div id="energy-status" class="card-value no-wrap">Disabled</div>
     <div id="energy-message" class="card-foot">Energy Center is disabled. Configure it in Settings when ready.</div>
   </article>
+
+  <article class="status-card vehicle-card">
+    <div class="card-topline">
+      <div class="card-title">
+        <div class="card-label">Vehicle Center</div>
+      </div>
+      <span id="vehicle-status-badge" class="energy-status-badge disabled">Disabled</span>
+    </div>
+    <div id="vehicle-battery" class="card-value no-wrap">Disabled</div>
+    <div id="vehicle-message" class="card-foot">Vehicle Center is disabled. Configure it in Settings when ready.</div>
+    <div id="vehicle-last-updated-card" class="card-foot">Last updated: —</div>
+  </article>
 </section>
 
 <section class="dashboard-main">
@@ -208,6 +220,29 @@
       </table>
       <div id="energy-setup-message" class="rule-notes">
         <div>Energy Center is disabled. Add Home Assistant EV charging entities in Settings when ready.</div>
+      </div>
+    </section>
+
+    <section class="dashboard-panel compact-panel vehicle-panel">
+      <h2>Vehicle Center</h2>
+      <div class="energy-identity">
+        <strong id="vehicle-name">2025 Chevrolet Equinox EV</strong>
+        <span>OnStar2MQTT via Home Assistant</span>
+      </div>
+      <table>
+        <tr><td>Battery</td><td id="vehicle-battery-table">—</td></tr>
+        <tr><td>Estimated Range</td><td id="vehicle-range">—</td></tr>
+        <tr><td>Plugged In</td><td id="vehicle-plug-state">—</td></tr>
+        <tr><td>Charging</td><td id="vehicle-charging-state">—</td></tr>
+        <tr><td>Odometer</td><td id="vehicle-odometer">—</td></tr>
+        <tr><td>Lifetime Energy Used</td><td id="vehicle-lifetime-energy">—</td></tr>
+        <tr><td>Lifetime mi/kWh</td><td id="vehicle-efficiency">—</td></tr>
+        <tr><td>Estimated Lifetime Cost</td><td id="vehicle-lifetime-cost">—</td></tr>
+        <tr><td>Cost per Mile</td><td id="vehicle-cost-per-mile">—</td></tr>
+        <tr><td>Last Updated</td><td id="vehicle-last-updated">—</td></tr>
+      </table>
+      <div id="vehicle-setup-message" class="rule-notes">
+        <div>Vehicle Center is disabled. Add Home Assistant vehicle entities in Settings when ready.</div>
       </div>
     </section>
 
@@ -260,7 +295,7 @@
   </aside>
 </section>
 
-<p class="small">HomePulse v2.9.0 keeps this dashboard focused on live status; use History for chart-first analytics.</p>
+<p class="small">{{ app_name }} v{{ app_version }} keeps this dashboard focused on live status; use History for chart-first analytics.</p>
 <script src="{{ url_for('static', filename='js/dashboard_charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/live_dashboard.js') }}"></script>
 {% endblock %}

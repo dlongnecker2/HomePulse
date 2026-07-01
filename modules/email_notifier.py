@@ -3,6 +3,8 @@ import re
 from datetime import datetime
 from email.message import EmailMessage
 
+from version import APP_NAME, APP_VERSION
+
 
 def parse_recipients(value):
     if not value:
@@ -45,13 +47,13 @@ class EmailNotifier:
     def send_test_email(self, timestamp=None):
         timestamp = timestamp or str(datetime.now())
         settings = self.settings()
-        subject = "HomePulse Test Email"
+        subject = f"{APP_NAME} Test Email"
         body = (
-            "HomePulse SMTP configuration was verified.\n\n"
+            f"{APP_NAME} SMTP configuration was verified.\n\n"
             f"SMTP server: {settings.get('smtp_server')}\n"
             f"Timestamp: {timestamp}\n"
-            f"HomePulse version: {self.config.get('version', default='Unknown')}\n\n"
-            "This message confirms HomePulse can send email using the configured SMTP server.\n"
+            f"{APP_NAME} version: {APP_VERSION}\n\n"
+            f"This message confirms {APP_NAME} can send email using the configured SMTP server.\n"
         )
         return self.send_email(
             subject=subject,
@@ -64,7 +66,7 @@ class EmailNotifier:
     def send_recovery_started(self, context):
         if not self.notification_enabled("recovery_started"):
             return False
-        subject = "HomePulse Recovery Started"
+        subject = f"{APP_NAME} Recovery Started"
         body = self._recovery_body(
             title="Recovery started",
             context=context,
@@ -78,7 +80,7 @@ class EmailNotifier:
         if not self.notification_enabled(notification_type):
             return False
         status = "Succeeded" if result.internet_restored else "Failed"
-        subject = f"HomePulse Recovery {status}"
+        subject = f"{APP_NAME} Recovery {status}"
         body = self._recovery_body(
             title=f"Recovery {status.lower()}",
             context=context,
@@ -95,9 +97,9 @@ class EmailNotifier:
     def send_diagnostics_failed(self, diagnostic_result):
         if not self.notification_enabled("diagnostics_failed"):
             return False
-        subject = "HomePulse Diagnostics Failed"
+        subject = f"{APP_NAME} Diagnostics Failed"
         body = (
-            "A HomePulse diagnostic check failed.\n\n"
+            f"A {APP_NAME} diagnostic check failed.\n\n"
             f"Test: {diagnostic_result.test_name}\n"
             f"Status: {diagnostic_result.status}\n"
             f"Timestamp: {diagnostic_result.timestamp}\n"
@@ -108,7 +110,7 @@ class EmailNotifier:
     def send_daily_summary(self, summary):
         if not self.notification_enabled("daily_summary"):
             return False
-        subject = "HomePulse Daily Summary"
+        subject = f"{APP_NAME} Daily Summary"
         body = "\n".join(str(line) for line in summary)
         return self.send_email(subject, body, "email_daily_summary", "Daily summary email")
 

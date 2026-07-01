@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}HomePulse Lab{% endblock %}
+{% block title %}{{ app_name }} Lab{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
-    <h2>HomePulse Lab</h2>
+    <h2>{{ app_name }} Lab</h2>
     <p>Developer-only diagnostics for runtime health, scheduler state, SQLite data, and configuration.</p>
   </div>
   <div class="live-pill">Diagnostics snapshot {{ now.strftime("%H:%M:%S") }}</div>
@@ -17,7 +17,7 @@
   <div class="panel-heading compact">
     <div>
       <h2>About / System</h2>
-      <p>Read-only HomePulse runtime identity, enabled modules, and core health.</p>
+      <p>Read-only {{ app_name }} runtime identity, enabled modules, and core health.</p>
     </div>
   </div>
   <div class="lab-about-grid">
@@ -130,7 +130,7 @@
     <div class="panel-heading compact">
       <div>
         <h2>Manual Actions</h2>
-        <p>Actions reuse existing local HomePulse routines.</p>
+        <p>Actions reuse existing local {{ app_name }} routines.</p>
       </div>
     </div>
     <div class="lab-actions">
