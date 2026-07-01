@@ -358,9 +358,10 @@
       <select id="weather-provider" name="weather_provider">
         {% set weather_provider = weather_config.get("provider", "placeholder") %}
         <option value="placeholder" {% if weather_provider == "placeholder" %}selected{% endif %}>Placeholder / future provider</option>
+        <option value="open_meteo" {% if weather_provider == "open_meteo" %}selected{% endif %}>Open-Meteo (no API key)</option>
         <option value="manual" {% if weather_provider == "manual" %}selected{% endif %}>Manual placeholder</option>
       </select>
-      <p class="settings-help">Weather data is currently placeholder-ready. A live provider such as Open-Meteo, Weather.gov, or Home Assistant weather entities can be added later.</p>
+      <p class="settings-help">Open-Meteo requires latitude and longitude and does not require an API key. Weather.gov or Home Assistant weather entities can be added later.</p>
     </section>
 
     <section class="settings-section">

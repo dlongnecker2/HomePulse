@@ -8,6 +8,10 @@
 - Standardized main pages to the darker HomePulse theme.
 - Fixed Settings input readability and kept Solar/Vehicle dashboard cards on the dark card treatment in active states.
 - Added a Weather Center foundation with placeholder/manual configuration and `/api/weather/status`.
+- Added optional Open-Meteo live weather support using configured latitude/longitude with no API key required.
+- Added Dashboard and Solar Center Solar vs EV Charging comparison charts using Solar and Energy history snapshots.
+- Added Solar Center overlap summary metrics for solar/EV overlap, peak solar, peak charging, and estimated solar-supported charging.
+- Added weather metrics to History Service snapshots when Weather Center is enabled.
 - Connected Solar Center's Weather & Solar Correlation panel to the Weather Center status API with placeholder source labeling.
 - Added Internet Center history chart panels for latency, health score, packet loss, download, and upload history.
 - Added module-specific Energy, Vehicle, and Speed Test chart placeholders backed by the History Service when data exists.

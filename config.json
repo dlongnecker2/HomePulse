@@ -72,18 +72,18 @@
     "smtp_use_tls": false,
     "smtp_use_ssl": true,
     "smtp_from_email": "dennis@longnecker.me",
-    "smtp_to_email": "dennis@longnecker.me\r\ndlongnecker@comcast.net",
+    "smtp_to_email": "dennis@longnecker.me",
     "use_tls": false,
     "username": "dennis@longnecker.me",
     "password": "Beprepared12@",
     "from_address": "dennis@longnecker.me",
-    "to_address": "dennis@longnecker.me\r\ndlongnecker@comcast.net",
+    "to_address": "dennis@longnecker.me",
     "notifications": {
       "recovery_started": true,
       "recovery_success": true,
       "recovery_failed": true,
       "diagnostics_failed": true,
-      "daily_summary": false
+      "daily_summary": true
     }
   },
   "dashboard": {

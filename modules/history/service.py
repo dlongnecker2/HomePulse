@@ -107,6 +107,7 @@ class HistoryService:
         metrics.extend(self.collect_vehicle(application))
         metrics.extend(self.collect_energy(application))
         metrics.extend(self.collect_internet(application))
+        metrics.extend(self.collect_weather(application))
         return metrics
 
     def collect_solar(self, application):
@@ -167,6 +168,25 @@ class HistoryService:
         for metric, value, unit, source in mapping:
             rows.append({"module": "internet", "metric": metric, "value": value, "unit": unit, "source": source})
         return rows
+
+    def collect_weather(self, application):
+        weather_config = application.config.get("weather", default={})
+        if not weather_config.get("enabled", True):
+            return []
+        status = self.safe_status("weather", application.weather.get_status)
+        return self.metrics_from_status(
+            "weather",
+            status,
+            {
+                "temperature_f": ("temperature_f", "F"),
+                "cloud_cover_percent": ("cloud_cover_percent", "%"),
+                "sunshine_percent": ("sunshine_percent", "%"),
+                "humidity_percent": ("humidity_percent", "%"),
+                "wind_mph": ("wind_mph", "mph"),
+                "uv_index": ("uv_index", "index"),
+            },
+            source=status.get("source", "Weather Center") if status else "Weather Center",
+        )
 
     def safe_status(self, module, function):
         try:

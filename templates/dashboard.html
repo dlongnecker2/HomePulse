@@ -187,6 +187,16 @@
   </article>
 </section>
 
+<section class="dashboard-panel solar-ev-analytics-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Solar vs EV Charging Rate</h2>
+      <p>Compares Enphase solar production with ChargePoint charging power for the last 24 hours.</p>
+    </div>
+  </div>
+  <div id="dashboard-solar-ev-chart" class="comparison-chart"></div>
+</section>
+
 <section class="dashboard-main">
   <article class="dashboard-panel chart-panel">
     <div class="panel-heading">
@@ -308,6 +318,8 @@
 </section>
 
 <p class="small">{{ app_name }} v{{ app_version }} keeps this dashboard focused on live status; use History for chart-first analytics.</p>
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard_analytics.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/live_dashboard.js') }}"></script>
 {% endblock %}

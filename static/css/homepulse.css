@@ -541,6 +541,10 @@ h2 {
   grid-column: span 7;
 }
 
+.solar-ev-overlap-card {
+  grid-column: span 12;
+}
+
 .solar-weather-card,
 .solar-forecast-card,
 .solar-flow-card,
@@ -678,6 +682,76 @@ h2 {
   background: rgba(5, 11, 20, 0.42);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
+}
+
+.comparison-chart {
+  display: grid;
+  gap: 10px;
+  min-height: 284px;
+  padding: 14px;
+  background: rgba(5, 11, 20, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.comparison-svg {
+  width: 100%;
+  min-height: 220px;
+}
+
+.comparison-grid,
+.comparison-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.comparison-grid {
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 2;
+}
+
+.comparison-line {
+  stroke-width: 4;
+}
+
+.comparison-line.solar {
+  stroke: #f7d66a;
+}
+
+.comparison-line.ev {
+  stroke: #58b5ef;
+}
+
+.comparison-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #c7d4e5;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.comparison-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  margin-right: 7px;
+  vertical-align: middle;
+  border-radius: 999px;
+}
+
+.comparison-legend .solar::before {
+  background: #f7d66a;
+}
+
+.comparison-legend .ev::before {
+  background: #58b5ef;
+}
+
+.solar-overlap-metrics {
+  margin-top: 12px;
 }
 
 .solar-history-chart .mock-bar {
@@ -2167,6 +2241,7 @@ button:focus-visible {
 
   .solar-summary-card,
   .solar-chart-card,
+  .solar-ev-overlap-card,
   .solar-weather-card,
   .solar-forecast-card,
   .solar-flow-card,
@@ -2232,6 +2307,7 @@ button:focus-visible {
 
   .solar-summary-card,
   .solar-chart-card,
+  .solar-ev-overlap-card,
   .solar-weather-card,
   .solar-forecast-card,
   .solar-flow-card,

@@ -70,6 +70,23 @@
         <div id="solar-production-chart" class="solar-history-chart" data-placeholder="solar-history"></div>
       </article>
 
+      <article class="solar-glass-card solar-ev-overlap-card">
+        <div class="solar-card-heading">
+          <div>
+            <span class="solar-kicker">Solar + Charging</span>
+            <h3>Solar vs EV Charging</h3>
+          </div>
+          <span class="solar-data-pill">Last 24 hours</span>
+        </div>
+        <div id="solar-ev-overlap-chart" class="comparison-chart"></div>
+        <div class="solar-stat-grid solar-overlap-metrics">
+          <div><span>EV During Solar Window</span><strong id="solar-overlap-window">-</strong></div>
+          <div><span>Peak Solar Today</span><strong id="solar-overlap-peak-solar">-</strong></div>
+          <div><span>Peak EV Charging</span><strong id="solar-overlap-peak-ev">-</strong></div>
+          <div><span>Solar-Supported Charging</span><strong id="solar-overlap-kwh">-</strong></div>
+        </div>
+      </article>
+
       <article class="solar-glass-card solar-weather-card">
         <div class="solar-card-heading">
           <div>
@@ -78,6 +95,7 @@
           </div>
         </div>
         <div class="solar-weather-metrics" data-placeholder="weather-integration">
+          <div><span>Solar Now</span><strong id="solar-weather-production">Pending</strong></div>
           <div><span>Sunshine</span><strong id="solar-weather-sunshine">Pending</strong></div>
           <div><span>Cloud Cover</span><strong id="solar-weather-clouds">Pending</strong></div>
           <div><span>Temperature</span><strong id="solar-weather-temperature">Pending</strong></div>

@@ -1,4 +1,8 @@
+import json
 from datetime import datetime
+from urllib.parse import urlencode
+from urllib.error import URLError, HTTPError
+from urllib.request import urlopen
 
 
 WEATHER_DEFAULTS = {
@@ -14,6 +18,9 @@ class WeatherManager:
     def __init__(self, config, log):
         self.config = config
         self.log = log
+        self._last_status = None
+        self._last_warning_at = None
+        self._last_fetch_at = None
 
     def weather_config(self):
         configured = dict(self.config.get("weather", default={}))
@@ -33,8 +40,10 @@ class WeatherManager:
             )
 
         provider = str(weather.get("provider") or "placeholder").strip().lower()
-        if provider not in ("placeholder", "manual"):
+        if provider not in ("placeholder", "manual", "open_meteo"):
             provider = "placeholder"
+        if provider == "open_meteo":
+            return self.open_meteo_status(weather)
 
         # Placeholder/manual provider intentionally returns no measured weather values.
         return self.status_payload(
@@ -45,7 +54,94 @@ class WeatherManager:
             error=None,
         )
 
-    def status_payload(self, weather, enabled, condition, source, error):
+    def open_meteo_status(self, weather):
+        if self._last_status and self._last_fetch_at and (datetime.now() - self._last_fetch_at).total_seconds() < 600:
+            return dict(self._last_status)
+
+        latitude = self.parse_float(weather.get("latitude"))
+        longitude = self.parse_float(weather.get("longitude"))
+        if latitude is None or longitude is None:
+            return self.status_payload(
+                weather,
+                enabled=True,
+                condition="Latitude and longitude required",
+                source="Open-Meteo",
+                live_data=False,
+                error="Open-Meteo requires latitude and longitude.",
+            )
+
+        params = urlencode({
+            "latitude": latitude,
+            "longitude": longitude,
+            "current": "temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,uv_index",
+            "hourly": "temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,uv_index",
+            "daily": "sunrise,sunset,uv_index_max,temperature_2m_max,temperature_2m_min",
+            "temperature_unit": "fahrenheit",
+            "wind_speed_unit": "mph",
+            "timezone": "auto",
+            "forecast_days": 3,
+        })
+        url = f"https://api.open-meteo.com/v1/forecast?{params}"
+        try:
+            with urlopen(url, timeout=8) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+            status = self.open_meteo_payload(weather, payload)
+            self._last_status = status
+            self._last_fetch_at = datetime.now()
+            return status
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+            self.log_weather_warning(f"Open-Meteo weather fetch failed: {exc}")
+            if self._last_status:
+                cached = dict(self._last_status)
+                cached["live_data"] = False
+                cached["error"] = f"Using last known weather data: {exc}"
+                cached["source"] = "Open-Meteo cached"
+                return cached
+            return self.status_payload(
+                weather,
+                enabled=True,
+                condition="Weather unavailable",
+                source="Open-Meteo",
+                live_data=False,
+                error=str(exc),
+            )
+
+    def open_meteo_payload(self, weather, payload):
+        current = payload.get("current") or {}
+        daily = payload.get("daily") or {}
+        hourly = payload.get("hourly") or {}
+        cloud_cover = self.parse_float(current.get("cloud_cover"))
+        temperature = self.parse_float(current.get("temperature_2m"))
+        humidity = self.parse_float(current.get("relative_humidity_2m"))
+        wind = self.parse_float(current.get("wind_speed_10m"))
+        uv = self.parse_float(current.get("uv_index"))
+        sunshine = round(max(0, min(100, 100 - cloud_cover)), 1) if cloud_cover is not None else None
+        return {
+            "enabled": True,
+            "configured": True,
+            "location_name": weather.get("location_name") or "Home",
+            "latitude": weather.get("latitude") or None,
+            "longitude": weather.get("longitude") or None,
+            "provider": "open_meteo",
+            "live_data": True,
+            "temperature_f": temperature,
+            "condition": self.condition_from_clouds(cloud_cover),
+            "cloud_cover_percent": cloud_cover,
+            "sunshine_percent": sunshine,
+            "humidity_percent": humidity,
+            "wind_mph": wind,
+            "uv_index": uv,
+            "sunrise": self.first_value(daily.get("sunrise")),
+            "sunset": self.first_value(daily.get("sunset")),
+            "forecast_days": self.forecast_days(daily),
+            "hourly": self.hourly_rows(hourly),
+            "last_updated": str(datetime.now()),
+            "source": "Open-Meteo",
+            "error": None,
+            "message": "Weather Center is receiving live Open-Meteo data.",
+        }
+
+    def status_payload(self, weather, enabled, condition, source, error, live_data=False):
         return {
             "enabled": enabled,
             "configured": bool(enabled),
@@ -53,6 +149,7 @@ class WeatherManager:
             "latitude": weather.get("latitude") or None,
             "longitude": weather.get("longitude") or None,
             "provider": weather.get("provider") or "placeholder",
+            "live_data": live_data,
             "temperature_f": None,
             "condition": condition,
             "cloud_cover_percent": None,
@@ -62,8 +159,77 @@ class WeatherManager:
             "uv_index": None,
             "sunrise": None,
             "sunset": None,
+            "forecast_days": [],
+            "hourly": [],
             "last_updated": str(datetime.now()),
             "source": source,
             "error": error,
             "message": "Weather Center is ready for a live provider." if enabled else "Weather Center is disabled.",
         }
+
+    @staticmethod
+    def parse_float(value):
+        try:
+            if value in (None, ""):
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def condition_from_clouds(cloud_cover):
+        if cloud_cover is None:
+            return "Weather data received"
+        if cloud_cover <= 20:
+            return "Sunny"
+        if cloud_cover <= 60:
+            return "Partly cloudy"
+        return "Cloudy"
+
+    @staticmethod
+    def first_value(values):
+        if isinstance(values, list) and values:
+            return values[0]
+        return None
+
+    def forecast_days(self, daily):
+        times = daily.get("time") or []
+        rows = []
+        for index, day in enumerate(times[:3]):
+            rows.append({
+                "date": day,
+                "sunrise": self.item_at(daily.get("sunrise"), index),
+                "sunset": self.item_at(daily.get("sunset"), index),
+                "temperature_max_f": self.item_at(daily.get("temperature_2m_max"), index),
+                "temperature_min_f": self.item_at(daily.get("temperature_2m_min"), index),
+                "uv_index_max": self.item_at(daily.get("uv_index_max"), index),
+            })
+        return rows
+
+    def hourly_rows(self, hourly):
+        times = hourly.get("time") or []
+        rows = []
+        for index, timestamp in enumerate(times[:48]):
+            rows.append({
+                "timestamp": timestamp,
+                "temperature_f": self.item_at(hourly.get("temperature_2m"), index),
+                "cloud_cover_percent": self.item_at(hourly.get("cloud_cover"), index),
+                "humidity_percent": self.item_at(hourly.get("relative_humidity_2m"), index),
+                "wind_mph": self.item_at(hourly.get("wind_speed_10m"), index),
+                "uv_index": self.item_at(hourly.get("uv_index"), index),
+            })
+        return rows
+
+    @staticmethod
+    def item_at(values, index):
+        if isinstance(values, list) and index < len(values):
+            return values[index]
+        return None
+
+    def log_weather_warning(self, message, seconds=900):
+        now = datetime.now()
+        if not self._last_warning_at or (now - self._last_warning_at).total_seconds() >= seconds:
+            self._last_warning_at = now
+            self.log.warning(message)
+        else:
+            self.log.debug(message)
