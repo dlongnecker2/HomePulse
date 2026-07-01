@@ -1,5 +1,32 @@
 # Changelog
 
+## v3.2.0
+
+- Stabilized the v3.2 UI after Analytics and Solar Center updates.
+- Fixed the Solar overview API crash caused by a missing timestamp formatting helper.
+- Added functional left-navigation pages for Energy Center, Vehicle Center, Speed Test, Email Center, and About.
+- Standardized main pages to the darker HomePulse theme.
+- Added Internet Center history chart panels for latency, health score, packet loss, download, and upload history.
+- Added module-specific Energy, Vehicle, and Speed Test chart placeholders backed by the History Service when data exists.
+- Added the Analytics Foundation with a central History Service for Solar, Vehicle, Energy, and Internet metrics.
+- Added local SQLite metric snapshots in `data/homepulse_history.db` with timestamp, module, metric, value, unit, source, and optional metadata.
+- Added scheduled history snapshots with configurable enablement, interval, and retention settings.
+- Added `/api/history/latest`, `/api/history/metrics`, and `/api/history/summary` endpoints.
+- Added reusable frontend history chart helpers and connected the Solar Center production chart to real history data when available.
+- Added Lab visibility for History / Analytics status, database path, last snapshot, and recorded metric count.
+- Preserved placeholder panels for weather correlation, energy flow, and future analytics reports.
+
+## v3.1.0
+
+- Added the modular Solar Center using local Home Assistant Enphase Envoy entities.
+- Added `/api/solar/status` for live solar production, lifetime production, and estimated value data.
+- Added the dedicated Solar Center page with persistent left navigation and reusable secondary top tabs.
+- Implemented the Solar Center Overview tab with live solar summary data and placeholder-ready analytics panels.
+- Added Solar Center dashboard card, Settings configuration, and Lab module visibility.
+- Added electricity-rate sharing with Energy Center plus a Solar Center override.
+- Added defensive handling for unavailable, unknown, missing, or unparsable solar entity values.
+- Added throttled Solar Center refresh-failure logging.
+
 ## v3.0.0
 
 - Added the new modular Vehicle Center for HomePulse.
@@ -18,6 +45,7 @@
 - Use HTTPS secure mode for Speedtest.net checks to avoid HTTP 403 failures.
 - Improved Vehicle Center formatting, last-updated display, partial-data states, and throttled refresh-failure logging.
 - Centralized HomePulse application name and version constants in `version.py`.
+- Added configurable scheduled Speed Test frequency in Settings with runtime rescheduling.
 
 ## v2.9.0
 

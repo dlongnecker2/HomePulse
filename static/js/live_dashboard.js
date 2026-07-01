@@ -357,13 +357,131 @@ function updateVehicleCardState(data, status) {
   else badge.classList.add("idle");
 }
 
+function formatFixedMetric(value, unit, digits, emptyState = "—") {
+  const number = cleanNumber(value);
+  if (number === null) return emptyState;
+  return `${number.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })} ${unit}`;
+}
+
+function formatWholeMetric(value, unit, emptyState = "—") {
+  const number = cleanNumber(value);
+  if (number === null) return emptyState;
+  return `${Math.round(number).toLocaleString()} ${unit}`;
+}
+
+function formatRate(value, emptyState = "—") {
+  const number = cleanNumber(value);
+  if (number === null) return emptyState;
+  return `$${number.toFixed(2)}/kWh`;
+}
+
+async function refreshSolarStatus() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    setText("solar-message", "Updating Solar Center...");
+    const response = await fetch("/api/solar/status", { cache: "no-store", signal: controller.signal });
+    if (!response.ok) throw new Error(`Solar status returned ${response.status}`);
+    const data = await response.json();
+    const status = solarDisplayStatus(data);
+
+    setText("solar-name", data.name);
+    setText("solar-source", data.source ? `${data.source} via Home Assistant` : "Enphase Envoy via Home Assistant");
+    setText("solar-status-table", status);
+    setText("solar-current-production-card", data.enabled ? formatFixedMetric(data.current_production_kw, "kW", 2) : "Disabled");
+    setText("solar-current-production", formatFixedMetric(data.current_production_kw, "kW", 2));
+    setText("solar-current-production-w", formatWholeMetric(data.current_production_w, "W"));
+    setText("solar-production-today", formatFixedMetric(data.production_today_kwh, "kWh", 2));
+    setText("solar-production-last-seven-days", formatFixedMetric(data.production_last_7_days_kwh, "kWh", 2));
+    setText("solar-lifetime-mwh", formatFixedMetric(data.lifetime_production_mwh, "MWh", 3));
+    setText("solar-lifetime-kwh", formatFixedMetric(data.lifetime_production_kwh, "kWh", 3));
+    setText("solar-value-today", formatCurrencyPrecision(data.estimated_value_today, 2));
+    setText("solar-value-last-seven-days", formatCurrencyPrecision(data.estimated_value_last_7_days, 2));
+    setText("solar-lifetime-value", formatCurrencyPrecision(data.estimated_lifetime_value, 2));
+    setText("solar-value-per-hour", formatCurrencyPrecision(data.estimated_value_per_hour, 2));
+    setText("solar-electricity-rate", formatRate(data.electricity_rate));
+    setText("solar-ct-power", formatFixedMetric(data.production_ct_power_kw, "kW", 2));
+    setText("solar-ct-delivered", formatFixedMetric(data.production_ct_energy_delivered_mwh, "MWh", 3));
+    setText("solar-last-updated", formatLastUpdated(data.last_updated));
+    setText("solar-last-updated-card", `Last updated: ${formatLastUpdated(data.last_updated)}`);
+    setText("solar-message", solarDisplayMessage(data));
+    updateSolarCardState(data, status);
+    const setup = document.getElementById("solar-setup-message");
+    if (setup) {
+      setup.hidden = data.enabled && data.configured;
+      setup.querySelector("div").textContent = solarDisplayMessage(data);
+    }
+  } catch (error) {
+    setText("solar-current-production-card", "Waiting for Data");
+    setText("solar-current-production", "—");
+    setText("solar-current-production-w", "—");
+    setText("solar-production-today", "—");
+    setText("solar-production-last-seven-days", "—");
+    setText("solar-lifetime-mwh", "—");
+    setText("solar-lifetime-kwh", "—");
+    setText("solar-value-today", "—");
+    setText("solar-value-last-seven-days", "—");
+    setText("solar-lifetime-value", "—");
+    setText("solar-value-per-hour", "—");
+    setText("solar-electricity-rate", "—");
+    setText("solar-ct-power", "—");
+    setText("solar-ct-delivered", "—");
+    setText("solar-last-updated", "—");
+    setText("solar-last-updated-card", "Last updated: —");
+    setText("solar-message", "Solar Center data is taking longer than expected. The dashboard will keep trying.");
+    updateSolarCardState({ enabled: true, configured: true, status: "Unknown" }, "Unknown");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function solarDisplayStatus(data) {
+  if (!data.enabled) return "Disabled";
+  if (!data.configured) return "Unknown";
+  return data.status || "Unknown";
+}
+
+function solarDisplayMessage(data) {
+  if (!data.enabled) return "Solar Center is disabled. Configure it in Settings when ready.";
+  if (!data.configured) return "Solar Center enabled - add Home Assistant Enphase Envoy entity IDs in Settings.";
+  if (data.error && data.status === "Unknown") return data.error;
+  return data.message || "Solar Center is receiving Enphase Envoy data.";
+}
+
+function updateSolarCardState(data, status) {
+  const card = document.querySelector(".solar-card");
+  const panel = document.querySelector(".solar-panel");
+  const badge = document.getElementById("solar-status-badge");
+  const producing = status === "Producing";
+  const standby = status === "Standby / Night";
+  const unknown = status === "Unknown";
+  [card, panel].forEach((element) => {
+    if (!element) return;
+    element.classList.toggle("is-producing", producing);
+    element.classList.toggle("is-standby", standby);
+    element.classList.toggle("is-offline", unknown);
+  });
+  if (!badge) return;
+  badge.textContent = status;
+  badge.className = "energy-status-badge";
+  if (!data?.enabled) badge.classList.add("disabled");
+  else if (producing) badge.classList.add("charging");
+  else if (standby) badge.classList.add("idle");
+  else badge.classList.add("offline");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   refreshDashboardStatus();
   refreshEnergyStatus();
   refreshVehicleStatus();
+  refreshSolarStatus();
   setInterval(refreshDashboardStatus, 10000);
   setInterval(refreshEnergyStatus, 10000);
   setInterval(refreshVehicleStatus, 10000);
+  setInterval(refreshSolarStatus, 10000);
   setInterval(() => {
     const startedAt = document.getElementById("started-at")?.textContent;
     setText("application-uptime", formatUptime(startedAt));

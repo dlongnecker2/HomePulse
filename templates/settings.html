@@ -22,6 +22,8 @@
   {% set energy_entities = energy.get("home_assistant_entities", {}) %}
   {% set energy_alerts = energy.get("alerts", {}) %}
   {% set vehicle_entities = vehicle.get("entities", {}) %}
+  {% set solar_entities = solar.get("entities", {}) %}
+  {% set history_config = config.get("history", default={}) %}
 
   <form method="post" action="{{ url_for('settings') }}" class="settings-form">
     <section class="settings-section safety-summary">
@@ -296,6 +298,89 @@
 
       <label class="field-label" for="vehicle-entity-lifetime-energy">Home Assistant lifetime energy entity</label>
       <input id="vehicle-entity-lifetime-energy" name="vehicle_entity_lifetime_energy" type="text" value="{{ vehicle_entities.get("lifetime_energy", "") }}" placeholder="sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_lifetime_energy_used">
+    </section>
+
+    <section class="settings-section">
+      <h3>Solar Center</h3>
+      <label class="option-row">
+        <input type="checkbox" name="solar_enabled" {% if solar.get("enabled") %}checked{% endif %}>
+        <span>Enable Solar Center</span>
+      </label>
+
+      <label class="field-label" for="solar-name">Solar display name</label>
+      <input id="solar-name" name="solar_name" type="text" value="{{ solar.get("name", "Solar Center") }}">
+
+      <label class="field-label" for="solar-cost-per-kwh-override">Electricity rate override</label>
+      <input id="solar-cost-per-kwh-override" name="solar_cost_per_kwh_override" type="number" min="0" step="0.01" value="{{ solar.get("cost_per_kwh_override", "") }}" placeholder="Uses Energy Center rate if blank">
+      <p class="settings-help">Leave blank to use the Energy Center cost per kWh.</p>
+
+      <label class="field-label" for="solar-entity-current-power-production">Current production entity</label>
+      <input id="solar-entity-current-power-production" name="solar_entity_current_power_production" type="text" value="{{ solar_entities.get("current_power_production", "") }}" placeholder="sensor.envoy_202306120601_current_power_production">
+
+      <label class="field-label" for="solar-entity-energy-production-today">Today production entity</label>
+      <input id="solar-entity-energy-production-today" name="solar_entity_energy_production_today" type="text" value="{{ solar_entities.get("energy_production_today", "") }}" placeholder="sensor.envoy_202306120601_energy_production_today">
+
+      <label class="field-label" for="solar-entity-energy-production-last-seven-days">Last 7 days production entity</label>
+      <input id="solar-entity-energy-production-last-seven-days" name="solar_entity_energy_production_last_seven_days" type="text" value="{{ solar_entities.get("energy_production_last_seven_days", "") }}" placeholder="sensor.envoy_202306120601_energy_production_last_seven_days">
+
+      <label class="field-label" for="solar-entity-lifetime-energy-production">Lifetime production entity</label>
+      <input id="solar-entity-lifetime-energy-production" name="solar_entity_lifetime_energy_production" type="text" value="{{ solar_entities.get("lifetime_energy_production", "") }}" placeholder="sensor.envoy_202306120601_lifetime_energy_production">
+
+      <details class="advanced-settings">
+        <summary>Optional Enphase diagnostics</summary>
+
+        <label class="field-label" for="solar-entity-production-ct-power">Production CT power entity</label>
+        <input id="solar-entity-production-ct-power" name="solar_entity_production_ct_power" type="text" value="{{ solar_entities.get("production_ct_power", "") }}" placeholder="sensor.envoy_202306120601_production_ct_power">
+
+        <label class="field-label" for="solar-entity-production-ct-energy-delivered">Production CT delivered entity</label>
+        <input id="solar-entity-production-ct-energy-delivered" name="solar_entity_production_ct_energy_delivered" type="text" value="{{ solar_entities.get("production_ct_energy_delivered", "") }}" placeholder="sensor.envoy_202306120601_production_ct_energy_delivered">
+      </details>
+    </section>
+
+    <section class="settings-section">
+      <h3>Speed Test</h3>
+
+      <label class="field-label" for="speedtest-interval-minutes">Speed Test Frequency</label>
+      <select id="speedtest-interval-minutes" name="speedtest_interval_minutes">
+        {% set speedtest_interval = config.get("speedtest_interval_minutes", default=60) %}
+        <option value="30" {% if speedtest_interval == 30 %}selected{% endif %}>30 minutes</option>
+        <option value="60" {% if speedtest_interval == 60 %}selected{% endif %}>1 hour</option>
+        <option value="120" {% if speedtest_interval == 120 %}selected{% endif %}>2 hours</option>
+        <option value="240" {% if speedtest_interval == 240 %}selected{% endif %}>4 hours</option>
+        <option value="360" {% if speedtest_interval == 360 %}selected{% endif %}>6 hours</option>
+        <option value="720" {% if speedtest_interval == 720 %}selected{% endif %}>12 hours</option>
+        <option value="1440" {% if speedtest_interval == 1440 %}selected{% endif %}>24 hours</option>
+      </select>
+      <p class="settings-help">Scheduled speed tests use this interval. Invalid values fall back to 60 minutes.</p>
+    </section>
+
+    <section class="settings-section">
+      <h3>History / Analytics</h3>
+      <label class="option-row">
+        <input type="checkbox" name="history_enabled" {% if history_config.get("enabled", true) %}checked{% endif %}>
+        <span>Enable history collection</span>
+      </label>
+
+      <label class="field-label" for="history-snapshot-interval-minutes">Snapshot interval minutes</label>
+      <input
+        id="history-snapshot-interval-minutes"
+        name="history_snapshot_interval_minutes"
+        type="number"
+        min="1"
+        max="1440"
+        value="{{ history_config.get("snapshot_interval_minutes", 5) }}"
+      >
+
+      <label class="field-label" for="history-retention-days">Retention days</label>
+      <input
+        id="history-retention-days"
+        name="history_retention_days"
+        type="number"
+        min="1"
+        max="3650"
+        value="{{ history_config.get("retention_days", 365) }}"
+      >
+      <p class="settings-help">History snapshots feed Solar, Vehicle, Energy, and Internet analytics. Invalid values use safe defaults.</p>
     </section>
 
     <section class="settings-section">

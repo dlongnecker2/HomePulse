@@ -9,7 +9,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <header class="top-bar">
+  <div class="app-shell">
+  <aside class="top-bar app-sidebar">
     <div class="brand-lockup">
       <div class="brand-mark">HP</div>
       <div>
@@ -18,18 +19,22 @@
       </div>
     </div>
     <nav class="primary-nav" aria-label="Primary navigation">
-      <a href="{{ url_for('home') }}">Dashboard</a>
-      <a href="{{ url_for('internet') }}">Internet</a>
-      <a href="{{ url_for('history') }}">History</a>
-      <a href="{{ url_for('reports') }}">Reports</a>
-      <a href="{{ url_for('settings') }}">Settings</a>
-      <a href="{{ url_for('lab') }}">Lab</a>
-      <a href="{{ url_for('dev') }}">Developer Console</a>
-      <a href="{{ url_for('logs') }}">Logs</a>
+      <a href="{{ url_for('home') }}" class="{% if request.endpoint == 'home' %}active{% endif %}">Dashboard</a>
+      <a href="{{ url_for('internet') }}" class="{% if request.endpoint == 'internet' %}active{% endif %}">Internet Center</a>
+      <a href="{{ url_for('energy_center') }}" class="{% if request.endpoint == 'energy_center' %}active{% endif %}">Energy Center</a>
+      <a href="{{ url_for('solar') }}" class="{% if request.endpoint == 'solar' %}active{% endif %}">Solar Center</a>
+      <a href="{{ url_for('vehicle_center') }}" class="{% if request.endpoint == 'vehicle_center' %}active{% endif %}">Vehicle Center</a>
+      <a href="{{ url_for('speed_test_center') }}" class="{% if request.endpoint == 'speed_test_center' %}active{% endif %}">Speed Test</a>
+      <a href="{{ url_for('email_center') }}" class="{% if request.endpoint == 'email_center' %}active{% endif %}">Email Center</a>
+      <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">Settings</a>
+      <a href="{{ url_for('lab') }}" class="{% if request.endpoint == 'lab' %}active{% endif %}">Lab</a>
+      <a href="{{ url_for('logs') }}" class="{% if request.endpoint == 'logs' %}active{% endif %}">Logs</a>
+      <a href="{{ url_for('about') }}" class="{% if request.endpoint == 'about' %}active{% endif %}">About</a>
     </nav>
-  </header>
+  </aside>
   <main class="page-shell">
     {% block content %}{% endblock %}
   </main>
+  </div>
 </body>
 </html>

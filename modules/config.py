@@ -5,6 +5,26 @@ from pathlib import Path
 CONFIG_FILE = Path("config.json")
 
 DEFAULT_CONFIG = {
+    "speedtest_interval_minutes": 60,
+    "history": {
+        "enabled": True,
+        "snapshot_interval_minutes": 5,
+        "retention_days": 365,
+        "database": "data/homepulse_history.db",
+    },
+    "solar": {
+        "enabled": False,
+        "name": "Solar Center",
+        "cost_per_kwh_override": "",
+        "entities": {
+            "current_power_production": "sensor.envoy_202306120601_current_power_production",
+            "energy_production_today": "sensor.envoy_202306120601_energy_production_today",
+            "energy_production_last_seven_days": "sensor.envoy_202306120601_energy_production_last_seven_days",
+            "lifetime_energy_production": "sensor.envoy_202306120601_lifetime_energy_production",
+            "production_ct_power": "sensor.envoy_202306120601_production_ct_power",
+            "production_ct_energy_delivered": "sensor.envoy_202306120601_production_ct_energy_delivered",
+        },
+    },
     "energy": {
         "enabled": False,
         "vehicle_name": "2025 Chevrolet Equinox EV",
@@ -52,7 +72,9 @@ class Config:
     def __init__(self):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             self.data = json.load(f)
+        had_speedtest_interval = "speedtest_interval_minutes" in self.data
         changed = self._merge_defaults(self.data, DEFAULT_CONFIG)
+        changed = self._normalize_speedtest_interval(had_speedtest_interval) or changed
         changed = self._fill_blank_energy_entities() or changed
         if changed:
             self.save()
@@ -91,3 +113,63 @@ class Config:
                 entities[key] = value
                 changed = True
         return changed
+
+    def _normalize_speedtest_interval(self, had_speedtest_interval=True):
+        current = self.data.get("speedtest_interval_minutes")
+        if not had_speedtest_interval:
+            current = self._legacy_speedtest_interval()
+        normalized = self.valid_speedtest_interval(current)
+        changed = False
+        if self.data.get("speedtest_interval_minutes") != normalized:
+            self.data["speedtest_interval_minutes"] = normalized
+            changed = True
+        if self.data.get("speedtest_schedule_enabled", True):
+            mode = self.speedtest_mode_for_interval(normalized)
+            times = self.speedtest_times_for_minutes(normalized)
+            if self.data.get("speedtest_schedule_mode") != mode:
+                self.data["speedtest_schedule_mode"] = mode
+                changed = True
+            if self.data.get("speedtest_times") != times:
+                self.data["speedtest_times"] = times
+                changed = True
+        return changed
+
+    def _legacy_speedtest_interval(self):
+        mode = self.data.get("speedtest_schedule_mode")
+        mode_intervals = {
+            "every_30_minutes": 30,
+            "every_1_hour": 60,
+            "every_3_hours": 180,
+            "every_6_hours": 360,
+        }
+        if mode in mode_intervals:
+            return mode_intervals[mode]
+        return 60
+
+    @staticmethod
+    def valid_speedtest_interval(value):
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            return 60
+        if minutes < 30 or minutes > 1440:
+            return 60
+        return minutes
+
+    @staticmethod
+    def speedtest_mode_for_interval(interval):
+        return {
+            30: "every_30_minutes",
+            60: "every_1_hour",
+            180: "every_3_hours",
+            360: "every_6_hours",
+        }.get(interval, "interval")
+
+    @staticmethod
+    def speedtest_times_for_minutes(interval):
+        times = []
+        for minute_of_day in range(0, 24 * 60, interval):
+            hour = minute_of_day // 60
+            minute = minute_of_day % 60
+            times.append(f"{hour:02d}:{minute:02d}")
+        return times

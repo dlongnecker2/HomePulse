@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Email Center{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Email Center</h2>
+    <p>SMTP notification status, recipients, and recent alert activity.</p>
+  </div>
+</section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>Email Notification Status</h2>
+    <table>
+      <tr><td>Alerts Enabled</td><td>{{ "Enabled" if email_status.enabled else "Disabled" }}</td></tr>
+      <tr><td>SMTP Server</td><td>{{ email_status.server or "Not configured" }}</td></tr>
+      <tr><td>SMTP Port</td><td>{{ email_status.port }}</td></tr>
+      <tr><td>From Email</td><td>{{ email_status.from_email or "Not configured" }}</td></tr>
+      <tr><td>Recipients</td><td>{{ email_status.recipients or "Not configured" }}</td></tr>
+    </table>
+  </article>
+
+  <article class="dashboard-panel">
+    <h2>Recent Email Activity</h2>
+    {% if email_status.last_event %}
+    <table>
+      <tr><td>Last Event</td><td>{{ email_status.last_event.event_type }}</td></tr>
+      <tr><td>Time</td><td>{{ email_status.last_event.timestamp }}</td></tr>
+      <tr><td>Message</td><td>{{ email_status.last_event.message }}</td></tr>
+    </table>
+    {% else %}
+    <div class="placeholder-panel">
+      <strong>No email events yet</strong>
+      <span>Use Send Test Email in Settings to verify the SMTP path.</span>
+    </div>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

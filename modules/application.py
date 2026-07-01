@@ -8,11 +8,13 @@ from modules.database import Database
 from modules.diagnostics import Diagnostics
 from modules.email_notifier import EmailNotifier
 from modules.energy import EnergyManager
+from modules.history import HistoryService
 from modules.logger import get_logger
 from modules.network import NetworkMonitor
 from modules.port_check import check_dashboard_port
 from modules.router_rebooter import RouterRebooter
 from modules.scheduler import Scheduler
+from modules.solar import SolarManager
 from modules.speedtest_engine import SpeedTestEngine
 from modules.status import StatusManager
 from modules.tapo_discovery import TapoDiscovery
@@ -32,6 +34,8 @@ class Application:
         self.email_notifier = EmailNotifier(self.config, self.log, self.db)
         self.energy = EnergyManager(self.config, self.log)
         self.vehicle = VehicleManager(self.config, self.log)
+        self.solar = SolarManager(self.config, self.log)
+        self.history = HistoryService(self.config, self.log)
         self._last_energy_charging_state = None
         self.status = StatusManager()
         self.diagnostics = Diagnostics(self)
@@ -52,6 +56,7 @@ class Application:
         self.startup_message()
         self.db.initialize()
         self.log.info("Database initialized successfully")
+        self.history.initialize()
         self.load_latest_speedtest()
         self.load_latest_health_check()
         self.register_jobs()
@@ -92,22 +97,20 @@ class Application:
             function=self.health_check,
         )
         self.register_speedtest_jobs()
+        self.register_history_job()
         self.register_maintenance_job()
 
     def register_speedtest_jobs(self):
         if not self.config.get("speedtest_schedule_enabled", default=True):
             self.log.info("Scheduled speed tests are disabled")
             return
-        speedtest_times = self.configured_speedtest_times()
-        for time_value in speedtest_times:
-            hour, minute = self.parse_clock_time(time_value)
-            self.scheduler.daily(
-                name=f"Scheduled Speed Test {time_value}",
-                hour=hour,
-                minute=minute,
-                function=self.daily_speed_test,
-            )
-        self.log.info(f"Scheduled speed tests: {', '.join(speedtest_times)}")
+        interval = self.speedtest_interval_minutes()
+        self.scheduler.every_minutes(
+            name="Scheduled Speed Test",
+            minutes=interval,
+            function=self.daily_speed_test,
+        )
+        self.log.info(f"Scheduled speed test interval: {interval} minutes")
 
     def register_maintenance_job(self):
         time_value = self.config.get("reboot_window_time", default="04:00")
@@ -119,6 +122,18 @@ class Application:
             function=self.maintenance_check,
         )
         self.log.info(f"Maintenance check scheduled for {time_value}")
+
+    def register_history_job(self):
+        if not self.config.get("history", "enabled", default=True):
+            self.log.info("History snapshots are disabled")
+            return
+        interval = self.history.snapshot_interval_minutes()
+        self.scheduler.every_minutes(
+            name="History Snapshot",
+            minutes=interval,
+            function=self.history_snapshot,
+        )
+        self.log.info(f"History snapshot interval: {interval} minutes")
 
     def configured_speedtest_times(self):
         default_times = self.default_speedtest_times()
@@ -173,6 +188,61 @@ class Application:
         return "custom"
 
     def speedtest_schedule_label(self):
+        if not self.config.get("speedtest_schedule_enabled", default=True):
+            return "Disabled"
+        interval = self.speedtest_interval_minutes()
+        if interval == 30:
+            return "Every 30 minutes"
+        if interval % 60 == 0:
+            hours = interval // 60
+            return f"Every {hours} hour" if hours == 1 else f"Every {hours} hours"
+        return f"Every {interval} minutes"
+
+    def speedtest_interval_minutes(self):
+        return self.valid_speedtest_interval(self.config.get("speedtest_interval_minutes", default=60))
+
+    @staticmethod
+    def valid_speedtest_interval(value):
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            return 60
+        if minutes < 30 or minutes > 1440:
+            return 60
+        return minutes
+
+    def speedtest_interval_label(self):
+        return self.speedtest_schedule_label()
+
+    def update_speedtest_interval(self, interval_minutes):
+        interval = self.valid_speedtest_interval(interval_minutes)
+        self.config.data["speedtest_interval_minutes"] = interval
+        self.config.data["speedtest_schedule_enabled"] = True
+        self.config.data["speedtest_schedule_mode"] = self.speedtest_mode_for_interval(interval)
+        self.config.data["speedtest_times"] = self.speedtest_times_for_minutes(interval)
+        self.config.save()
+        self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
+        self.register_speedtest_jobs()
+
+    @staticmethod
+    def speedtest_mode_for_interval(interval):
+        return {
+            30: "every_30_minutes",
+            60: "every_1_hour",
+            180: "every_3_hours",
+            360: "every_6_hours",
+        }.get(interval, "interval")
+
+    @staticmethod
+    def speedtest_times_for_minutes(interval):
+        times = []
+        for minute_of_day in range(0, 24 * 60, interval):
+            hour = minute_of_day // 60
+            minute = minute_of_day % 60
+            times.append(f"{hour:02d}:{minute:02d}")
+        return times
+
+    def legacy_speedtest_schedule_label(self):
         labels = {
             "disabled": "Disabled",
             "every_30_minutes": "Every 30 minutes",
@@ -190,6 +260,12 @@ class Application:
             "every_3_hours": lambda: self.speedtest_times_for_interval(3),
             "every_6_hours": lambda: self.speedtest_times_for_interval(6),
         }
+        mode_intervals = {
+            "every_30_minutes": 30,
+            "every_1_hour": 60,
+            "every_3_hours": 180,
+            "every_6_hours": 360,
+        }
 
         if mode == "disabled":
             self.config.data["speedtest_schedule_enabled"] = False
@@ -199,10 +275,12 @@ class Application:
             self.config.data["speedtest_schedule_enabled"] = True
             self.config.data["speedtest_schedule_mode"] = "custom"
             self.config.data["speedtest_times"] = times
+            self.config.data["speedtest_interval_minutes"] = 60
         elif mode in mode_times:
             self.config.data["speedtest_schedule_enabled"] = True
             self.config.data["speedtest_schedule_mode"] = mode
             self.config.data["speedtest_times"] = mode_times[mode]()
+            self.config.data["speedtest_interval_minutes"] = mode_intervals[mode]
         else:
             raise ValueError("Unknown speed test schedule mode")
 
@@ -218,18 +296,47 @@ class Application:
         self.email_notifier.db = self.db
         self.energy.config = self.config
         self.vehicle.config = self.config
+        self.solar.config = self.config
+        self.history.refresh_config(self.config)
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
+        self.scheduler.remove_jobs_by_prefix("History Snapshot")
         self.scheduler.remove_jobs_by_prefix("Maintenance Check")
         self.register_speedtest_jobs()
+        self.register_history_job()
         self.register_maintenance_job()
         self.log.info("Configuration reloaded from config.json")
 
     def update_settings(self, form):
+        if "speedtest_interval_minutes" in form:
+            self.update_speedtest_interval(form.get("speedtest_interval_minutes"))
         if "speedtest_schedule_mode" in form:
             self.update_speedtest_schedule(
                 form.get("speedtest_schedule_mode", "every_30_minutes"),
                 form.get("custom_speedtest_times", ""),
             )
+        history_form_keys = (
+            "history_enabled",
+            "history_snapshot_interval_minutes",
+            "history_retention_days",
+        )
+        if any(key in form for key in history_form_keys):
+            history = self.config.data.setdefault("history", {})
+            history["enabled"] = form.get("history_enabled") == "on"
+            history["snapshot_interval_minutes"] = self.history.valid_positive_int(
+                form.get("history_snapshot_interval_minutes"),
+                default=5,
+                minimum=1,
+                maximum=1440,
+            )
+            history["retention_days"] = self.history.valid_positive_int(
+                form.get("history_retention_days"),
+                default=365,
+                minimum=1,
+                maximum=3650,
+            )
+            self.history.refresh_config(self.config)
+            self.scheduler.remove_jobs_by_prefix("History Snapshot")
+            self.register_history_job()
 
         router_reboot = self.config.data.setdefault("router_reboot", {})
         device_type = form.get(
@@ -380,7 +487,43 @@ class Application:
             entities["charging_state"] = form.get("vehicle_entity_charging_state", "").strip()
             entities["odometer"] = form.get("vehicle_entity_odometer", "").strip()
             entities["lifetime_energy"] = form.get("vehicle_entity_lifetime_energy", "").strip()
+        solar_form_keys = (
+            "solar_enabled",
+            "solar_name",
+            "solar_cost_per_kwh_override",
+            "solar_entity_current_power_production",
+            "solar_entity_energy_production_today",
+            "solar_entity_energy_production_last_seven_days",
+            "solar_entity_lifetime_energy_production",
+            "solar_entity_production_ct_power",
+            "solar_entity_production_ct_energy_delivered",
+        )
+        if any(key in form for key in solar_form_keys):
+            solar = self.config.data.setdefault("solar", {})
+            solar["enabled"] = form.get("solar_enabled") == "on"
+            solar["name"] = form.get("solar_name", "Solar Center").strip() or "Solar Center"
+            solar["cost_per_kwh_override"] = form.get("solar_cost_per_kwh_override", "").strip()
+            entities = solar.setdefault("entities", {})
+            entities["current_power_production"] = form.get("solar_entity_current_power_production", "").strip()
+            entities["energy_production_today"] = form.get("solar_entity_energy_production_today", "").strip()
+            entities["energy_production_last_seven_days"] = form.get(
+                "solar_entity_energy_production_last_seven_days", ""
+            ).strip()
+            entities["lifetime_energy_production"] = form.get("solar_entity_lifetime_energy_production", "").strip()
+            entities["production_ct_power"] = form.get("solar_entity_production_ct_power", "").strip()
+            entities["production_ct_energy_delivered"] = form.get(
+                "solar_entity_production_ct_energy_delivered", ""
+            ).strip()
         self.config.save()
+
+    def history_snapshot(self):
+        try:
+            count = self.history.snapshot(self)
+            self.history.prune_old_data(self.history.retention_days())
+            return count
+        except Exception as exc:
+            self.log.exception(f"History snapshot failed: {exc}")
+            return 0
 
     def energy_status(self):
         status = self.energy.get_status()
@@ -429,6 +572,13 @@ class Application:
             return None
 
         now = now or datetime.now()
+        for job in self.scheduler.jobs:
+            if job["name"] == "Scheduled Speed Test" and job["type"] == "interval":
+                last_run = job.get("last_run")
+                if last_run is None:
+                    return now
+                return last_run + job["interval"]
+
         candidates = []
         for time_value in self.configured_speedtest_times():
             hour, minute = self.parse_clock_time(time_value)

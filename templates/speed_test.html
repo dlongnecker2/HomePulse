@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Speed Test{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Speed Test</h2>
+    <p>Scheduled throughput checks and provider status.</p>
+  </div>
+</section>
+
+<section class="center-grid">
+  <article class="dashboard-panel center-hero-panel">
+    <h2>Latest Speed Test</h2>
+    <div class="center-hero-value">{{ speedtest.download if speedtest.download is not none else "-" }}{% if speedtest.download is not none %} Mbps{% endif %}</div>
+    <div class="center-metric-grid">
+      <div><span>Download</span><strong>{{ speedtest.download if speedtest.download is not none else "-" }}{% if speedtest.download is not none %} Mbps{% endif %}</strong></div>
+      <div><span>Upload</span><strong>{{ speedtest.upload if speedtest.upload is not none else "-" }}{% if speedtest.upload is not none %} Mbps{% endif %}</strong></div>
+      <div><span>Ping</span><strong>{{ speedtest.ping if speedtest.ping is not none else "-" }}{% if speedtest.ping is not none %} ms{% endif %}</strong></div>
+      <div><span>Status</span><strong>{{ speedtest.status or "Unavailable" }}</strong></div>
+      <div><span>Frequency</span><strong>{{ speedtest.schedule_label or "Schedule disabled" }}</strong></div>
+      <div><span>Last Run</span><strong>{{ speedtest.last_run or "Never" }}</strong></div>
+      <div><span>Next Run</span><strong>{{ speedtest.next_run or "Schedule disabled" }}</strong></div>
+      <div><span>Server</span><strong>{{ speedtest.server or "Unavailable" }}</strong></div>
+    </div>
+  </article>
+
+  <article class="dashboard-panel center-chart-panel">
+    <div class="panel-heading compact">
+      <div>
+        <h2>Speed Test History</h2>
+        <p>Download and upload history from scheduled speed test snapshots.</p>
+      </div>
+    </div>
+    <div class="mini-chart-stack">
+      <div><h3>Download</h3><div id="speed-download-chart" class="module-history-chart small"></div></div>
+      <div><h3>Upload</h3><div id="speed-upload-chart" class="module-history-chart small"></div></div>
+    </div>
+  </article>
+</section>
+
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/center_pages.js') }}"></script>
+{% endblock %}

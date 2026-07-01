@@ -68,6 +68,51 @@ class Dashboard:
                 now=datetime.now(),
             )
 
+        @self.app.route("/energy")
+        def energy_center():
+            return render_template("energy.html", now=datetime.now())
+
+        @self.app.route("/solar")
+        def solar():
+            return render_template(
+                "solar.html",
+                solar=self.application.solar.solar_config(),
+                now=datetime.now(),
+            )
+
+        @self.app.route("/vehicle")
+        def vehicle_center():
+            return render_template("vehicle.html", now=datetime.now())
+
+        @self.app.route("/speed-test")
+        def speed_test_center():
+            status = self._dashboard_payload()
+            return render_template(
+                "speed_test.html",
+                status=status,
+                speedtest=status["speedtest"],
+                now=datetime.now(),
+            )
+
+        @self.app.route("/email")
+        def email_center():
+            return render_template(
+                "email.html",
+                email=self.application.config.get("email", default={}),
+                email_status=self._email_center_status(),
+                now=datetime.now(),
+            )
+
+        @self.app.route("/about")
+        def about():
+            status = self._dashboard_payload()
+            return render_template(
+                "about.html",
+                about=self._lab_about(status),
+                overview=self._lab_overview(status),
+                now=datetime.now(),
+            )
+
         @self.app.route("/history")
         def history():
             status = self._dashboard_payload()
@@ -108,6 +153,7 @@ class Dashboard:
                 email=self.application.config.get("email", default={}),
                 energy=self.application.energy.energy_config(),
                 vehicle=self.application.vehicle.vehicle_config(),
+                solar=self.application.solar.solar_config(),
                 diagnostic_result=self.application.diagnostics.latest_result(),
                 error=error,
                 saved=request.args.get("saved") == "1",
@@ -264,6 +310,130 @@ class Dashboard:
                     "message": f"Vehicle Center status unavailable: {exc}",
                 })
 
+        @self.app.route("/api/solar/status")
+        def api_solar_status():
+            try:
+                return jsonify(self.application.solar.get_status())
+            except Exception as exc:
+                self.application.log.exception(f"Solar API failed: {exc}")
+                return jsonify({
+                    "enabled": False,
+                    "configured": False,
+                    "name": "Solar Center",
+                    "status": "Unknown",
+                    "current_production_kw": None,
+                    "current_production_w": None,
+                    "production_today_kwh": None,
+                    "production_last_7_days_kwh": None,
+                    "lifetime_production_mwh": None,
+                    "lifetime_production_kwh": None,
+                    "production_ct_power_kw": None,
+                    "production_ct_energy_delivered_mwh": None,
+                    "estimated_value_today": None,
+                    "estimated_value_last_7_days": None,
+                    "estimated_lifetime_value": None,
+                    "estimated_value_per_hour": None,
+                    "electricity_rate": 0.13,
+                    "last_updated": None,
+                    "source": "Enphase Envoy",
+                    "error": f"Solar Center status unavailable: {exc}",
+                    "message": f"Solar Center status unavailable: {exc}",
+                })
+
+        @self.app.route("/api/solar/overview")
+        def api_solar_overview():
+            try:
+                status = self.application.solar.get_status()
+                return jsonify({
+                    "status": status,
+                    "production_chart": self._solar_history_production_chart(),
+                    "weather_correlation": self._solar_placeholder_weather(),
+                    "weather": {
+                        "sunshine_percent": None,
+                        "cloud_cover_percent": None,
+                        "temperature": None,
+                        "uv_index": None,
+                        "sunrise": None,
+                        "sunset": None,
+                        "message": "Weather integration is not configured yet.",
+                    },
+                })
+            except Exception as exc:
+                self.application.log.exception(f"Solar overview API failed: {exc}")
+                return jsonify({
+                    "status": {
+                        "enabled": False,
+                        "configured": False,
+                        "name": "Solar Center",
+                        "status": "Unknown",
+                        "error": f"Solar Center overview unavailable: {exc}",
+                    },
+                    "production_chart": [],
+                    "weather_correlation": [],
+                    "weather": {"message": "Weather integration is not configured yet."},
+                })
+
+        @self.app.route("/api/history/latest")
+        def api_history_latest():
+            try:
+                return jsonify({
+                    "enabled": self.application.history.enabled(),
+                    "database": str(self.application.history.database.path),
+                    "last_snapshot_time": self.application.history.last_snapshot_time,
+                    "metrics": self.application.history.get_latest_all(),
+                    "timestamp": str(datetime.now()),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"History latest API failed: {exc}")
+                return jsonify({"enabled": False, "metrics": [], "error": str(exc)}), 500
+
+        @self.app.route("/api/history/metrics")
+        def api_history_metrics():
+            module = request.args.get("module", "").strip()
+            metric = request.args.get("metric", "").strip()
+            if not module or not metric:
+                return jsonify({"error": "module and metric are required", "points": []}), 400
+            try:
+                hours = float(request.args.get("hours", "24") or 24)
+            except ValueError:
+                hours = 24
+            try:
+                limit = request.args.get("limit")
+                start_time = datetime.now() - timedelta(hours=max(hours, 0.1))
+                points = self.application.history.get_metrics(
+                    module,
+                    metric,
+                    start_time=start_time,
+                    limit=int(limit) if limit else None,
+                )
+                return jsonify({
+                    "module": module,
+                    "metric": metric,
+                    "hours": hours,
+                    "points": points,
+                    "count": len(points),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"History metrics API failed: {exc}")
+                return jsonify({"module": module, "metric": metric, "points": [], "error": str(exc)}), 500
+
+        @self.app.route("/api/history/summary")
+        def api_history_summary():
+            module = request.args.get("module", "").strip()
+            period = request.args.get("period", "today").strip() or "today"
+            if not module:
+                return jsonify({"error": "module is required", "metrics": []}), 400
+            try:
+                return jsonify({
+                    "module": module,
+                    "period": period,
+                    "metrics": self.application.history.get_summary(module, period=period),
+                    "timestamp": str(datetime.now()),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"History summary API failed: {exc}")
+                return jsonify({"module": module, "period": period, "metrics": [], "error": str(exc)}), 500
+
         @self.app.route("/api/charts/latency")
         def api_latency_chart():
             rows = self.application.db.health_history(limit=96)
@@ -335,6 +505,52 @@ class Dashboard:
             f'<button type="button" class="diagnostic-test-button" data-endpoint="{action}">{label}</button>'
         )
 
+    def _solar_history_production_chart(self):
+        start_time = datetime.now() - timedelta(hours=24)
+        points = self.application.history.get_metrics(
+            "solar",
+            "current_production_kw",
+            start_time=start_time,
+            limit=288,
+        )
+        return [
+            {
+                "label": self._short_time(point["timestamp"]),
+                "timestamp": point["timestamp"],
+                "value": point["value"],
+                "unit": point.get("unit") or "kW",
+                "mock": False,
+            }
+            for point in points
+        ]
+
+    @staticmethod
+    def _short_time(timestamp):
+        if not timestamp:
+            return ""
+        if isinstance(timestamp, datetime):
+            return timestamp.strftime("%H:%M")
+        text = str(timestamp).strip()
+        if not text:
+            return ""
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(text[:26], fmt).strftime("%H:%M")
+            except ValueError:
+                continue
+        if len(text) >= 16:
+            return text[11:16]
+        return text
+
+    @staticmethod
+    def _solar_placeholder_weather():
+        return [
+            {"label": "Sun", "solar": 82, "weather": 76, "mock": True},
+            {"label": "Clouds", "solar": 18, "weather": 24, "mock": True},
+            {"label": "Heat", "solar": 64, "weather": 68, "mock": True},
+            {"label": "UV", "solar": 71, "weather": 70, "mock": True},
+        ]
+
     def _lab_payload(self):
         status = self._dashboard_payload()
         return {
@@ -343,6 +559,7 @@ class Dashboard:
             "scheduler": self._lab_scheduler(status),
             "logs": self._recent_log_entries(),
             "database": self._database_counts(),
+            "history": self._history_status(),
             "reboot": self._reboot_status(),
             "reboot_events": self._recent_reboot_events(),
             "configuration": self._flatten_config(self.application.config.data),
@@ -352,6 +569,21 @@ class Dashboard:
                 ("run_maintenance", "Run Maintenance"),
                 ("reload_config", "Reload Configuration"),
             ],
+        }
+
+    def _email_center_status(self):
+        email = self.application.config.get("email", default={})
+        events = [
+            event for event in self.application.db.recent_events(limit=50)
+            if str(event.get("event_type", "")).startswith("email")
+        ]
+        return {
+            "enabled": email.get("email_notifications_enabled", email.get("enabled", False)),
+            "server": email.get("smtp_server", email.get("smtp_host", "")),
+            "port": email.get("smtp_port", 587),
+            "from_email": email.get("smtp_from_email", email.get("from_address", "")),
+            "recipients": email.get("smtp_to_email", email.get("to_address", "")),
+            "last_event": events[0] if events else None,
         }
 
     def _lab_about(self, status):
@@ -380,6 +612,8 @@ class Dashboard:
         recovery = config.get("router_reboot", default={})
         email = config.get("email", default={})
         energy = config.get("energy", default={})
+        solar = config.get("solar", default={})
+        history = config.get("history", default={})
         return [
             ("Dashboard", self._enabled_label(config.get("dashboard", "enabled", default=True))),
             ("Internet Health", self._enabled_label(bool(config.get("monitor_interval_minutes", default=0)))),
@@ -388,6 +622,8 @@ class Dashboard:
             ("Email Alerts", self._enabled_label(email.get("email_notifications_enabled", email.get("enabled", False)))),
             ("Energy Center", self._enabled_label(energy.get("enabled", False))),
             ("Vehicle Center", self._enabled_label(config.get("vehicle", "enabled", default=False))),
+            ("Solar Center", self._enabled_label(solar.get("enabled", False))),
+            ("History / Analytics", self._enabled_label(history.get("enabled", True))),
         ]
 
     @staticmethod
@@ -488,6 +724,24 @@ class Dashboard:
             ("Outages", len(self.application.outage_runs(health_rows))),
             ("Router Reboots", self.application.db.count_events("router_reboot")),
             ("Events", self.application.db.count_events()),
+        ]
+
+    def _history_status(self):
+        history = self.application.history
+        try:
+            count = history.database.count_metrics()
+            latest = history.database.latest_timestamp()
+        except Exception as exc:
+            count = "Unavailable"
+            latest = f"Unavailable: {exc}"
+        return [
+            ("Enabled", "Yes" if history.enabled() else "No"),
+            ("Database Path", str(history.database.path)),
+            ("Snapshot Interval", f"{history.snapshot_interval_minutes()} minutes"),
+            ("Retention", f"{history.retention_days()} days"),
+            ("Last Snapshot", history.last_snapshot_time or latest or "None recorded"),
+            ("Last Snapshot Count", history.last_snapshot_count),
+            ("Metrics Recorded", count),
         ]
 
     def _recent_log_entries(self):

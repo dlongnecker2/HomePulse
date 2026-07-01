@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Vehicle Center{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Vehicle Center</h2>
+    <p>OnStar2MQTT and Home Assistant vehicle telemetry for the Equinox EV.</p>
+  </div>
+  <span id="vehicle-page-status" class="energy-status-badge disabled">Loading</span>
+</section>
+
+<section class="center-grid">
+  <article class="dashboard-panel center-hero-panel">
+    <div class="panel-heading compact">
+      <div>
+        <h2 id="vehicle-page-name">Vehicle</h2>
+        <p id="vehicle-page-message">Vehicle Center is loading.</p>
+      </div>
+    </div>
+    <div class="center-hero-value" id="vehicle-page-battery">-</div>
+    <div class="center-metric-grid">
+      <div><span>Range</span><strong id="vehicle-page-range">-</strong></div>
+      <div><span>Plug State</span><strong id="vehicle-page-plug">-</strong></div>
+      <div><span>Charging State</span><strong id="vehicle-page-charging">-</strong></div>
+      <div><span>Odometer</span><strong id="vehicle-page-odometer">-</strong></div>
+      <div><span>Lifetime Energy</span><strong id="vehicle-page-energy">-</strong></div>
+      <div><span>Efficiency</span><strong id="vehicle-page-efficiency">-</strong></div>
+      <div><span>Cost per Mile</span><strong id="vehicle-page-cost-mile">-</strong></div>
+      <div><span>Last Updated</span><strong id="vehicle-page-updated">-</strong></div>
+    </div>
+  </article>
+
+  <article class="dashboard-panel center-chart-panel">
+    <div class="panel-heading compact">
+      <div>
+        <h2>Vehicle History</h2>
+        <p>Battery, range, and efficiency trends appear as history snapshots collect.</p>
+      </div>
+    </div>
+    <div class="mini-chart-stack">
+      <div><h3>Battery %</h3><div id="vehicle-battery-chart" class="module-history-chart small"></div></div>
+      <div><h3>Range</h3><div id="vehicle-range-chart" class="module-history-chart small"></div></div>
+      <div><h3>Efficiency</h3><div id="vehicle-efficiency-chart" class="module-history-chart small"></div></div>
+    </div>
+  </article>
+</section>
+
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/center_pages.js') }}"></script>
+{% endblock %}

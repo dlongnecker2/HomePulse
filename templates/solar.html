@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Solar Center{% endblock %}
+{% block content %}
+<section class="module-shell solar-module" data-module="solar-center">
+  <header class="module-header">
+    <div>
+      <div class="eyebrow">Local Enphase Envoy</div>
+      <h2>&#9728; Solar Center</h2>
+      <p>Solar production, system health, weather context, energy flow, and EV charging analytics.</p>
+    </div>
+    <span id="solar-module-status-badge" class="energy-status-badge disabled">Disabled</span>
+  </header>
+
+  {% set solar_tabs = [
+    ("overview", "Overview"),
+    ("enphase", "Enphase Details"),
+    ("production", "Production Details"),
+    ("weather", "Weather"),
+    ("energy-flow", "Energy Flow"),
+    ("ev-performance", "EV Performance"),
+    ("reports", "Reports")
+  ] %}
+  <nav class="secondary-nav" aria-label="Solar Center sections">
+    {% for tab_id, label in solar_tabs %}
+    <button type="button" class="secondary-tab {% if loop.first %}active{% endif %}" data-solar-tab="{{ tab_id }}">{{ label }}</button>
+    {% endfor %}
+  </nav>
+
+  <section id="solar-tab-overview" class="secondary-panel active" data-solar-panel="overview">
+    <div class="solar-dashboard-grid">
+      <article class="solar-glass-card solar-summary-card">
+        <div class="solar-card-heading">
+          <div>
+            <span class="solar-kicker">Solar Summary</span>
+            <h3 id="solar-module-name">Solar Center</h3>
+          </div>
+          <span id="solar-overview-status" class="energy-status-badge disabled">Disabled</span>
+        </div>
+        <div class="solar-hero-row">
+          <div>
+            <span>Current Production</span>
+            <strong id="solar-overview-current">-</strong>
+          </div>
+          <div>
+            <span>Status</span>
+            <strong id="solar-summary-status">Disabled</strong>
+          </div>
+        </div>
+        <div class="solar-stat-grid">
+          <div><span>Today</span><strong id="solar-overview-today">-</strong></div>
+          <div><span>Last 7 Days</span><strong id="solar-overview-week">-</strong></div>
+          <div><span>Lifetime</span><strong id="solar-overview-lifetime">-</strong></div>
+          <div><span>Value Today</span><strong id="solar-overview-value">-</strong></div>
+        </div>
+        <p id="solar-overview-message" class="solar-card-note">Solar Center is loading.</p>
+        <div class="solar-meta-row">
+          <span>Source: <strong id="solar-overview-source">Enphase Envoy</strong></span>
+          <span>Last updated: <strong id="solar-overview-updated">-</strong></span>
+        </div>
+      </article>
+
+      <article class="solar-glass-card solar-chart-card">
+        <div class="solar-card-heading">
+          <div>
+            <span class="solar-kicker">History</span>
+            <h3>Today's Solar Production</h3>
+          </div>
+          <span class="solar-data-pill">Live history</span>
+        </div>
+        <div id="solar-production-chart" class="solar-history-chart" data-placeholder="solar-history"></div>
+      </article>
+
+      <article class="solar-glass-card solar-weather-card">
+        <div class="solar-card-heading">
+          <div>
+            <span class="solar-kicker">Awaiting Weather Integration</span>
+            <h3>Weather & Solar Correlation</h3>
+          </div>
+        </div>
+        <div class="solar-weather-metrics" data-placeholder="weather-integration">
+          <div><span>Sunshine</span><strong id="solar-weather-sunshine">Pending</strong></div>
+          <div><span>Cloud Cover</span><strong id="solar-weather-clouds">Pending</strong></div>
+          <div><span>Temperature</span><strong id="solar-weather-temperature">Pending</strong></div>
+          <div><span>UV Index</span><strong id="solar-weather-uv">Pending</strong></div>
+        </div>
+        <p class="solar-card-note">Weather correlation is reserved for the future weather service.</p>
+      </article>
+
+      <article class="solar-glass-card solar-forecast-card">
+        <div class="solar-card-heading">
+          <div>
+            <span class="solar-kicker">Forecast Placeholder</span>
+            <h3>Solar Forecast</h3>
+          </div>
+        </div>
+        <div class="solar-forecast-list" data-placeholder="solar-forecast">
+          <div><span>Sunrise / Sunset</span><strong id="solar-forecast-sun">Awaiting weather service</strong></div>
+          <div><span>Expected Production</span><strong id="solar-forecast-production">Pending</strong></div>
+          <div><span>Cloud Impact</span><strong id="solar-forecast-cloud">Pending</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card solar-flow-card">
+        <div class="solar-card-heading">
+          <div>
+            <span class="solar-kicker">Live Flow</span>
+            <h3>Energy Flow</h3>
+          </div>
+        </div>
+        <div class="solar-flow-map">
+          <div class="flow-node source"><span>Solar</span><strong id="solar-flow-production">-</strong></div>
+          <div class="flow-lines" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="flow-destinations">
+            <div class="flow-node"><span>Home</span><strong id="solar-flow-home">Not enough data</strong></div>
+            <div class="flow-node"><span>EV</span><strong id="solar-flow-ev">-</strong></div>
+            <div class="flow-node"><span>Grid</span><strong id="solar-flow-grid">Not enough data</strong></div>
+          </div>
+        </div>
+        <p id="solar-flow-message" class="solar-card-note">Energy flow will become richer when home and grid data are available.</p>
+      </article>
+
+      <article class="solar-glass-card solar-ev-card">
+        <div class="solar-card-heading">
+          <div>
+            <span class="solar-kicker">EV Context</span>
+            <h3>EV Performance Today</h3>
+          </div>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Charging Power</span><strong id="solar-ev-power">-</strong></div>
+          <div><span>Session Energy</span><strong id="solar-ev-energy">-</strong></div>
+          <div><span>Miles Added</span><strong id="solar-ev-miles">-</strong></div>
+          <div><span>Battery</span><strong id="solar-ev-battery">-</strong></div>
+          <div><span>Solar Charging Estimate</span><strong id="solar-ev-solar-estimate">Awaiting flow data</strong></div>
+        </div>
+        <p id="solar-ev-message" class="solar-card-note">Not enough data yet.</p>
+      </article>
+
+      <article class="solar-glass-card solar-health-card">
+        <div class="solar-card-heading">
+          <div>
+            <span class="solar-kicker">System</span>
+            <h3>Enphase Health</h3>
+          </div>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Data Source</span><strong id="solar-health-source">Enphase Envoy</strong></div>
+          <div><span>Envoy Status</span><strong id="solar-health-status">-</strong></div>
+          <div><span>Last Update</span><strong id="solar-health-updated">-</strong></div>
+          <div><span>Entity Health</span><strong id="solar-health-entity">Waiting for data</strong></div>
+          <div><span>Current Power</span><strong id="solar-health-power">-</strong></div>
+          <div><span>Production CT</span><strong id="solar-health-ct">-</strong></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  {% for tab_id, label in solar_tabs[1:] %}
+  <section id="solar-tab-{{ tab_id }}" class="secondary-panel" data-solar-panel="{{ tab_id }}" hidden>
+    <article class="module-card coming-soon-card">
+      <h3>{{ label }}</h3>
+      <p>This Solar Center section is prepared for future analytics and controls.</p>
+      <div class="placeholder-panel">
+        <strong>Coming soon</strong>
+        <span>Data contracts and UI space are reserved so this tab can be implemented without changing the module navigation.</span>
+      </div>
+    </article>
+  </section>
+  {% endfor %}
+</section>
+
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/solar_center.js') }}"></script>
+{% endblock %}

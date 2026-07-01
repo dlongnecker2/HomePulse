@@ -50,4 +50,23 @@
     </ul>
   </article>
 </section>
+
+<section class="dashboard-panel center-chart-panel">
+  <div class="panel-heading compact">
+    <div>
+      <h2>Internet History</h2>
+      <p>Latency, health score, packet loss, and speed test trends from the Analytics history service.</p>
+    </div>
+  </div>
+  <div class="mini-chart-stack internet-chart-grid">
+    <div><h3>Latency</h3><div id="internet-latency-chart" class="module-history-chart small"></div></div>
+    <div><h3>Health Score</h3><div id="internet-health-chart" class="module-history-chart small"></div></div>
+    <div><h3>Packet Loss</h3><div id="internet-packet-loss-chart" class="module-history-chart small"></div></div>
+    <div><h3>Download</h3><div id="internet-speed-chart" class="module-history-chart small"></div></div>
+    <div><h3>Upload</h3><div id="internet-upload-chart" class="module-history-chart small"></div></div>
+  </div>
+</section>
+
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/center_pages.js') }}"></script>
 {% endblock %}

@@ -93,6 +93,20 @@
   </article>
 </section>
 
+<section class="dashboard-panel lab-panel-wide">
+  <div class="panel-heading compact">
+    <div>
+      <h2>History / Analytics</h2>
+      <p>Central metric snapshot service for Solar, Vehicle, Energy, and Internet analytics.</p>
+    </div>
+  </div>
+  <table>
+    {% for label, value in lab.history %}
+    <tr><td>{{ label }}</td><td>{{ value }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
 <section class="lab-grid">
   <article class="dashboard-panel">
     <div class="panel-heading compact">

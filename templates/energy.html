@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Energy Center{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Energy Center</h2>
+    <p>ChargePoint / EV charging energy, session data, and charging cost visibility.</p>
+  </div>
+  <span id="energy-page-status" class="energy-status-badge disabled">Loading</span>
+</section>
+
+<section class="center-grid">
+  <article class="dashboard-panel center-hero-panel">
+    <div class="panel-heading compact">
+      <div>
+        <h2 id="energy-page-charger">ChargePoint Charger</h2>
+        <p id="energy-page-vehicle">Vehicle data loading.</p>
+      </div>
+    </div>
+    <div class="center-hero-value" id="energy-page-power">-</div>
+    <div class="center-metric-grid">
+      <div><span>Status</span><strong id="energy-page-charging-status">-</strong></div>
+      <div><span>Session Energy</span><strong id="energy-page-session">-</strong></div>
+      <div><span>Miles Added</span><strong id="energy-page-miles">-</strong></div>
+      <div><span>Cost</span><strong id="energy-page-cost">-</strong></div>
+      <div><span>Network</span><strong id="energy-page-network">-</strong></div>
+      <div><span>Charging Time</span><strong id="energy-page-time">-</strong></div>
+    </div>
+    <p id="energy-page-message">Energy Center is loading.</p>
+  </article>
+
+  <article class="dashboard-panel center-chart-panel">
+    <div class="panel-heading compact">
+      <div>
+        <h2>Charging Power History</h2>
+        <p>History-backed when charging power snapshots are available.</p>
+      </div>
+    </div>
+    <div id="energy-power-chart" class="module-history-chart"></div>
+  </article>
+</section>
+
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/center_pages.js') }}"></script>
+{% endblock %}
