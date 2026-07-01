@@ -206,8 +206,15 @@
       <p>Restart or stop the local HomePulse process. These actions require the current Lab page token.</p>
     </div>
   </div>
+  {% if not lab.scheduled_task_exists %}
+  <div class="rule-notes alert-notes">
+    <div style="color: var(--degraded); font-weight: 700;">⚠️ Scheduled Task Not Installed</div>
+    <div>The Windows Task Scheduler task "HomePulse" is not installed on this system. Restart functionality is disabled.</div>
+    <div>Run <code>scripts/install_startup_task.ps1</code> from an elevated PowerShell prompt to enable automatic startup and restart.</div>
+  </div>
+  {% endif %}
   <div class="lab-actions">
-    <button type="button" data-admin-action="restart">Restart HomePulse</button>
+    <button type="button" data-admin-action="restart" {% if not lab.scheduled_task_exists %}disabled title="Scheduled task not installed"{% endif %}>Restart HomePulse</button>
     <button type="button" data-admin-action="shutdown" class="danger-button">Stop HomePulse</button>
   </div>
   <div class="rule-notes">

@@ -70,11 +70,12 @@ class Application:
             "executable": sys.executable,
             "argv": list(sys.argv),
             "working_directory": os.getcwd(),
-            "restart_supported": True,
+            "restart_supported": task_status["exists"],
             "last_restart_request": self.latest_restart_request(),
             "scheduled_task_exists": task_status["exists"],
+            "scheduled_task_name": self._scheduled_task_name,
             "scheduled_task_last_result": task_status["last_result"],
-            "restart_method_preferred": task_status["preferred_restart_method"],
+            "restart_method": "Task Scheduler" if task_status["exists"] else "Not installed",
             "last_restart_method": self._last_restart_method,
         }
 
@@ -1252,11 +1253,20 @@ class Application:
         self.scheduler.run_forever(sleep_seconds=10)
 
     def request_restart(self, delay_seconds=2):
-        self._last_restart_method = None
+        """Request a restart using only Windows Task Scheduler."""
         timestamp = str(datetime.now())
         message = f"{APP_NAME} restart requested from Lab"
         detail = f"{message} | timestamp={timestamp} | pid={os.getpid()} | argv={list(sys.argv)}"
-        preferred_method = self.scheduled_task_status()["preferred_restart_method"]
+        
+        # Check if the scheduled task exists
+        task_status = self.scheduled_task_status()
+        if not task_status["exists"]:
+            error_msg = f"HomePulse scheduled task '{self._scheduled_task_name}' not found on this system"
+            self.log.error(error_msg)
+            self.db.add_event(timestamp=str(datetime.now()), event_type="system_restart_rejected", message=error_msg)
+            raise RuntimeError(error_msg)
+        
+        self._last_restart_method = None
         self.log.warning(detail)
         self.db.add_event(timestamp=str(datetime.now()), event_type="system_restart_requested", message=message)
         self.write_restart_marker("restart_requested.json", {
@@ -1266,15 +1276,15 @@ class Application:
             "executable": sys.executable,
             "working_directory": os.getcwd(),
             "delay_seconds": delay_seconds,
-            "preferred_restart_method": preferred_method,
+            "restart_method": "Task Scheduler",
         })
         self.log.warning(
-            f"{APP_NAME} restart scheduled | timestamp={datetime.now()} | pid={os.getpid()} | "
-            f"delay_seconds={delay_seconds} | preferred_restart_method={preferred_method}"
+            f"{APP_NAME} restart scheduled via Task Scheduler | timestamp={datetime.now()} | pid={os.getpid()} | "
+            f"delay_seconds={delay_seconds} | task_name={self._scheduled_task_name}"
         )
         thread = threading.Thread(target=self._delayed_restart, args=(delay_seconds,), daemon=True)
         thread.start()
-        return f"{message}; restart scheduled in {delay_seconds} seconds."
+        return f"{message}; restart scheduled in {delay_seconds} seconds using Task Scheduler."
 
     def request_shutdown(self, delay_seconds=2):
         timestamp = str(datetime.now())
@@ -1288,70 +1298,80 @@ class Application:
         return f"{message}; shutdown scheduled in {delay_seconds} seconds."
 
     def _delayed_restart(self, delay_seconds):
+        """Execute restart using Windows Task Scheduler only."""
         time.sleep(delay_seconds)
         try:
             self.log.warning(
-                f"{APP_NAME} process exiting for restart | timestamp={datetime.now()} | pid={os.getpid()}"
+                f"{APP_NAME} restart execution | timestamp={datetime.now()} | pid={os.getpid()}"
             )
             self.db.add_event(
                 timestamp=str(datetime.now()),
                 event_type="system_restart_attempt",
-                message=f"Restarting process {os.getpid()}",
+                message=f"Restarting process {os.getpid()} via Task Scheduler",
             )
 
-            task_status = self.scheduled_task_status()
-            if task_status["exists"]:
-                self.log.warning("Restart using Task Scheduler")
-                try:
-                    completed = subprocess.run(
-                        ["schtasks", "/Run", "/TN", self._scheduled_task_name],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
-                except FileNotFoundError:
-                    completed = None
+            # Use Task Scheduler to restart the application
+            self.log.warning(f"Executing: schtasks /Run /TN {self._scheduled_task_name}")
+            try:
+                completed = subprocess.run(
+                    ["schtasks", "/Run", "/TN", self._scheduled_task_name],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                )
+            except FileNotFoundError:
+                self.log.error("schtasks.exe not found on this system")
+                self.db.add_event(
+                    timestamp=str(datetime.now()),
+                    event_type="system_restart_failed",
+                    message="schtasks.exe not found; cannot execute restart",
+                )
+                os._exit(1)
+            except subprocess.TimeoutExpired:
+                self.log.error("schtasks command timed out")
+                self.db.add_event(
+                    timestamp=str(datetime.now()),
+                    event_type="system_restart_failed",
+                    message="schtasks command timed out",
+                )
+                os._exit(1)
 
-                if completed is not None:
-                    self.log.warning(
-                        f"Task Scheduler restart command returned code {completed.returncode}"
-                    )
-                    if completed.stdout:
-                        self.log.warning(completed.stdout.strip())
-                    if completed.stderr:
-                        self.log.warning(completed.stderr.strip())
+            # Log the result
+            self.log.warning(f"Task Scheduler return code: {completed.returncode}")
+            if completed.stdout:
+                self.log.warning(f"stdout: {completed.stdout.strip()}")
+            if completed.stderr:
+                self.log.warning(f"stderr: {completed.stderr.strip()}")
 
-                    if completed.returncode == 0:
-                        self._last_restart_method = "Task Scheduler"
-                        self.log.warning(
-                            "Exiting old HomePulse process after scheduled restart"
-                        )
-                        time.sleep(self._restart_exit_delay_seconds)
-                        os._exit(0)
-
-                self.log.warning("Task Scheduler restart failed or was unavailable; falling back to batch launcher")
-
-            if self.spawn_restart_launcher():
-                self._last_restart_method = "Batch launcher"
+            if completed.returncode == 0:
+                self._last_restart_method = "Task Scheduler"
                 self.log.warning(
-                    "Exiting old HomePulse process after batch launcher restart"
+                    f"{APP_NAME} exiting current process for Task Scheduler restart | "
+                    f"wait_seconds={self._restart_exit_delay_seconds}"
+                )
+                self.db.add_event(
+                    timestamp=str(datetime.now()),
+                    event_type="system_restart_success",
+                    message=f"Task Scheduler restart initiated; exiting process {os.getpid()}",
                 )
                 time.sleep(self._restart_exit_delay_seconds)
                 os._exit(0)
+            else:
+                self.log.error(f"Task Scheduler restart failed with code {completed.returncode}")
+                self.db.add_event(
+                    timestamp=str(datetime.now()),
+                    event_type="system_restart_failed",
+                    message=f"Task Scheduler restart command failed with code {completed.returncode}",
+                )
+                os._exit(1)
 
-            args = [sys.executable] + sys.argv
-            self._last_restart_method = "os.execv fallback"
-            self.log.warning(
-                f"{APP_NAME} restart falling back to os.execv | timestamp={datetime.now()} | "
-                f"pid={os.getpid()} | argv={args}"
-            )
-            os.execv(sys.executable, args)
         except Exception as exc:
             self.log.exception(f"{APP_NAME} restart failed: {exc}")
             self.db.add_event(
                 timestamp=str(datetime.now()),
                 event_type="system_restart_failed",
-                message=f"Restart failed; shutting down current process: {exc}",
+                message=f"Restart exception: {exc}",
             )
             os._exit(1)
 

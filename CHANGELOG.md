@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.5.1 (Hotfix)
+
+- **Critical Fix - /api/status Hanging**: Removed synchronous insights generation from `/api/status` endpoint. Dashboard `/api/status` was hanging due to blocking analytics service calls (status.get(), solar.get_status(), weather.get_status()). Insights are now fetched asynchronously by the frontend via `/api/insights/status` endpoint. `/api/status` now returns fast with only essential dashboard data.
+- **Endpoint Performance**: Added timing logs to `/api/status` route (route start, route completion, elapsed milliseconds) to aid future debugging. `_dashboard_payload()` now returns empty insights array for compatibility; all insights data sourced from dedicated `/api/insights/status` endpoint.
+- **Dashboard Payload**: Insights data removed from `_dashboard_payload()` synchronous path; frontend now loads insights separately via `/api/insights/status` to avoid blocking main dashboard load.
+
 ## v3.5.0
 
 - **UI Polish & Consistency**: Standardized page layouts, card styling, spacing, typography, and dark theme across all pages (Dashboard, Home Center, Internet Center, Solar Center, Energy Center, Vehicle Center, Weather, Speed Test, Email Center, Settings, Lab, Logs, About).
@@ -8,6 +14,10 @@
 - **Insights API**: Added `/api/insights/status` endpoint returning current insights with categories, titles, descriptions, severity levels, and timestamps. Insights cached for 1-minute efficiency.
 - **Dashboard Insights Card**: Added new "HomePulse Insights" card to main Dashboard showing 3–5 current insights with color-coded severity (critical/warning/info). Shows "No current issues detected" empty state when healthy.
 - **Chart Improvements**: Standardized chart styling with clear x-axis/y-axis labels, visible y-axis values, improved tooltips, min/max/average summaries, and friendly empty states. Reusable 1D|1W|1M|6M|1Y time-range controls.
+- **Restart Reliability**: Fixed restart functionality to use Windows Task Scheduler exclusively; removed fallback methods (batch launcher and os.execv) that caused process exit without restart. `/api/system/restart` now checks for scheduled task existence before attempting restart and returns error if not installed, preventing accidental process termination. Lab page now shows warning and disables Restart button if scheduled task is missing.
+- **Restart Safety**: Added `scheduled_task_name` and `restart_method` fields to `/api/system/status`. `/api/system/restart` returns detailed error (HTTP 422) if the HomePulse Windows Task Scheduler task is not installed, with instruction to run `install_startup_task.ps1`.
+- **Restart Logging**: Enhanced logging for restart operations: logs when scheduled task is being used, captures schtasks return code/stdout/stderr, logs successful task execution, and explicitly logs when exiting current process for Task Scheduler restart.
+- **Lab UI**: Admin Actions panel now displays warning message if HomePulse scheduled task is not installed. Restart button is disabled with tooltip if task is missing. Warning includes link to `scripts/install_startup_task.ps1` for setup instructions.
 - **Home Center Polish**: Improved tile styling, consistency, and visual feedback. Tiles now use uniform cards with proper spacing and status badges.
 - **Weather Display Polish**: Enhanced weather condition icons, temperature display, cloud cover, humidity, wind, UV, sunrise/sunset with graceful unavailable state degradation.
 - **Navigation Polish**: Verified active navigation states on all pages. Secondary tabs only appear in centers that use them (no duplication).

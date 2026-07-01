@@ -38,7 +38,9 @@ class Dashboard:
         status["intelligence"] = self.application.internet_intelligence()
         status["events"] = self.application.db.recent_events(limit=5)
         status["dashboard_widgets"] = self.application.plugin_manager.widget_registry.all()
-        status["insights"] = [i.to_dict() for i in self.application.analytics.get_insights(max_insights=5)]
+        # NOTE: Insights are NOT generated here to avoid blocking /api/status.
+        # Insights are fetched by the frontend via /api/insights/status endpoint separately.
+        status["insights"] = []
         return status
 
     def register_routes(self):
@@ -237,41 +239,58 @@ class Dashboard:
 
         @self.app.route("/api/status")
         def api_status():
-            status = self._dashboard_payload()
-            internet = status["internet"]
-            speedtest = status["speedtest"]
-            router = status["router"]
-            system = status["system"]
-            intelligence = status["intelligence"]
-            return jsonify({
-                "version": status["version"],
-                "internet_status": internet["status"],
-                "health_score": intelligence["quality_score"],
-                "internet_quality_score": intelligence["quality_score"],
-                "isp_grade": intelligence["isp_grade"],
-                "reliability_trend": intelligence["trend"],
-                "latest_latency_ms": internet["latency"],
-                "packet_loss": internet["packet_loss"],
-                "dns_ok": internet["dns_ok"],
-                "internet_details": internet["details"],
-                "last_check": internet["last_check"],
-                "download": speedtest["download"],
-                "upload": speedtest["upload"],
-                "speedtest_ping": speedtest["ping"],
-                "speedtest_server": speedtest["server"],
-                "speedtest_status": speedtest.get("status", "Unavailable"),
-                "speedtest_error": speedtest.get("error", ""),
-                "speedtest_provider": speedtest.get("provider", ""),
-                "speedtest_error_type": speedtest.get("error_type", ""),
-                "last_speedtest": speedtest["last_run"],
-                "next_speedtest": speedtest.get("next_run"),
-                "speedtest_schedule_label": speedtest.get("schedule_label"),
-                "router_status": router.get("status", "Monitoring"),
-                "last_reboot": router.get("last_reboot"),
-                "started_at": system["started_at"],
-                "last_update": system["last_update"],
-                "timestamp": str(datetime.now()),
-            })
+            import time
+            start_time = time.time()
+            self.application.log.debug("[/api/status] Route started")
+            
+            try:
+                status = self._dashboard_payload()
+                internet = status["internet"]
+                speedtest = status["speedtest"]
+                router = status["router"]
+                system = status["system"]
+                intelligence = status["intelligence"]
+                
+                response = jsonify({
+                    "version": status["version"],
+                    "internet_status": internet["status"],
+                    "health_score": intelligence["quality_score"],
+                    "internet_quality_score": intelligence["quality_score"],
+                    "isp_grade": intelligence["isp_grade"],
+                    "reliability_trend": intelligence["trend"],
+                    "latest_latency_ms": internet["latency"],
+                    "packet_loss": internet["packet_loss"],
+                    "dns_ok": internet["dns_ok"],
+                    "internet_details": internet["details"],
+                    "last_check": internet["last_check"],
+                    "download": speedtest["download"],
+                    "upload": speedtest["upload"],
+                    "speedtest_ping": speedtest["ping"],
+                    "speedtest_server": speedtest["server"],
+                    "speedtest_status": speedtest.get("status", "Unavailable"),
+                    "speedtest_error": speedtest.get("error", ""),
+                    "speedtest_provider": speedtest.get("provider", ""),
+                    "speedtest_error_type": speedtest.get("error_type", ""),
+                    "last_speedtest": speedtest["last_run"],
+                    "next_speedtest": speedtest.get("next_run"),
+                    "speedtest_schedule_label": speedtest.get("schedule_label"),
+                    "router_status": router.get("status", "Monitoring"),
+                    "last_reboot": router.get("last_reboot"),
+                    "started_at": system["started_at"],
+                    "last_update": system["last_update"],
+                    "timestamp": str(datetime.now()),
+                })
+                
+                elapsed_ms = (time.time() - start_time) * 1000
+                self.application.log.debug(f"[/api/status] Route completed in {elapsed_ms:.2f}ms")
+                return response
+            except Exception as exc:
+                elapsed_ms = (time.time() - start_time) * 1000
+                self.application.log.exception(f"[/api/status] Route failed after {elapsed_ms:.2f}ms: {exc}")
+                return jsonify({
+                    "error": str(exc),
+                    "timestamp": str(datetime.now()),
+                }), 500
 
         @self.app.route("/api/system/status")
         def api_system_status():
@@ -296,12 +315,32 @@ class Dashboard:
         def api_system_restart():
             if not self._valid_admin_action_request():
                 return self._admin_action_forbidden()
+            
+            # Check if the scheduled task exists before attempting restart
+            task_status = self.application.scheduled_task_status()
+            if not task_status["exists"]:
+                task_name = self.application._scheduled_task_name
+                error_msg = f"HomePulse scheduled task '{task_name}' not installed on this system"
+                self.application.log.error(error_msg)
+                return jsonify({
+                    "ok": False,
+                    "status": "restart_not_available",
+                    "message": error_msg,
+                    "scheduled_task_exists": False,
+                    "scheduled_task_name": task_name,
+                    "warning": "Cannot restart. The Windows Task Scheduler task is not installed. Run install_startup_task.ps1 to set it up.",
+                    "timestamp": str(datetime.now()),
+                }), 422
+            
             try:
                 message = self.application.request_restart(delay_seconds=2)
                 return jsonify({
                     "ok": True,
                     "status": "restart_scheduled",
                     "message": message,
+                    "scheduled_task_exists": True,
+                    "scheduled_task_name": self.application._scheduled_task_name,
+                    "restart_method": "Task Scheduler",
                     "warning": "HomePulse has no built-in login; this admin action requires the Lab page token.",
                     "timestamp": str(datetime.now()),
                 })
@@ -311,6 +350,7 @@ class Dashboard:
                     "ok": False,
                     "status": "restart_failed",
                     "message": f"Restart could not be scheduled: {exc}",
+                    "scheduled_task_exists": task_status["exists"],
                     "timestamp": str(datetime.now()),
                 }), 500
 
@@ -839,6 +879,7 @@ class Dashboard:
 
     def _lab_payload(self):
         status = self._dashboard_payload()
+        scheduled_task_exists = self.application.scheduled_task_status()["exists"]
         return {
             "about": self._lab_about(status),
             "overview": self._lab_overview(status),
@@ -857,6 +898,7 @@ class Dashboard:
                 ("run_maintenance", "Run Maintenance"),
                 ("reload_config", "Reload Configuration"),
             ],
+            "scheduled_task_exists": scheduled_task_exists,
         }
 
     def _system_status_rows(self):
@@ -876,8 +918,9 @@ class Dashboard:
             ("Executable", status.get("executable")),
             ("Working Directory", status.get("working_directory")),
             ("Restart Supported", self._enabled_label(status.get("restart_supported"))),
+            ("Scheduled Task Name", status.get("scheduled_task_name", "HomePulse")),
             ("Scheduled Task Exists", self._enabled_label(status.get("scheduled_task_exists"))),
-            ("Preferred Restart Method", status.get("restart_method_preferred")),
+            ("Restart Method", status.get("restart_method", "Not available")),
             ("Scheduled Task Last Result", status.get("scheduled_task_last_result")),
             ("Last Restart Request", last_restart_text),
             ("Last Restart Method", status.get("last_restart_method") or "None"),

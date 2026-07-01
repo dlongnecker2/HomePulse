@@ -2224,8 +2224,41 @@ button:focus-visible {
   border-color: rgba(197, 48, 48, 0.35);
 }
 
+.lab-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--surface-soft);
+  border-color: var(--border-soft);
+  color: var(--muted);
+}
+
+.lab-actions button:disabled:hover {
+  transform: none;
+  background: var(--surface-soft);
+  box-shadow: none;
+}
+
 .admin-actions-panel .rule-notes {
   margin-top: 12px;
+}
+
+.rule-notes.alert-notes {
+  background: rgba(183, 121, 31, 0.12);
+  border-color: rgba(183, 121, 31, 0.28);
+}
+
+.rule-notes.alert-notes div:first-child {
+  color: var(--degraded);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.rule-notes code {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
 }
 
 .lab-panel-wide {
