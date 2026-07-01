@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from statistics import mean
 
 from modules.config import Config
+from modules.core import PluginManager
 from modules.dashboard import Dashboard
 from modules.database import Database
 from modules.diagnostics import Diagnostics
@@ -38,6 +39,8 @@ class Application:
         self.solar = SolarManager(self.config, self.log)
         self.weather = WeatherManager(self.config, self.log)
         self.history = HistoryService(self.config, self.log)
+        self.plugin_manager = PluginManager(self, self.log)
+        self.plugin_manager.register_compatibility_plugins()
         self._last_energy_charging_state = None
         self.status = StatusManager()
         self.diagnostics = Diagnostics(self)
@@ -59,6 +62,7 @@ class Application:
         self.db.initialize()
         self.log.info("Database initialized successfully")
         self.history.initialize()
+        self.plugin_manager.initialize_plugins()
         self.load_latest_speedtest()
         self.load_latest_health_check()
         self.register_jobs()

@@ -35,6 +35,7 @@ class Dashboard:
         status["speedtest"]["schedule_label"] = self.application.speedtest_schedule_label()
         status["intelligence"] = self.application.internet_intelligence()
         status["events"] = self.application.db.recent_events(limit=5)
+        status["dashboard_widgets"] = self.application.plugin_manager.widget_registry.all()
         return status
 
     def register_routes(self):
@@ -51,6 +52,7 @@ class Dashboard:
                 system=status["system"],
                 intelligence=status["intelligence"],
                 events=status["events"],
+                widgets=status["dashboard_widgets"],
                 now=datetime.now(),
             )
 
@@ -585,6 +587,7 @@ class Dashboard:
             "logs": self._recent_log_entries(),
             "database": self._database_counts(),
             "history": self._history_status(),
+            "platform": self._platform_status(),
             "reboot": self._reboot_status(),
             "reboot_events": self._recent_reboot_events(),
             "configuration": self._flatten_config(self.application.config.data),
@@ -769,6 +772,14 @@ class Dashboard:
             ("Last Snapshot", history.last_snapshot_time or latest or "None recorded"),
             ("Last Snapshot Count", history.last_snapshot_count),
             ("Metrics Recorded", count),
+        ]
+
+    def _platform_status(self):
+        return [
+            ("Plugins", ", ".join(plugin["display_name"] for plugin in self.application.plugin_manager.metadata())),
+            ("Dashboard Widgets", ", ".join(widget["title"] for widget in self.application.plugin_manager.widget_registry.all())),
+            ("Device Types", ", ".join(self.application.plugin_manager.device_registry.types())),
+            ("Registered Devices", len(self.application.plugin_manager.device_registry.all())),
         ]
 
     def _recent_log_entries(self):

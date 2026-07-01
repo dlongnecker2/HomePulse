@@ -2,6 +2,11 @@
 
 ## v3.2.0
 
+- Added the v3.3 Platform Architecture foundation with plugin, device, and widget registries.
+- Added compatibility plugins for Internet, Energy, Solar, Vehicle, and Weather without moving existing modules or changing URLs/APIs.
+- Added startup logging for loaded plugins, registered dashboard widgets, and registered device types.
+- Prepared Dashboard to receive widget metadata from the WidgetRegistry while preserving existing dashboard cards.
+- Added Lab visibility for platform plugin/widget/device registry state.
 - Stabilized the v3.2 UI after Analytics and Solar Center updates.
 - Fixed the Solar overview API crash caused by a missing timestamp formatting helper.
 - Added functional left-navigation pages for Energy Center, Vehicle Center, Speed Test, Email Center, and About.

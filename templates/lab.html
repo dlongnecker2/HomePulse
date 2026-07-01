@@ -107,6 +107,20 @@
   </table>
 </section>
 
+<section class="dashboard-panel lab-panel-wide">
+  <div class="panel-heading compact">
+    <div>
+      <h2>Platform Architecture</h2>
+      <p>Plugin, widget, and device registry compatibility layer.</p>
+    </div>
+  </div>
+  <table>
+    {% for label, value in lab.platform %}
+    <tr><td>{{ label }}</td><td>{{ value }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
 <section class="lab-grid">
   <article class="dashboard-panel">
     <div class="panel-heading compact">

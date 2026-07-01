@@ -156,8 +156,8 @@
   "weather": {
     "enabled": true,
     "location_name": "Home",
-    "latitude": "",
-    "longitude": "",
-    "provider": "placeholder"
+    "latitude": "47.115934",
+    "longitude": "-122.797612",
+    "provider": "open_meteo"
   }
 }
