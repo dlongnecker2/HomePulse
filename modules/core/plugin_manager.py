@@ -54,6 +54,16 @@ class PluginManager:
         plugins = (
             CompatibilityPlugin(
                 self.application,
+                "home",
+                "Home Center",
+                "home",
+                "sensor",
+                "home_center",
+                ["summary", "overall_status", "alerts"],
+                5,
+            ),
+            CompatibilityPlugin(
+                self.application,
                 "internet",
                 "Internet",
                 "wifi",
@@ -101,6 +111,16 @@ class PluginManager:
                 "weather_summary",
                 ["temperature", "cloud_cover", "forecast"],
                 50,
+            ),
+            CompatibilityPlugin(
+                self.application,
+                "lighting",
+                "Lighting",
+                "lightbulb",
+                "lighting",
+                "exterior_lights",
+                ["placeholder", "home_assistant_ready"],
+                60,
             ),
         )
         for plugin in plugins:

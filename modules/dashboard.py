@@ -56,6 +56,15 @@ class Dashboard:
                 now=datetime.now(),
             )
 
+        @self.app.route("/home")
+        def home_center():
+            return render_template(
+                "home.html",
+                widgets=self.application.plugin_manager.widget_registry.all(),
+                devices=self.application.plugin_manager.device_registry.all(),
+                now=datetime.now(),
+            )
+
         @self.app.route("/internet")
         def internet():
             status = self._dashboard_payload()
@@ -258,6 +267,25 @@ class Dashboard:
                 "last_update": system["last_update"],
                 "timestamp": str(datetime.now()),
             })
+
+        @self.app.route("/api/home/status")
+        def api_home_status():
+            try:
+                return jsonify(self._home_status_payload())
+            except Exception as exc:
+                self.application.log.exception(f"Home Center API failed: {exc}")
+                return jsonify({
+                    "overall_status": "Attention",
+                    "last_updated": str(datetime.now()),
+                    "error": str(exc),
+                    "internet": {},
+                    "solar": {},
+                    "energy": {},
+                    "vehicle": {},
+                    "weather": {},
+                    "lighting": self._lighting_placeholder(),
+                    "home": self._home_placeholder(alerts=["Home Center status unavailable."]),
+                }), 500
 
         @self.app.route("/api/energy/status")
         def api_energy_status():
@@ -523,6 +551,117 @@ class Dashboard:
         payload = request.get_json(silent=True) or {}
         overrides = payload.get("overrides", payload)
         return jsonify(self.application.diagnostics.run_test(test_name, overrides=overrides, **kwargs).to_dict())
+
+    def _home_status_payload(self):
+        dashboard_status = self._dashboard_payload()
+        internet = self._home_internet_status(dashboard_status)
+        solar = self._safe_center_status("solar", self.application.solar.get_status)
+        energy = self._safe_center_status("energy", self.application.energy.get_status)
+        vehicle = self._safe_center_status("vehicle", self.application.vehicle.get_status)
+        weather = self._safe_center_status("weather", self.application.weather.get_status)
+        lighting = self._lighting_placeholder()
+        home = self._home_placeholder()
+        overall_status = self._overall_home_status(internet, solar, energy, vehicle, weather)
+        return {
+            "internet": internet,
+            "solar": solar,
+            "energy": energy,
+            "vehicle": vehicle,
+            "weather": weather,
+            "lighting": lighting,
+            "home": home,
+            "overall_status": overall_status,
+            "health_score": self._home_health_score(internet, solar, energy, vehicle, weather),
+            "widgets": self.application.plugin_manager.widget_registry.all(),
+            "devices": self.application.plugin_manager.device_registry.all(),
+            "last_updated": str(datetime.now()),
+        }
+
+    def _home_internet_status(self, status):
+        internet = status.get("internet", {})
+        speedtest = status.get("speedtest", {})
+        return {
+            "status": internet.get("status", "Unavailable"),
+            "health_score": status.get("intelligence", {}).get("quality_score"),
+            "latency_ms": internet.get("latency"),
+            "packet_loss_percent": internet.get("packet_loss"),
+            "last_check": internet.get("last_check"),
+            "last_speedtest": speedtest.get("last_run"),
+            "download_mbps": speedtest.get("download"),
+            "upload_mbps": speedtest.get("upload"),
+            "message": internet.get("details", "Internet status unavailable."),
+        }
+
+    def _safe_center_status(self, name, function):
+        try:
+            return function() or {"enabled": False, "status": "Unavailable"}
+        except Exception as exc:
+            self.application.log.debug(f"Home Center {name} status unavailable: {exc}", exc_info=True)
+            return {
+                "enabled": False,
+                "configured": False,
+                "status": "Unavailable",
+                "error": str(exc),
+                "message": f"{name.title()} status unavailable.",
+            }
+
+    @staticmethod
+    def _lighting_placeholder():
+        return {
+            "enabled": False,
+            "configured": False,
+            "status": "Not configured",
+            "name": "Exterior Lights",
+            "type": "lighting",
+            "source": "Home Assistant / Govee placeholder",
+            "message": "Exterior lighting is registry-ready but no Govee/Home Assistant entities are configured yet.",
+            "capabilities": ["future_govee", "future_home_assistant_entities"],
+        }
+
+    @staticmethod
+    def _home_placeholder(alerts=None):
+        return {
+            "status": "No active alerts" if not alerts else "Attention",
+            "active_alerts": alerts or [],
+            "garage": "Placeholder",
+            "locks": "Placeholder",
+            "doors": "Placeholder",
+            "climate": "Placeholder",
+            "cameras": "Placeholder",
+            "message": "Garage, locks, doors, climate, and cameras are prepared for future plugins.",
+        }
+
+    @staticmethod
+    def _overall_home_status(internet, solar, energy, vehicle, weather):
+        attention_states = {"Unhealthy", "Attention", "Failed"}
+        partial_states = {"Unavailable", "Unknown", "Waiting for Data", "Partial Data"}
+        if internet.get("status") in attention_states:
+            return "Attention"
+        statuses = [
+            solar.get("status"),
+            energy.get("status"),
+            vehicle.get("availability") or vehicle.get("status"),
+            weather.get("condition"),
+        ]
+        if any(status in attention_states for status in statuses):
+            return "Attention"
+        if internet.get("status") == "Degraded" or any(status in partial_states for status in statuses):
+            return "Partial"
+        return "Healthy"
+
+    @staticmethod
+    def _home_health_score(internet, solar, energy, vehicle, weather):
+        score = 100
+        if internet.get("status") == "Degraded":
+            score -= 15
+        elif internet.get("status") not in ("Healthy", "Starting"):
+            score -= 30
+        for item in (solar, energy, vehicle, weather):
+            if item.get("enabled") is False:
+                score -= 5
+            elif item.get("error"):
+                score -= 10
+        return max(0, min(100, score))
 
     @staticmethod
     def render_test_button(name, endpoint):

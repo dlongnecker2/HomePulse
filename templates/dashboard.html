@@ -94,6 +94,18 @@
 </section>
 
 <section class="status-grid">
+  <a class="status-card home-glance-card" href="{{ url_for('home_center') }}">
+    <div class="card-topline">
+      <div class="card-title">
+        <div class="home-glance-icon" aria-hidden="true">Home</div>
+        <div class="card-label">Home Center</div>
+      </div>
+      <span id="home-glance-badge" class="energy-status-badge disabled">Collecting</span>
+    </div>
+    <div id="home-glance-status" class="card-value no-wrap">House at a Glance</div>
+    <div id="home-glance-detail" class="card-foot">Open Home Center for unified home status.</div>
+  </a>
+
   <article class="status-card">
     <div class="card-topline">
       <div class="card-title">

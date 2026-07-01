@@ -112,6 +112,28 @@ async function refreshDashboardStatus() {
   }
 }
 
+async function refreshHomeGlance() {
+  try {
+    const response = await fetch("/api/home/status", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Home status returned ${response.status}`);
+    const data = await response.json();
+    setText("home-glance-status", data.overall_status || "Partial");
+    setText("home-glance-detail", `Health ${data.health_score ?? "--"}% - ${data.last_updated || "--"}`);
+    const badge = document.getElementById("home-glance-badge");
+    if (badge) {
+      const status = String(data.overall_status || "Partial").toLowerCase();
+      badge.textContent = data.overall_status || "Partial";
+      badge.classList.remove("disabled", "offline", "charging", "ready");
+      if (status === "healthy") badge.classList.add("ready");
+      else if (status === "attention") badge.classList.add("offline");
+      else badge.classList.add("disabled");
+    }
+  } catch (error) {
+    setText("home-glance-status", "Partial");
+    setText("home-glance-detail", "Home Center status is unavailable right now.");
+  }
+}
+
 function formatCurrency(value) {
   const number = cleanNumber(value) ?? 0;
   return `$${number.toFixed(2)}`;
@@ -521,11 +543,13 @@ function weatherIcon(data) {
 
 document.addEventListener("DOMContentLoaded", () => {
   refreshDashboardStatus();
+  refreshHomeGlance();
   refreshEnergyStatus();
   refreshVehicleStatus();
   refreshSolarStatus();
   refreshWeatherStatus();
   setInterval(refreshDashboardStatus, 10000);
+  setInterval(refreshHomeGlance, 30000);
   setInterval(refreshEnergyStatus, 10000);
   setInterval(refreshVehicleStatus, 10000);
   setInterval(refreshSolarStatus, 10000);

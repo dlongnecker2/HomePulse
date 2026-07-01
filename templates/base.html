@@ -20,6 +20,7 @@
     </div>
     <nav class="primary-nav" aria-label="Primary navigation">
       <a href="{{ url_for('home') }}" class="{% if request.endpoint == 'home' %}active{% endif %}">Dashboard</a>
+      <a href="{{ url_for('home_center') }}" class="{% if request.endpoint == 'home_center' %}active{% endif %}">Home Center</a>
       <a href="{{ url_for('internet') }}" class="{% if request.endpoint == 'internet' %}active{% endif %}">Internet Center</a>
       <a href="{{ url_for('energy_center') }}" class="{% if request.endpoint == 'energy_center' %}active{% endif %}">Energy Center</a>
       <a href="{{ url_for('solar') }}" class="{% if request.endpoint == 'solar' %}active{% endif %}">Solar Center</a>

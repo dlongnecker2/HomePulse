@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Home Center{% endblock %}
+{% block content %}
+<section class="page-heading home-center-heading">
+  <div>
+    <h2>Home Center</h2>
+    <p>At-a-glance operational status for the home, powered by the HomePulse platform registry.</p>
+  </div>
+  <a class="home-center-dashboard-link" href="{{ url_for('home') }}">Dashboard</a>
+</section>
+
+<section class="home-overview-band">
+  <div>
+    <span>Overall Status</span>
+    <strong id="home-overall-status">Collecting</strong>
+  </div>
+  <div>
+    <span>HomePulse Health</span>
+    <strong id="home-health-score">--</strong>
+  </div>
+  <div>
+    <span>Last Updated</span>
+    <strong id="home-last-updated">--</strong>
+  </div>
+</section>
+
+<section class="home-tile-grid" aria-label="Home Center summary tiles">
+  <article class="home-tile" data-tile="internet">
+    <div class="home-tile-topline">
+      <span class="home-tile-icon">Net</span>
+      <strong>Internet</strong>
+    </div>
+    <div id="home-internet-status" class="home-tile-value">Collecting</div>
+    <div class="home-tile-details">
+      <div><span>Health</span><strong id="home-internet-health">--</strong></div>
+      <div><span>Latency</span><strong id="home-internet-latency">--</strong></div>
+      <div><span>Last Speed Test</span><strong id="home-internet-speed">--</strong></div>
+    </div>
+  </article>
+
+  <article class="home-tile" data-tile="solar">
+    <div class="home-tile-topline">
+      <span class="home-tile-icon">Sun</span>
+      <strong>Solar</strong>
+    </div>
+    <div id="home-solar-current" class="home-tile-value">Collecting</div>
+    <div class="home-tile-details">
+      <div><span>Status</span><strong id="home-solar-status">--</strong></div>
+      <div><span>Today</span><strong id="home-solar-today">--</strong></div>
+      <div><span>Last Update</span><strong id="home-solar-updated">--</strong></div>
+    </div>
+  </article>
+
+  <article class="home-tile" data-tile="energy">
+    <div class="home-tile-topline">
+      <span class="home-tile-icon">EV</span>
+      <strong>Energy / ChargePoint</strong>
+    </div>
+    <div id="home-energy-status" class="home-tile-value">Collecting</div>
+    <div class="home-tile-details">
+      <div><span>Power</span><strong id="home-energy-power">--</strong></div>
+      <div><span>Session</span><strong id="home-energy-session">--</strong></div>
+      <div><span>Cost</span><strong id="home-energy-cost">--</strong></div>
+    </div>
+  </article>
+
+  <article class="home-tile" data-tile="vehicle">
+    <div class="home-tile-topline">
+      <span class="home-tile-icon">Car</span>
+      <strong>Vehicle</strong>
+    </div>
+    <div id="home-vehicle-battery" class="home-tile-value">Collecting</div>
+    <div class="home-tile-details">
+      <div><span>Range</span><strong id="home-vehicle-range">--</strong></div>
+      <div><span>Plug</span><strong id="home-vehicle-plug">--</strong></div>
+      <div><span>Charging</span><strong id="home-vehicle-charging">--</strong></div>
+    </div>
+  </article>
+
+  <article class="home-tile" data-tile="weather">
+    <div class="home-tile-topline">
+      <span id="home-weather-icon" class="home-tile-icon">?</span>
+      <strong>Weather</strong>
+    </div>
+    <div id="home-weather-temperature" class="home-tile-value">Collecting</div>
+    <div class="home-tile-details">
+      <div><span>Condition</span><strong id="home-weather-condition">--</strong></div>
+      <div><span>Wind</span><strong id="home-weather-wind">--</strong></div>
+      <div><span>Sunrise / Sunset</span><strong id="home-weather-sun">--</strong></div>
+    </div>
+  </article>
+
+  <article class="home-tile is-placeholder" data-tile="lighting">
+    <div class="home-tile-topline">
+      <span class="home-tile-icon">Light</span>
+      <strong>Exterior Lights</strong>
+    </div>
+    <div id="home-lighting-status" class="home-tile-value">Not configured</div>
+    <p id="home-lighting-message">Govee/Home Assistant lighting entities are not configured yet.</p>
+  </article>
+
+  <article class="home-tile is-placeholder" data-tile="home">
+    <div class="home-tile-topline">
+      <span class="home-tile-icon">Home</span>
+      <strong>Home Status</strong>
+    </div>
+    <div id="home-alert-status" class="home-tile-value">No active alerts</div>
+    <div class="home-placeholder-list">
+      <span>Garage</span>
+      <span>Locks</span>
+      <span>Doors</span>
+      <span>Climate</span>
+      <span>Cameras</span>
+    </div>
+  </article>
+</section>
+
+<script src="{{ url_for('static', filename='js/home_center.js') }}"></script>
+{% endblock %}

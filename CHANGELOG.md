@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.4.0
+
+- Added Home Center with `/home` for a unified, at-a-glance operational view of Internet, Solar, Energy, Vehicle, Weather, Lighting, and Home Status.
+- Added `/api/home/status` to combine existing center status payloads into one defensive Home Center API response.
+- Added a compact Dashboard "Home Center / House at a Glance" card linked to the new Home Center page.
+- Added registry-ready Exterior Lights and Home Status placeholders without faking live device data.
+- Registered Home Center and Lighting in the platform compatibility registry and exposed them through existing Lab registry visibility.
+- Added dark HomePulse tile styling for the Home Center summary grid.
+
 ## v3.2.0
 
 - Added the v3.3 Platform Architecture foundation with plugin, device, and widget registries.
