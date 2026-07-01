@@ -20,6 +20,7 @@
   {% set method = router_reboot.get("recovery_device_type", router_reboot.get("method", "home_assistant")) %}
   {% set notifications = email.get("notifications", {}) %}
   {% set energy_entities = energy.get("home_assistant_entities", {}) %}
+  {% set energy_alerts = energy.get("alerts", {}) %}
 
   <form method="post" action="{{ url_for('settings') }}" class="settings-form">
     <section class="settings-section safety-summary">
@@ -204,7 +205,7 @@
       <input id="energy-vehicle-name" name="energy_vehicle_name" type="text" value="{{ energy.get("vehicle_name", "2025 Chevrolet Equinox EV") }}">
 
       <label class="field-label" for="energy-charger-name">Charger Name</label>
-      <input id="energy-charger-name" name="energy_charger_name" type="text" value="{{ energy.get("charger_name", "ChargePoint Home Flex") }}">
+      <input id="energy-charger-name" name="energy_charger_name" type="text" value="{{ energy.get("charger_name", "Juice Box") }}">
 
       <label class="field-label" for="energy-cost-per-kwh">Cost per kWh</label>
       <input id="energy-cost-per-kwh" name="energy_cost_per_kwh" type="number" min="0" step="0.01" value="{{ energy.get("cost_per_kwh", 0.13) }}">
@@ -212,23 +213,55 @@
       <label class="field-label" for="energy-estimated-miles-per-kwh">Estimated miles per kWh</label>
       <input id="energy-estimated-miles-per-kwh" name="energy_estimated_miles_per_kwh" type="number" min="0" step="0.1" value="{{ energy.get("estimated_miles_per_kwh", 3.5) }}">
 
+      <label class="option-row">
+        <input type="checkbox" name="energy_alerts_enabled" {% if energy_alerts.get("enabled", false) %}checked{% endif %}>
+        <span>Email alerts for charging changes</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="energy_alert_notify_on_start" {% if energy_alerts.get("notify_on_start", true) %}checked{% endif %}>
+        <span>Notify when charging starts</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="energy_alert_notify_on_stop" {% if energy_alerts.get("notify_on_stop", true) %}checked{% endif %}>
+        <span>Notify when charging stops</span>
+      </label>
+
       <label class="field-label" for="energy-entity-status">Home Assistant status entity</label>
-      <input id="energy-entity-status" name="energy_entity_status" type="text" value="{{ energy_entities.get("status", "") }}" placeholder="sensor.ev_charging_status">
+      <input id="energy-entity-status" name="energy_entity_status" type="text" value="{{ energy_entities.get("status", "") }}" placeholder="sensor.juice_box_cph50_charging_status">
 
       <label class="field-label" for="energy-entity-power-kw">Home Assistant power entity</label>
-      <input id="energy-entity-power-kw" name="energy_entity_power_kw" type="text" value="{{ energy_entities.get("power_kw", "") }}" placeholder="sensor.ev_charger_power">
+      <input id="energy-entity-power-kw" name="energy_entity_power_kw" type="text" value="{{ energy_entities.get("power_kw", "") }}" placeholder="sensor.juice_box_cph50_power_output">
 
-      <label class="field-label" for="energy-entity-voltage">Home Assistant voltage entity</label>
-      <input id="energy-entity-voltage" name="energy_entity_voltage" type="text" value="{{ energy_entities.get("voltage", "") }}" placeholder="sensor.ev_charger_voltage">
+      <label class="field-label" for="energy-entity-session-energy">Home Assistant energy output entity</label>
+      <input id="energy-entity-session-energy" name="energy_entity_session_energy_kwh" type="text" value="{{ energy_entities.get("session_energy_kwh", "") }}" placeholder="sensor.juice_box_cph50_energy_output">
 
-      <label class="field-label" for="energy-entity-current">Home Assistant current entity</label>
-      <input id="energy-entity-current" name="energy_entity_current" type="text" value="{{ energy_entities.get("current", "") }}" placeholder="sensor.ev_charger_current">
+      <label class="field-label" for="energy-entity-charging-time">Home Assistant charging time entity</label>
+      <input id="energy-entity-charging-time" name="energy_entity_charging_time" type="text" value="{{ energy_entities.get("charging_time", "") }}" placeholder="sensor.juice_box_cph50_charging_time">
 
-      <label class="field-label" for="energy-entity-session-energy">Home Assistant session energy entity</label>
-      <input id="energy-entity-session-energy" name="energy_entity_session_energy_kwh" type="text" value="{{ energy_entities.get("session_energy_kwh", "") }}" placeholder="sensor.ev_session_energy">
+      <label class="field-label" for="energy-entity-miles-added">Home Assistant miles added entity</label>
+      <input id="energy-entity-miles-added" name="energy_entity_miles_added" type="text" value="{{ energy_entities.get("miles_added", "") }}" placeholder="sensor.juice_box_cph50_miles_added">
 
-      <label class="field-label" for="energy-entity-battery-percent">Home Assistant battery percent entity</label>
-      <input id="energy-entity-battery-percent" name="energy_entity_battery_percent" type="text" value="{{ energy_entities.get("battery_percent", "") }}" placeholder="sensor.equinox_ev_battery">
+      <label class="field-label" for="energy-entity-miles-per-hour-added">Home Assistant miles/hour added entity</label>
+      <input id="energy-entity-miles-per-hour-added" name="energy_entity_miles_per_hour_added" type="text" value="{{ energy_entities.get("miles_per_hour_added", "") }}" placeholder="sensor.juice_box_cph50_miles_hour_added">
+
+      <label class="field-label" for="energy-entity-charge-cost">Home Assistant charge cost entity</label>
+      <input id="energy-entity-charge-cost" name="energy_entity_charge_cost" type="text" value="{{ energy_entities.get("charge_cost", "") }}" placeholder="sensor.juice_box_cph50_charge_cost">
+
+      <label class="field-label" for="energy-entity-network">Home Assistant charger network entity</label>
+      <input id="energy-entity-network" name="energy_entity_network" type="text" value="{{ energy_entities.get("network", "") }}" placeholder="sensor.juice_box_cph50_network">
+
+      <details class="advanced-settings">
+        <summary>Optional legacy EV fields</summary>
+
+        <label class="field-label" for="energy-entity-voltage">Home Assistant voltage entity</label>
+        <input id="energy-entity-voltage" name="energy_entity_voltage" type="text" value="{{ energy_entities.get("voltage", "") }}" placeholder="sensor.ev_charger_voltage">
+
+        <label class="field-label" for="energy-entity-current">Home Assistant current entity</label>
+        <input id="energy-entity-current" name="energy_entity_current" type="text" value="{{ energy_entities.get("current", "") }}" placeholder="sensor.ev_charger_current">
+
+        <label class="field-label" for="energy-entity-battery-percent">Home Assistant battery percent entity</label>
+        <input id="energy-entity-battery-percent" name="energy_entity_battery_percent" type="text" value="{{ energy_entities.get("battery_percent", "") }}" placeholder="sensor.equinox_ev_battery">
+      </details>
     </section>
 
     <section class="settings-section">

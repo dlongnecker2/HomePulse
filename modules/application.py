@@ -29,6 +29,7 @@ class Application:
         self.router_rebooter = RouterRebooter(self.config, self.log)
         self.email_notifier = EmailNotifier(self.config, self.log, self.db)
         self.energy = EnergyManager(self.config, self.log)
+        self._last_energy_charging_state = None
         self.status = StatusManager()
         self.diagnostics = Diagnostics(self)
         self.tapo_discovery = TapoDiscovery(self.log)
@@ -55,14 +56,16 @@ class Application:
     def load_latest_speedtest(self):
         latest = self.db.latest_speed_test()
         if latest:
+            failed = latest["download"] is None
+            error = latest["server"] or "Speed test provider unavailable"
             self.status.update_speedtest(
                 download=latest["download"],
                 upload=latest["upload"],
                 ping=latest["ping"],
                 server=latest["server"],
                 last_run=latest["timestamp"],
-                status="Available" if latest["download"] is not None else "Failed",
-                error="" if latest["download"] is not None else (latest["server"] or "Speed test failed"),
+                status="Unavailable" if failed else "Available",
+                error="" if not failed else error,
             )
 
     def load_latest_health_check(self):
@@ -318,12 +321,20 @@ class Application:
             "energy_entity_current",
             "energy_entity_session_energy_kwh",
             "energy_entity_battery_percent",
+            "energy_entity_charging_time",
+            "energy_entity_miles_added",
+            "energy_entity_miles_per_hour_added",
+            "energy_entity_charge_cost",
+            "energy_entity_network",
+            "energy_alerts_enabled",
+            "energy_alert_notify_on_start",
+            "energy_alert_notify_on_stop",
         )
         if any(key in form for key in energy_form_keys):
             energy = self.config.data.setdefault("energy", {})
             energy["enabled"] = form.get("energy_enabled") == "on"
             energy["vehicle_name"] = form.get("energy_vehicle_name", "2025 Chevrolet Equinox EV").strip()
-            energy["charger_name"] = form.get("energy_charger_name", "ChargePoint Home Flex").strip()
+            energy["charger_name"] = form.get("energy_charger_name", "Juice Box").strip()
             energy["cost_per_kwh"] = float(form.get("energy_cost_per_kwh", "0.13") or 0.13)
             energy["estimated_miles_per_kwh"] = float(form.get("energy_estimated_miles_per_kwh", "3.5") or 3.5)
             entities = energy.setdefault("home_assistant_entities", {})
@@ -333,7 +344,42 @@ class Application:
             entities["current"] = form.get("energy_entity_current", "").strip()
             entities["session_energy_kwh"] = form.get("energy_entity_session_energy_kwh", "").strip()
             entities["battery_percent"] = form.get("energy_entity_battery_percent", "").strip()
+            entities["charging_time"] = form.get("energy_entity_charging_time", "").strip()
+            entities["miles_added"] = form.get("energy_entity_miles_added", "").strip()
+            entities["miles_per_hour_added"] = form.get("energy_entity_miles_per_hour_added", "").strip()
+            entities["charge_cost"] = form.get("energy_entity_charge_cost", "").strip()
+            entities["network"] = form.get("energy_entity_network", "").strip()
+            alerts = energy.setdefault("alerts", {})
+            alerts["enabled"] = form.get("energy_alerts_enabled") == "on"
+            alerts["notify_on_start"] = form.get("energy_alert_notify_on_start") == "on"
+            alerts["notify_on_stop"] = form.get("energy_alert_notify_on_stop") == "on"
         self.config.save()
+
+    def energy_status(self):
+        status = self.energy.get_status()
+        self.observe_energy_status(status)
+        return status
+
+    def observe_energy_status(self, status):
+        try:
+            energy = self.config.get("energy", default={})
+            alerts = energy.get("alerts", {})
+            if not energy.get("enabled") or not alerts.get("enabled", False):
+                self._last_energy_charging_state = None
+                return
+
+            current = bool(status.get("is_charging"))
+            previous = self._last_energy_charging_state
+            self._last_energy_charging_state = current
+            if previous is None or previous == current:
+                return
+            if current and not alerts.get("notify_on_start", True):
+                return
+            if not current and not alerts.get("notify_on_stop", True):
+                return
+            self.email_notifier.send_energy_charging_alert(status, started=current)
+        except Exception as exc:
+            self.log.exception(f"Energy charging alert failed: {exc}")
 
     def normalize_custom_speedtest_times(self, raw_times):
         pieces = raw_times.replace(",", "\n").splitlines()
@@ -415,25 +461,31 @@ class Application:
         self.record_speedtest_result(result)
 
     def record_speedtest_result(self, result):
+        status = "Unavailable" if result.failed else "Available"
+        error = result.error_message or result.error
         self.status.update_speedtest(
             download=result.download,
             upload=result.upload,
             ping=result.ping,
             server=result.server,
             last_run=result.timestamp,
-            status="Failed" if result.failed else "Available",
-            error=result.error,
+            status=status,
+            error=error,
+            provider=result.provider,
+            error_type=result.error_type,
         )
         self.db.add_speed_test(
             timestamp=result.timestamp,
             download=result.download,
             upload=result.upload,
             ping=result.ping,
-            server=f"Failed: {result.error}" if result.failed else result.server,
+            server=f"Speed test provider unavailable: {error}" if result.failed else result.server,
         )
         if result.failed:
-            message = result.error or "Speed test failed."
-            self.log.warning(message)
+            message = (
+                f"Speed test provider unavailable"
+                f" ({result.provider or 'unknown'}/{result.error_type or 'provider_error'}): {error}"
+            )
             self.db.add_event(timestamp=result.timestamp, event_type="speed_test_failed", message=message)
         else:
             self.db.add_event(
@@ -626,6 +678,8 @@ class Application:
         timestamp = latest_speed.get("timestamp", "Unknown time")
         download = latest_speed.get("download")
         upload = latest_speed.get("upload")
+        if download is None or upload is None:
+            return "Unavailable"
         return f"{timestamp} ({download} Mbps down / {upload} Mbps up)"
 
     @classmethod

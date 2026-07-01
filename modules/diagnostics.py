@@ -166,7 +166,12 @@ class Diagnostics:
                 result.error or "Speed test failed.",
                 0,
                 timestamp,
-                {"error": result.error},
+                {
+                    "error": result.error,
+                    "provider": result.provider,
+                    "error_type": result.error_type,
+                    "error_message": result.error_message,
+                },
             )
         return DiagnosticResult(
             "speed_test",

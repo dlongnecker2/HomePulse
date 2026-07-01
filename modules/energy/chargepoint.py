@@ -1,5 +1,5 @@
 class ChargePointHomeFlex:
-    name = "ChargePoint Home Flex"
+    name = "Juice Box"
 
     def __init__(self, config=None):
         self.config = config or {}

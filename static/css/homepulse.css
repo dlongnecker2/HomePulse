@@ -311,6 +311,72 @@ h2 {
   box-shadow: var(--shadow);
 }
 
+.energy-card,
+.energy-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.energy-card.is-charging,
+.energy-panel.is-charging {
+  border-color: rgba(22, 128, 60, 0.42);
+  background: linear-gradient(180deg, #ffffff 0%, #f2fbf5 100%);
+  box-shadow: 0 14px 34px rgba(22, 128, 60, 0.13);
+}
+
+.energy-card.is-charging::before,
+.energy-panel.is-charging::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--healthy);
+}
+
+.energy-card.is-offline,
+.energy-panel.is-offline {
+  border-color: rgba(183, 121, 31, 0.36);
+}
+
+.energy-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.energy-status-badge.charging {
+  color: var(--healthy);
+  background: #edf9f0;
+  border-color: #bfe7ca;
+}
+
+.energy-status-badge.idle {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: #d6e3f2;
+}
+
+.energy-status-badge.offline {
+  color: var(--degraded);
+  background: #fff8eb;
+  border-color: #f0d8a8;
+}
+
+.energy-status-badge.disabled {
+  color: var(--starting);
+}
+
 .card-topline {
   display: flex;
   align-items: center;
@@ -607,6 +673,36 @@ h2 {
 
 .automation-panel table {
   margin-top: 6px;
+}
+
+.energy-identity {
+  display: grid;
+  gap: 2px;
+  margin: 10px 0 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.energy-identity strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.energy-identity span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.energy-panel table td:first-child {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.energy-panel table td:last-child {
+  font-weight: 740;
 }
 
 .automation-panel td {
@@ -1254,6 +1350,52 @@ button:focus-visible {
 
 .lab-panel-wide {
   margin-bottom: 12px;
+}
+
+.lab-about-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.lab-about-grid h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.lab-module-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.lab-module-list div {
+  padding: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+
+.lab-module-list span,
+.lab-module-list strong {
+  display: block;
+}
+
+.lab-module-list span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.lab-module-list strong {
+  margin-top: 4px;
+  color: var(--starting);
+  font-size: 13px;
+}
+
+.lab-module-list .enabled strong {
+  color: var(--healthy);
 }
 
 .lab-log-list {

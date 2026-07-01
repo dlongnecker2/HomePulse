@@ -1,5 +1,13 @@
 # Changelog
 
+## Upcoming v2.10.0 - Energy Center polish
+
+- Added ChargePoint live data polish for the HomePulse Energy Center dashboard card.
+- Improved Energy Center value formatting, loading states, missing-value handling, and active charging presentation.
+- Added Lab/About runtime visibility for HomePulse application identity, enabled modules, database status, and scheduler status.
+- Improved speed test failure handling with provider fallback and clearer provider-unavailable states.
+- Use HTTPS secure mode for Speedtest.net checks to avoid HTTP 403 failures.
+
 ## v2.9.0
 
 - Added multi-recipient email notification support with comma, semicolon, and newline-separated recipient parsing.

@@ -74,7 +74,11 @@
     <table>
       {% if history.speed_tests %}
         {% for test in history.speed_tests %}
+          {% if test.download is none %}
+          <tr><td>{{ test.timestamp }}</td><td>{{ test.server or "Speed test provider unavailable" }}</td></tr>
+          {% else %}
           <tr><td>{{ test.timestamp }}</td><td>{{ test.download }} down / {{ test.upload }} up / {{ test.ping }} ms</td></tr>
+          {% endif %}
         {% endfor %}
       {% else %}
         <tr><td colspan="2">No speed tests in the current 24-hour view.</td></tr>

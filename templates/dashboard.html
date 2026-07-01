@@ -11,7 +11,7 @@
   {% set status_class = "starting" %}
 {% endif %}
 {% set speed_available = speedtest.download is not none %}
-{% set speedtest_failed = speedtest.get("status") == "Failed" %}
+{% set speedtest_failed = speedtest.get("status") in ("Failed", "Unavailable") and speedtest.download is none and speedtest.last_run %}
 
 <svg class="icon-defs" aria-hidden="true" focusable="false">
   <symbol id="icon-wifi" viewBox="0 0 24 24">
@@ -129,8 +129,8 @@
       <svg class="card-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
       <div class="card-label">Speed Test</div>
     </div>
-    <div class="card-value"><span id="speed-download">{{ speedtest.download ~ " Mbps" if speed_available else "Failed" if speedtest_failed else "Waiting for first test" }}</span></div>
-    <div id="last-speedtest" class="card-foot">Last run: {{ speedtest.last_run or "--" }}</div>
+    <div class="card-value"><span id="speed-download">{{ speedtest.download ~ " Mbps" if speed_available else "Provider unavailable" if speedtest_failed else "Waiting for first test" }}</span></div>
+    <div id="last-speedtest" class="card-foot">{{ speedtest.error if speedtest_failed and speedtest.error else "Last run: " ~ (speedtest.last_run or "--") }}</div>
   </article>
 
   <article class="status-card">
@@ -152,8 +152,11 @@
   </article>
 
   <article class="status-card energy-card">
-    <div class="card-title">
-      <div class="card-label">⚡ Energy Center</div>
+    <div class="card-topline">
+      <div class="card-title">
+        <div class="card-label">⚡ Energy Center</div>
+      </div>
+      <span id="energy-status-badge" class="energy-status-badge disabled">Disabled</span>
     </div>
     <div id="energy-status" class="card-value no-wrap">Disabled</div>
     <div id="energy-message" class="card-foot">Energy Center is disabled. Configure it in Settings when ready.</div>
@@ -178,7 +181,7 @@
     <section class="dashboard-panel compact-panel">
       <h2>Daily Speed Test</h2>
       <table>
-        <tr><td>Download</td><td><span id="speed-download-table">{{ speedtest.download ~ " Mbps" if speedtest.download is not none else "Failed" if speedtest_failed else "Waiting for first test" }}</span></td></tr>
+        <tr><td>Download</td><td><span id="speed-download-table">{{ speedtest.download ~ " Mbps" if speedtest.download is not none else "Provider unavailable" if speedtest_failed else "Waiting for first test" }}</span></td></tr>
         <tr><td>Upload</td><td><span id="speed-upload-table">{{ speedtest.upload ~ " Mbps" if speedtest.upload is not none else "Unavailable" }}</span></td></tr>
         <tr><td>Ping</td><td><span id="speedtest-ping-table">{{ speedtest.ping ~ " ms" if speedtest.ping is not none else "Unavailable" }}</span></td></tr>
         <tr><td>Status</td><td id="speedtest-status">{{ speedtest.get("status", "Unavailable") }}</td></tr>
@@ -189,14 +192,19 @@
 
     <section class="dashboard-panel compact-panel energy-panel">
       <h2>⚡ Energy Center</h2>
+      <div class="energy-identity">
+        <strong id="energy-charger">Juice Box</strong>
+        <span id="energy-vehicle">2025 Chevrolet Equinox EV</span>
+      </div>
       <table>
-        <tr><td>Vehicle</td><td id="energy-vehicle">2025 Chevrolet Equinox EV</td></tr>
-        <tr><td>Charger</td><td id="energy-charger">ChargePoint Home Flex</td></tr>
         <tr><td>Status</td><td id="energy-status-table">Disabled</td></tr>
-        <tr><td>Power</td><td id="energy-power">0 kW</td></tr>
-        <tr><td>Session Energy</td><td id="energy-session">0 kWh</td></tr>
-        <tr><td>Cost</td><td id="energy-cost">$0.00</td></tr>
+        <tr><td>Network</td><td id="energy-network">Unavailable</td></tr>
+        <tr><td>Power Output</td><td id="energy-power">0 kW</td></tr>
+        <tr><td>Energy Output</td><td id="energy-session">0 kWh</td></tr>
+        <tr><td>Charging Time</td><td id="energy-charging-time">Unavailable</td></tr>
         <tr><td>Miles Added</td><td id="energy-miles">0 mi</td></tr>
+        <tr><td>Miles/Hour Added</td><td id="energy-miles-hour">0 mi/hr</td></tr>
+        <tr><td>Cost</td><td id="energy-cost">$0.00</td></tr>
       </table>
       <div id="energy-setup-message" class="rule-notes">
         <div>Energy Center is disabled. Add Home Assistant EV charging entities in Settings when ready.</div>

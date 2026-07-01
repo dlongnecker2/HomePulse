@@ -10,20 +10,31 @@ from modules.energy.pricing import estimate_cost, estimate_miles_added
 ENERGY_DEFAULTS = {
     "enabled": False,
     "vehicle_name": "2025 Chevrolet Equinox EV",
-    "charger_name": "ChargePoint Home Flex",
+    "charger_name": "Juice Box",
     "cost_per_kwh": 0.13,
     "estimated_miles_per_kwh": 3.5,
+    "alerts": {
+        "enabled": False,
+        "notify_on_start": True,
+        "notify_on_stop": True,
+    },
     "home_assistant_entities": {
-        "status": "",
-        "power_kw": "",
+        "status": "sensor.juice_box_cph50_charging_status",
+        "power_kw": "sensor.juice_box_cph50_power_output",
         "voltage": "",
         "current": "",
-        "session_energy_kwh": "",
+        "session_energy_kwh": "sensor.juice_box_cph50_energy_output",
         "battery_percent": "",
+        "charging_time": "sensor.juice_box_cph50_charging_time",
+        "miles_added": "sensor.juice_box_cph50_miles_added",
+        "miles_per_hour_added": "sensor.juice_box_cph50_miles_hour_added",
+        "charge_cost": "sensor.juice_box_cph50_charge_cost",
+        "network": "sensor.juice_box_cph50_network",
     },
 }
 
-CHARGING_STATUS_TEXT = {"charging", "plugged in charging", "active"}
+CHARGING_STATUS_TEXT = ("charging", "active", "in progress")
+NOT_CHARGING_STATUS_TEXT = ("not charging", "idle", "complete", "completed", "stopped", "paused")
 UNAVAILABLE_STATES = {"", "unknown", "unavailable", "none", "null"}
 
 
@@ -56,11 +67,25 @@ class EnergyManager:
         states = self.read_entity_states(entities)
         session_energy = self.normalized_number(states.get("session_energy_kwh"), "energy", default=0)
         power_kw = self.normalized_number(states.get("power_kw"), "power", default=0)
+        charge_cost = self.normalized_number(states.get("charge_cost"), "currency")
+        miles_added = self.normalized_number(states.get("miles_added"), "distance")
         status_text = self.status_text(states.get("status"), power_kw)
         is_charging = self.is_charging(status_text, power_kw)
         any_live_data = any(
             self.state_available(states.get(key))
-            for key in ("status", "power_kw", "voltage", "current", "session_energy_kwh", "battery_percent")
+            for key in (
+                "status",
+                "power_kw",
+                "voltage",
+                "current",
+                "session_energy_kwh",
+                "battery_percent",
+                "charging_time",
+                "miles_added",
+                "miles_per_hour_added",
+                "charge_cost",
+                "network",
+            )
         )
 
         if not any_live_data:
@@ -83,8 +108,17 @@ class EnergyManager:
             current=self.normalized_number(states.get("current"), "current"),
             battery_percent=self.normalized_number(states.get("battery_percent"), "percent"),
             session_energy_kwh=session_energy,
-            estimated_cost=estimate_cost(session_energy, energy.get("cost_per_kwh", 0.13)),
-            estimated_miles_added=estimate_miles_added(
+            charging_time=self.text_value(states.get("charging_time")),
+            miles_added=miles_added,
+            miles_per_hour_added=self.normalized_number(states.get("miles_per_hour_added"), "distance_rate"),
+            charge_cost=charge_cost,
+            network=self.text_value(states.get("network")),
+            estimated_cost=charge_cost
+            if charge_cost is not None
+            else estimate_cost(session_energy, energy.get("cost_per_kwh", 0.13)),
+            estimated_miles_added=miles_added
+            if miles_added is not None
+            else estimate_miles_added(
                 session_energy,
                 energy.get("estimated_miles_per_kwh", 3.5),
             ),
@@ -97,8 +131,14 @@ class EnergyManager:
         energy = dict(self.config.get("energy", default={}))
         merged = dict(ENERGY_DEFAULTS)
         merged.update(energy)
+        alerts = dict(ENERGY_DEFAULTS["alerts"])
+        alerts.update(energy.get("alerts", {}))
         entities = dict(ENERGY_DEFAULTS["home_assistant_entities"])
         entities.update(energy.get("home_assistant_entities", {}))
+        for key, value in ENERGY_DEFAULTS["home_assistant_entities"].items():
+            if value and not str(entities.get(key, "")).strip():
+                entities[key] = value
+        merged["alerts"] = alerts
         merged["home_assistant_entities"] = entities
         return merged
 
@@ -172,10 +212,15 @@ class EnergyManager:
             return str(entity.get("state")).strip()
         return "Charging" if float(power_kw or 0) > 0.5 else "Not Charging"
 
+    def text_value(self, entity):
+        if not self.state_available(entity):
+            return None
+        return str(entity.get("state")).strip()
+
     def normalized_number(self, entity, measurement, default=None):
         if not self.state_available(entity):
             return default
-        state = entity.get("state")
+        state = str(entity.get("state")).strip().replace("$", "").replace(",", "")
         unit = str(entity.get("unit") or "").strip().lower()
         try:
             value = float(state)
@@ -193,9 +238,15 @@ class EnergyManager:
             return round(value, 3)
         if measurement == "percent":
             return round(max(0, min(value, 100)), 1)
+        if measurement == "currency":
+            return round(value, 2)
+        if measurement in ("distance", "distance_rate"):
+            return round(value, 1)
         return round(value, 2)
 
     @staticmethod
     def is_charging(status, power_kw):
         normalized = str(status or "").strip().lower()
-        return normalized in CHARGING_STATUS_TEXT or float(power_kw or 0) > 0.5
+        if any(text in normalized for text in NOT_CHARGING_STATUS_TEXT):
+            return float(power_kw or 0) > 0.5
+        return any(text in normalized for text in CHARGING_STATUS_TEXT) or float(power_kw or 0) > 0.5

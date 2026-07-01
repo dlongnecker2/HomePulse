@@ -121,18 +121,28 @@
     "packet_loss": 5
   },
   "energy": {
-    "enabled": false,
+    "enabled": true,
     "vehicle_name": "2025 Chevrolet Equinox EV",
-    "charger_name": "ChargePoint Home Flex",
-    "cost_per_kwh": 0.13,
+    "charger_name": "Juice Box",
+    "cost_per_kwh": 0.2,
     "estimated_miles_per_kwh": 3.5,
+    "alerts": {
+      "enabled": false,
+      "notify_on_start": true,
+      "notify_on_stop": true
+    },
     "home_assistant_entities": {
-      "status": "",
-      "power_kw": "",
+      "status": "sensor.juice_box_cph50_charging_status",
+      "power_kw": "sensor.juice_box_cph50_power_output",
       "voltage": "",
       "current": "",
-      "session_energy_kwh": "",
-      "battery_percent": ""
+      "session_energy_kwh": "sensor.juice_box_cph50_energy_output",
+      "battery_percent": "",
+      "charging_time": "sensor.juice_box_cph50_charging_time",
+      "miles_added": "sensor.juice_box_cph50_miles_added",
+      "miles_per_hour_added": "sensor.juice_box_cph50_miles_hour_added",
+      "charge_cost": "sensor.juice_box_cph50_charge_cost",
+      "network": "sensor.juice_box_cph50_network"
     }
   }
 }

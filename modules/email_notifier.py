@@ -112,6 +112,50 @@ class EmailNotifier:
         body = "\n".join(str(line) for line in summary)
         return self.send_email(subject, body, "email_daily_summary", "Daily summary email")
 
+    def send_energy_charging_alert(self, status, started):
+        subject = "EV Charging Started" if started else "EV Charging Stopped"
+        label = "EV charging started email" if started else "EV charging stopped email"
+        event_type = "email_ev_charging_started" if started else "email_ev_charging_stopped"
+        body = (
+            f"{subject}\n\n"
+            f"Charger name: {status.get('charger_name', 'Unavailable')}\n"
+            f"Vehicle name: {status.get('vehicle_name', 'Unavailable')}\n"
+            f"Status: {status.get('status', 'Unavailable')}\n"
+            f"Power: {status.get('power_kw', 0)} kW\n"
+            f"Energy added: {status.get('session_energy_kwh', 0)} kWh\n"
+            f"Cost: ${float(status.get('estimated_cost') or 0):.2f}\n"
+            f"Miles added: {status.get('estimated_miles_added', 0)} mi\n"
+            f"Charging time: {self._friendly_duration(status.get('charging_time'))}\n"
+        )
+        return self.send_email(subject, body, event_type, label)
+
+    @staticmethod
+    def _friendly_duration(value):
+        if value in (None, "", "unknown", "unavailable"):
+            return "Unavailable"
+        raw = str(value).strip()
+        if ":" in raw:
+            parts = [int(part or 0) for part in raw.split(":")]
+            seconds = 0
+            for part in parts:
+                seconds = seconds * 60 + part
+            return EmailNotifier._format_seconds(seconds)
+        try:
+            return EmailNotifier._format_seconds(int(float(raw)))
+        except ValueError:
+            return raw
+
+    @staticmethod
+    def _format_seconds(seconds):
+        seconds = max(0, int(seconds))
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours:
+            return f"{hours}h {minutes}m"
+        if minutes:
+            return f"{minutes}m {seconds}s" if seconds else f"{minutes}m"
+        return f"{seconds}s"
+
     def send_email(self, subject, body, event_type, event_label, ignore_notification_toggle=False):
         settings = self.settings()
         if not ignore_notification_toggle and not settings.get("email_notifications_enabled"):

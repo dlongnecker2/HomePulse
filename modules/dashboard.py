@@ -191,6 +191,8 @@ class Dashboard:
                 "speedtest_server": speedtest["server"],
                 "speedtest_status": speedtest.get("status", "Unavailable"),
                 "speedtest_error": speedtest.get("error", ""),
+                "speedtest_provider": speedtest.get("provider", ""),
+                "speedtest_error_type": speedtest.get("error_type", ""),
                 "last_speedtest": speedtest["last_run"],
                 "next_speedtest": speedtest.get("next_run"),
                 "speedtest_schedule_label": speedtest.get("schedule_label"),
@@ -204,14 +206,14 @@ class Dashboard:
         @self.app.route("/api/energy/status")
         def api_energy_status():
             try:
-                return jsonify(self.application.energy.get_status())
+                return jsonify(self.application.energy_status())
             except Exception as exc:
                 self.application.log.exception(f"Energy API failed: {exc}")
                 return jsonify({
                     "enabled": False,
                     "configured": False,
                     "vehicle_name": "2025 Chevrolet Equinox EV",
-                    "charger_name": "ChargePoint Home Flex",
+                    "charger_name": "Juice Box",
                     "status": "Unavailable",
                     "is_charging": False,
                     "power_kw": 0,
@@ -219,6 +221,11 @@ class Dashboard:
                     "current": None,
                     "battery_percent": None,
                     "session_energy_kwh": 0,
+                    "charging_time": None,
+                    "miles_added": None,
+                    "miles_per_hour_added": None,
+                    "charge_cost": None,
+                    "network": None,
                     "estimated_cost": 0,
                     "estimated_miles_added": 0,
                     "last_update": None,
@@ -299,6 +306,7 @@ class Dashboard:
     def _lab_payload(self):
         status = self._dashboard_payload()
         return {
+            "about": self._lab_about(status),
             "overview": self._lab_overview(status),
             "scheduler": self._lab_scheduler(status),
             "logs": self._recent_log_entries(),
@@ -313,6 +321,52 @@ class Dashboard:
                 ("reload_config", "Reload Configuration"),
             ],
         }
+
+    def _lab_about(self, status):
+        version = self._version_source()
+        return {
+            "application": [
+                ("Application Name", "HomePulse"),
+                ("Version", version),
+                ("Environment", f"{sys.platform} / Python {sys.version.split()[0]}"),
+                ("Runtime", f"PID {os.getpid()}"),
+                ("Project Folder", str(Path.cwd())),
+                ("Configuration", "Loaded" if self.application.config.data else "Unavailable"),
+            ],
+            "modules": self._lab_module_status(status),
+            "system": [
+                ("Database Status", self._sqlite_status()),
+                ("Database Size", self._database_size()),
+                ("Scheduler Status", self._scheduler_status()),
+                ("Scheduled Jobs", len(self.application.scheduler.jobs)),
+            ],
+        }
+
+    def _version_source(self):
+        version_file = Path("VERSION")
+        if version_file.exists():
+            value = version_file.read_text(encoding="utf-8", errors="ignore").strip()
+            if value:
+                return value
+        return self.application.config.get("version", default="Unknown")
+
+    def _lab_module_status(self, status):
+        config = self.application.config
+        recovery = config.get("router_reboot", default={})
+        email = config.get("email", default={})
+        energy = config.get("energy", default={})
+        return [
+            ("Dashboard", self._enabled_label(config.get("dashboard", "enabled", default=True))),
+            ("Internet Health", self._enabled_label(bool(config.get("monitor_interval_minutes", default=0)))),
+            ("Speed Test", self._enabled_label(config.get("speedtest_schedule_enabled", default=True))),
+            ("Home Assistant", self._enabled_label(bool(recovery.get("home_assistant_url") and recovery.get("recovery_entity_id")))),
+            ("Email Alerts", self._enabled_label(email.get("email_notifications_enabled", email.get("enabled", False)))),
+            ("Energy Center", self._enabled_label(energy.get("enabled", False))),
+        ]
+
+    @staticmethod
+    def _enabled_label(value):
+        return "Enabled" if value else "Disabled"
 
     def _recent_reboot_events(self):
         return [
