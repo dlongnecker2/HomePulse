@@ -2218,6 +2218,16 @@ button:focus-visible {
   margin: 0;
 }
 
+.lab-actions .danger-button {
+  color: #ffd1d1;
+  background: rgba(197, 48, 48, 0.16);
+  border-color: rgba(197, 48, 48, 0.35);
+}
+
+.admin-actions-panel .rule-notes {
+  margin-top: 12px;
+}
+
 .lab-panel-wide {
   margin-bottom: 12px;
 }

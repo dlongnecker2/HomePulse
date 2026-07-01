@@ -9,6 +9,8 @@
 - Registered Home Center and Lighting in the platform compatibility registry and exposed them through existing Lab registry visibility.
 - Added dark HomePulse tile styling for the Home Center summary grid.
 - Added reusable 1D / 1W / 1M / 6M / 1Y time-range selectors for history-backed charts with range-aware History API aggregation.
+- Added Windows Task Scheduler startup helper scripts and documented automatic startup setup.
+- Added Lab Admin Actions for token-guarded HomePulse restart and shutdown requests.
 
 ## v3.2.0
 

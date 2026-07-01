@@ -1,4 +1,7 @@
+import os
+import sys
 import threading
+import time
 from datetime import datetime, timedelta
 from statistics import mean
 
@@ -1197,3 +1200,44 @@ class Application:
         if self.config.get("dashboard", "enabled"):
             self.start_dashboard()
         self.scheduler.run_forever(sleep_seconds=10)
+
+    def request_restart(self, delay_seconds=2):
+        message = f"{APP_NAME} restart requested from Lab; restarting in {delay_seconds} seconds."
+        self.log.warning(message)
+        self.db.add_event(timestamp=str(datetime.now()), event_type="system_restart_requested", message=message)
+        thread = threading.Thread(target=self._delayed_restart, args=(delay_seconds,), daemon=True)
+        thread.start()
+        return message
+
+    def request_shutdown(self, delay_seconds=2):
+        message = f"{APP_NAME} shutdown requested from Lab; stopping in {delay_seconds} seconds."
+        self.log.warning(message)
+        self.db.add_event(timestamp=str(datetime.now()), event_type="system_shutdown_requested", message=message)
+        thread = threading.Thread(target=self._delayed_shutdown, args=(delay_seconds,), daemon=True)
+        thread.start()
+        return message
+
+    def _delayed_restart(self, delay_seconds):
+        time.sleep(delay_seconds)
+        args = [sys.executable] + sys.argv
+        try:
+            self.log.warning(f"Restarting {APP_NAME}: {' '.join(args)}")
+            self.db.add_event(
+                timestamp=str(datetime.now()),
+                event_type="system_restart_attempt",
+                message=f"Restarting with executable: {sys.executable}",
+            )
+            os.execv(sys.executable, args)
+        except Exception as exc:
+            self.log.exception(f"{APP_NAME} restart failed: {exc}")
+            self.db.add_event(
+                timestamp=str(datetime.now()),
+                event_type="system_restart_failed",
+                message=f"Restart failed; shutting down current process: {exc}",
+            )
+            os._exit(1)
+
+    def _delayed_shutdown(self, delay_seconds):
+        time.sleep(delay_seconds)
+        self.log.warning(f"Stopping {APP_NAME} process")
+        os._exit(0)

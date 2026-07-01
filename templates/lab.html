@@ -185,6 +185,23 @@
   </article>
 </section>
 
+<section class="dashboard-panel lab-panel-wide admin-actions-panel">
+  <div class="panel-heading compact">
+    <div>
+      <h2>Admin Actions</h2>
+      <p>Restart or stop the local HomePulse process. These actions require the current Lab page token.</p>
+    </div>
+  </div>
+  <div class="lab-actions">
+    <button type="button" data-admin-action="restart">Restart HomePulse</button>
+    <button type="button" data-admin-action="shutdown" class="danger-button">Stop HomePulse</button>
+  </div>
+  <div class="rule-notes">
+    <div>HomePulse has no built-in login. Keep Lab access limited to trusted local networks.</div>
+    <div id="admin-action-status">No admin action requested.</div>
+  </div>
+</section>
+
 <section class="dashboard-panel lab-panel-wide">
   <div class="panel-heading compact">
     <div>
@@ -212,4 +229,8 @@
     {% endfor %}
   </table>
 </section>
+<script>
+  window.HomePulseAdminActionToken = "{{ admin_action_token }}";
+</script>
+<script src="{{ url_for('static', filename='js/lab_admin.js') }}"></script>
 {% endblock %}

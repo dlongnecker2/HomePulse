@@ -1,5 +1,6 @@
 import ctypes
 import os
+import secrets
 import sys
 import threading
 from datetime import datetime, timedelta
@@ -23,6 +24,7 @@ class Dashboard:
         self.app.jinja_env.globals["app_author"] = APP_AUTHOR
         self.app.jinja_env.globals["app_copyright"] = APP_COPYRIGHT
         self.app.jinja_env.globals["render_test_button"] = self.render_test_button
+        self.admin_action_token = secrets.token_urlsafe(32)
         self.register_routes()
 
     def _dashboard_payload(self):
@@ -199,6 +201,7 @@ class Dashboard:
                 "lab.html",
                 lab=self._lab_payload(),
                 message=request.args.get("message"),
+                admin_action_token=self.admin_action_token,
                 now=datetime.now(),
             )
 
@@ -267,6 +270,50 @@ class Dashboard:
                 "last_update": system["last_update"],
                 "timestamp": str(datetime.now()),
             })
+
+        @self.app.route("/api/system/restart", methods=["POST"])
+        def api_system_restart():
+            if not self._valid_admin_action_request():
+                return self._admin_action_forbidden()
+            try:
+                message = self.application.request_restart(delay_seconds=2)
+                return jsonify({
+                    "ok": True,
+                    "status": "restart_scheduled",
+                    "message": message,
+                    "warning": "HomePulse has no built-in login; this admin action requires the Lab page token.",
+                    "timestamp": str(datetime.now()),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"System restart request failed: {exc}")
+                return jsonify({
+                    "ok": False,
+                    "status": "restart_failed",
+                    "message": f"Restart could not be scheduled: {exc}",
+                    "timestamp": str(datetime.now()),
+                }), 500
+
+        @self.app.route("/api/system/shutdown", methods=["POST"])
+        def api_system_shutdown():
+            if not self._valid_admin_action_request():
+                return self._admin_action_forbidden()
+            try:
+                message = self.application.request_shutdown(delay_seconds=2)
+                return jsonify({
+                    "ok": True,
+                    "status": "shutdown_scheduled",
+                    "message": message,
+                    "warning": "HomePulse has no built-in login; this admin action requires the Lab page token.",
+                    "timestamp": str(datetime.now()),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"System shutdown request failed: {exc}")
+                return jsonify({
+                    "ok": False,
+                    "status": "shutdown_failed",
+                    "message": f"Shutdown could not be scheduled: {exc}",
+                    "timestamp": str(datetime.now()),
+                }), 500
 
         @self.app.route("/api/home/status")
         def api_home_status():
@@ -566,6 +613,24 @@ class Dashboard:
         payload = request.get_json(silent=True) or {}
         overrides = payload.get("overrides", payload)
         return jsonify(self.application.diagnostics.run_test(test_name, overrides=overrides, **kwargs).to_dict())
+
+    def _valid_admin_action_request(self):
+        payload = request.get_json(silent=True) or {}
+        token = (
+            request.headers.get("X-HomePulse-Admin-Token")
+            or payload.get("admin_token")
+            or request.form.get("admin_token")
+        )
+        return bool(token and secrets.compare_digest(str(token), self.admin_action_token))
+
+    @staticmethod
+    def _admin_action_forbidden():
+        return jsonify({
+            "ok": False,
+            "status": "forbidden",
+            "message": "Admin action token is missing or invalid. Open Lab and use the in-app button.",
+            "timestamp": str(datetime.now()),
+        }), 403
 
     def _home_status_payload(self):
         dashboard_status = self._dashboard_payload()
