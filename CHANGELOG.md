@@ -3,7 +3,9 @@
 ## v3.5.1 (Hotfix)
 
 - **Critical Fix - /api/status Hanging**: Removed synchronous insights generation from `/api/status` endpoint. Dashboard `/api/status` was hanging due to blocking analytics service calls (status.get(), solar.get_status(), weather.get_status()). Insights are now fetched asynchronously by the frontend via `/api/insights/status` endpoint. `/api/status` now returns fast with only essential dashboard data.
-- **Endpoint Performance**: Added timing logs to `/api/status` route (route start, route completion, elapsed milliseconds) to aid future debugging. `_dashboard_payload()` now returns empty insights array for compatibility; all insights data sourced from dedicated `/api/insights/status` endpoint.
+- **Critical Fix - /api/insights/status Timeout**: Fixed timeout in `/api/insights/status` endpoint by adding lock acquisition timeout (1 second). If insights generation is blocked or slow, returns cached insights immediately instead of blocking the request. AnalyticsService now uses RLock instead of Lock to support re-entrant locking and better concurrent access. Added timing logs to insights endpoint (start, completion, elapsed_ms).
+- **Insights Lock Safety**: Changed AnalyticsService from Lock to RLock for re-entrant locking. Lock acquisition now uses timeout parameter to avoid indefinite blocking when multiple requests arrive concurrently.
+- **Endpoint Performance**: Added timing logs to `/api/status` route (route start, route completion, elapsed milliseconds) to aid future debugging. `_dashboard_payload()` now returns empty insights array for compatibility; all insights data sourced from dedicated `/api/insights/status` endpoint. Both endpoints now return safe fallback JSON if errors occur.
 - **Dashboard Payload**: Insights data removed from `_dashboard_payload()` synchronous path; frontend now loads insights separately via `/api/insights/status` to avoid blocking main dashboard load.
 
 ## v3.5.0

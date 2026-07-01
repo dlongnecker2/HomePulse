@@ -6,7 +6,7 @@ All insights are deterministic and safe - no external services or AI.
 """
 
 from datetime import datetime, timedelta
-from threading import Lock
+from threading import RLock
 
 
 class Insight:
@@ -53,7 +53,7 @@ class AnalyticsService:
         """
         self.application = application
         self.log = log
-        self._lock = Lock()
+        self._lock = RLock()
         self._last_insights = []
         self._last_insights_time = None
 
@@ -108,14 +108,22 @@ class AnalyticsService:
     def get_insights(self, max_insights=5):
         """
         Get current insights (cached for up to 1 minute).
+        Uses timeout to avoid blocking on lock acquisition.
 
         Args:
             max_insights: Maximum number of insights to return
 
         Returns:
-            List of Insight objects
+            List of Insight objects (may be cached or empty list if timeout)
         """
-        with self._lock:
+        # Try to acquire lock with 1-second timeout
+        acquired = self._lock.acquire(timeout=1.0)
+        try:
+            # If we couldn't acquire lock, return cached insights immediately
+            if not acquired:
+                self.log.warning("[analytics] Could not acquire lock for insights, returning cached insights")
+                return self._last_insights[:max_insights] if self._last_insights else []
+            
             # Regenerate if cache is stale (older than 1 minute)
             if (
                 self._last_insights_time is None
@@ -123,6 +131,9 @@ class AnalyticsService:
             ):
                 return self.generate_insights(max_insights)
             return self._last_insights[:max_insights]
+        finally:
+            if acquired:
+                self._lock.release()
 
     # Internet insights
     def _internet_insights(self):

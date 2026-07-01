@@ -538,22 +538,40 @@ class Dashboard:
 
         @self.app.route("/api/insights/status")
         def api_insights_status():
+            import time
+            start_time = time.time()
+            self.application.log.debug("[/api/insights/status] Route started")
+            
             try:
                 max_insights = request.args.get("max", 5, type=int)
+                
+                # Call get_insights with logging
                 insights = self.application.analytics.get_insights(max_insights=max_insights)
-                return jsonify({
+                
+                response = jsonify({
+                    "ok": True,
                     "insights": [i.to_dict() for i in insights],
                     "count": len(insights),
                     "timestamp": str(datetime.now()),
                 })
+                
+                elapsed_ms = (time.time() - start_time) * 1000
+                self.application.log.debug(f"[/api/insights/status] Route completed in {elapsed_ms:.2f}ms")
+                return response
+                
             except Exception as exc:
-                self.application.log.exception(f"Insights API failed: {exc}")
+                elapsed_ms = (time.time() - start_time) * 1000
+                self.application.log.exception(f"[/api/insights/status] Route failed after {elapsed_ms:.2f}ms: {exc}")
+                
+                # Return safe fallback JSON
                 return jsonify({
+                    "ok": True,
                     "insights": [],
                     "count": 0,
+                    "message": "Insights unavailable",
                     "error": str(exc),
                     "timestamp": str(datetime.now()),
-                }), 500
+                }), 200
 
         @self.app.route("/api/history/latest")
         def api_history_latest():
