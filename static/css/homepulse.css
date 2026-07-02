@@ -719,6 +719,131 @@ h2 {
   color: #dfe9f5;
 }
 
+/* Solar KPI Cards */
+.solar-kpi-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(88, 181, 239, 0.08), rgba(88, 181, 239, 0.02));
+  border: 1px solid rgba(88, 181, 239, 0.2);
+}
+
+.solar-kpi-label {
+  color: #9cadc4;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.solar-kpi-value {
+  color: #58b5ef;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+
+.solar-kpi-sublabel {
+  color: #7ead4d;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Solar Table Styling */
+.solar-table-container {
+  overflow-x: auto;
+}
+
+.solar-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.solar-data-table thead {
+  background: rgba(88, 181, 239, 0.08);
+  border-bottom: 2px solid rgba(88, 181, 239, 0.2);
+}
+
+.solar-data-table th {
+  padding: 12px 14px;
+  text-align: left;
+  color: #58b5ef;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.solar-data-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #d9e3f0;
+}
+
+.solar-data-table tr:hover {
+  background: rgba(88, 181, 239, 0.04);
+}
+
+.solar-data-table .table-empty {
+  text-align: center;
+  color: #9cadc4;
+  padding: 20px 14px;
+}
+
+.solar-data-table .status-ok {
+  color: #16c784;
+  font-weight: 600;
+}
+
+.solar-data-table .status-warning {
+  color: #f7c76b;
+  font-weight: 600;
+}
+
+.solar-data-table .status-error {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+/* Solar Weather Impact Card */
+.solar-impact-text {
+  color: #d9e3f0;
+  line-height: 1.6;
+  padding: 14px;
+  background: rgba(5, 11, 20, 0.42);
+  border-left: 3px solid #58b5ef;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* Solar Status Classes */
+.status-ok {
+  color: #16c784;
+  font-weight: 600;
+}
+
+.status-warning {
+  color: #f7c76b;
+  font-weight: 600;
+}
+
+.status-error {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+/* Solar Trend Indicator */
+.trend-indicator {
+  font-size: 18px;
+  display: inline-block;
+}
+
 .solar-history-chart {
   display: flex;
   flex-direction: column;
@@ -2647,6 +2772,10 @@ button:focus-visible {
   .insight-grid,
   .content-grid,
   .history-summary-grid,
+  .solar-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
   .history-chart-grid,
   .report-grid,
   .lab-overview-grid,

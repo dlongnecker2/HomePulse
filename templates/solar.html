@@ -5,131 +5,295 @@
   <header class="module-header">
     <div>
       <div class="eyebrow">Local Enphase Envoy</div>
-      <h2>&#9728; Solar Center</h2>
-      <p>Solar production, Enphase health, weather context, and forecast readiness.</p>
+      <h2>☀️ Solar Center</h2>
+      <p>Solar production, system health, weather analytics, and performance insights.</p>
     </div>
     <span id="solar-module-status-badge" class="energy-status-badge disabled">Disabled</span>
   </header>
 
-  {% set solar_tabs = [
-    ("overview", "Overview"),
-    ("enphase", "Enphase Details"),
-    ("production", "Production Details"),
-    ("weather", "Weather"),
-    ("reports", "Reports")
-  ] %}
   <nav class="secondary-nav" aria-label="Solar Center sections">
-    {% for tab_id, label in solar_tabs %}
-    <button type="button" class="secondary-tab {% if loop.first %}active{% endif %}" data-solar-tab="{{ tab_id }}">{{ label }}</button>
-    {% endfor %}
+    <button type="button" class="secondary-tab active" data-solar-tab="overview">Overview</button>
+    <button type="button" class="secondary-tab" data-solar-tab="health">System Health</button>
+    <button type="button" class="secondary-tab" data-solar-tab="production">Production</button>
+    <button type="button" class="secondary-tab" data-solar-tab="weather">Weather</button>
+    <button type="button" class="secondary-tab" data-solar-tab="analytics">Analytics</button>
   </nav>
 
+  <!-- TAB 1: OVERVIEW -->
   <section id="solar-tab-overview" class="secondary-panel active" data-solar-panel="overview">
     <div class="solar-dashboard-grid">
       <article class="solar-glass-card solar-summary-card">
         <div class="solar-card-heading">
           <div>
             <span class="solar-kicker">Solar Summary</span>
-            <h3 id="solar-module-name">Solar Center</h3>
+            <h3 id="solar-overview-name">Solar Center</h3>
           </div>
-          <span id="solar-overview-status" class="energy-status-badge disabled">Disabled</span>
+          <span id="solar-overview-badge" class="energy-status-badge disabled">Disabled</span>
         </div>
-        <div class="solar-hero-row">
-          <div>
-            <span>Current Production</span>
-            <strong id="solar-overview-current">-</strong>
+        <div class="solar-hero-metrics">
+          <div class="solar-hero-item">
+            <span class="solar-label">Current Production</span>
+            <strong class="solar-value" id="solar-overview-current">-</strong>
           </div>
-          <div>
-            <span>Status</span>
-            <strong id="solar-summary-status">Disabled</strong>
+          <div class="solar-hero-item">
+            <span class="solar-label">Today's Total</span>
+            <strong class="solar-value" id="solar-overview-today">-</strong>
           </div>
         </div>
-        <div class="solar-stat-grid">
-          <div><span>Today</span><strong id="solar-overview-today">-</strong></div>
+        <div class="solar-stat-row">
           <div><span>Last 7 Days</span><strong id="solar-overview-week">-</strong></div>
           <div><span>Lifetime</span><strong id="solar-overview-lifetime">-</strong></div>
-          <div><span>Value Today</span><strong id="solar-overview-value">-</strong></div>
+          <div><span>Today's Value</span><strong id="solar-overview-value">-</strong></div>
+          <div><span>Trend</span><strong id="solar-overview-trend" class="trend-indicator">→</strong></div>
         </div>
-        <p id="solar-overview-message" class="solar-card-note">Solar Center is loading.</p>
         <div class="solar-meta-row">
           <span>Source: <strong id="solar-overview-source">Enphase Envoy</strong></span>
-          <span>Last updated: <strong id="solar-overview-updated">-</strong></span>
+          <span>Updated: <strong id="solar-overview-updated">-</strong></span>
         </div>
       </article>
 
       <article class="solar-glass-card solar-chart-card">
         <div class="solar-card-heading">
-          <div>
-            <span class="solar-kicker">History</span>
-            <h3>Today's Solar Production</h3>
-          </div>
-          <span class="solar-data-pill">Live history</span>
+          <span class="solar-kicker">History</span>
+          <h3>Today's Production</h3>
         </div>
-        <div id="solar-production-chart" class="solar-history-chart" data-placeholder="solar-history"></div>
+        <div id="solar-overview-chart" class="solar-history-chart"></div>
       </article>
+    </div>
+  </section>
 
-      <article class="solar-glass-card solar-weather-card">
+  <!-- TAB 2: SYSTEM HEALTH -->
+  <section id="solar-tab-health" class="secondary-panel" data-solar-panel="health" hidden>
+    <div class="solar-dashboard-grid">
+      <article class="solar-glass-card">
         <div class="solar-card-heading">
-          <div>
-            <span class="solar-kicker">Awaiting Weather Integration</span>
-            <h3>Weather & Solar Correlation</h3>
-          </div>
-        </div>
-        <div class="solar-weather-metrics" data-placeholder="weather-integration">
-          <div><span>Solar Now</span><strong id="solar-weather-production">Pending</strong></div>
-          <div><span>Sunshine</span><strong id="solar-weather-sunshine">Pending</strong></div>
-          <div><span>Cloud Cover</span><strong id="solar-weather-clouds">Pending</strong></div>
-          <div><span>Temperature</span><strong id="solar-weather-temperature">Pending</strong></div>
-          <div><span>UV Index</span><strong id="solar-weather-uv">Pending</strong></div>
-        </div>
-        <p class="solar-card-note">Source: <strong id="solar-weather-source">Placeholder</strong>. Weather correlation is reserved for the future weather service.</p>
-      </article>
-
-      <article class="solar-glass-card solar-forecast-card">
-        <div class="solar-card-heading">
-          <div>
-            <span class="solar-kicker">Forecast Placeholder</span>
-            <h3>Solar Forecast</h3>
-          </div>
-        </div>
-        <div class="solar-forecast-list" data-placeholder="solar-forecast">
-          <div><span>Sunrise / Sunset</span><strong id="solar-forecast-sun">Awaiting weather service</strong></div>
-          <div><span>Expected Production</span><strong id="solar-forecast-production">Pending</strong></div>
-          <div><span>Cloud Impact</span><strong id="solar-forecast-cloud">Pending</strong></div>
-        </div>
-      </article>
-
-      <article class="solar-glass-card solar-health-card">
-        <div class="solar-card-heading">
-          <div>
-            <span class="solar-kicker">System</span>
-            <h3>Enphase Health</h3>
-          </div>
+          <span class="solar-kicker">Status</span>
+          <h3>Gateway & Envoy</h3>
         </div>
         <div class="solar-detail-list">
-          <div><span>Data Source</span><strong id="solar-health-source">Enphase Envoy</strong></div>
-          <div><span>Envoy Status</span><strong id="solar-health-status">-</strong></div>
-          <div><span>Last Update</span><strong id="solar-health-updated">-</strong></div>
-          <div><span>Entity Health</span><strong id="solar-health-entity">Waiting for data</strong></div>
+          <div><span>Gateway Status</span><strong id="solar-health-gateway" class="status-ok">-</strong></div>
+          <div><span>Firmware Version</span><strong id="solar-health-firmware">-</strong></div>
+          <div><span>Envoy Status</span><strong id="solar-health-envoy" class="status-ok">-</strong></div>
+          <div><span>Cloud Connection</span><strong id="solar-health-cloud" class="status-ok">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Inverters</span>
+          <h3>Microinverter Status</h3>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Installed</span><strong id="solar-health-installed">-</strong></div>
+          <div><span>Online</span><strong id="solar-health-online" class="status-ok">-</strong></div>
+          <div><span>Offline</span><strong id="solar-health-offline" class="status-warning">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Performance</span>
+          <h3>Power & Production</h3>
+        </div>
+        <div class="solar-detail-list">
           <div><span>Current Power</span><strong id="solar-health-power">-</strong></div>
-          <div><span>Production CT</span><strong id="solar-health-ct">-</strong></div>
+          <div><span>Peak Today</span><strong id="solar-health-peak-today">-</strong></div>
+          <div><span>Peak This Month</span><strong id="solar-health-peak-month">-</strong></div>
+          <div><span>Lifetime Production</span><strong id="solar-health-lifetime">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card solar-inverter-table">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Details</span>
+          <h3>Inverter Details</h3>
+        </div>
+        <div id="solar-health-inverter-table" class="solar-table-container">
+          <table class="solar-data-table">
+            <thead>
+              <tr>
+                <th>Inverter ID</th>
+                <th>Status</th>
+                <th>Lifetime kWh</th>
+              </tr>
+            </thead>
+            <tbody id="solar-health-inverter-tbody">
+              <tr><td colspan="3" class="table-empty">No inverter data available</td></tr>
+            </tbody>
+          </table>
         </div>
       </article>
     </div>
   </section>
 
-  {% for tab_id, label in solar_tabs[1:] %}
-  <section id="solar-tab-{{ tab_id }}" class="secondary-panel" data-solar-panel="{{ tab_id }}" hidden>
-    <article class="module-card coming-soon-card">
-      <h3>{{ label }}</h3>
-      <p>This Solar Center section is prepared for future analytics and controls.</p>
-      <div class="placeholder-panel">
-        <strong>Coming soon</strong>
-        <span>Data contracts and UI space are reserved so this tab can be implemented without changing the module navigation.</span>
-      </div>
-    </article>
+  <!-- TAB 3: PRODUCTION -->
+  <section id="solar-tab-production" class="secondary-panel" data-solar-panel="production" hidden>
+    <div class="solar-dashboard-grid">
+      <article class="solar-glass-card solar-chart-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Timeline</span>
+          <h3>Production History</h3>
+        </div>
+        <div id="solar-production-chart" class="solar-history-chart" data-default-range="1d"></div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Statistics</span>
+          <h3>Range Summary</h3>
+        </div>
+        <div class="solar-stat-row">
+          <div><span>Peak Power</span><strong id="solar-prod-peak">-</strong></div>
+          <div><span>Average Power</span><strong id="solar-prod-avg">-</strong></div>
+          <div><span>Total Energy</span><strong id="solar-prod-total">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Comparisons</span>
+          <h3>Daily Breakdown</h3>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Today</span><strong id="solar-prod-today">-</strong></div>
+          <div><span>Yesterday</span><strong id="solar-prod-yesterday">-</strong></div>
+          <div><span>This Week</span><strong id="solar-prod-week">-</strong></div>
+          <div><span>This Month</span><strong id="solar-prod-month">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Forecast</span>
+          <h3>Estimated Annual</h3>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Estimated Annual</span><strong id="solar-prod-annual">-</strong></div>
+          <div><span>Based On</span><strong id="solar-prod-basis">Current pace</strong></div>
+        </div>
+      </article>
+    </div>
   </section>
-  {% endfor %}
+
+  <!-- TAB 4: WEATHER -->
+  <section id="solar-tab-weather" class="secondary-panel" data-solar-panel="weather" hidden>
+    <div class="solar-dashboard-grid">
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Conditions</span>
+          <h3>Current Weather</h3>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Condition</span><strong id="solar-weather-condition">-</strong></div>
+          <div><span>Temperature</span><strong id="solar-weather-temp">-</strong></div>
+          <div><span>Feels Like</span><strong id="solar-weather-feels">-</strong></div>
+          <div><span>Humidity</span><strong id="solar-weather-humidity">-</strong></div>
+          <div><span>Wind Speed</span><strong id="solar-weather-wind">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Atmosphere</span>
+          <h3>Sky Conditions</h3>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Cloud Cover</span><strong id="solar-weather-clouds">-</strong></div>
+          <div><span>Pressure</span><strong id="solar-weather-pressure">-</strong></div>
+          <div><span>Visibility</span><strong id="solar-weather-visibility">-</strong></div>
+          <div><span>UV Index</span><strong id="solar-weather-uv">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Sun</span>
+          <h3>Sunrise & Sunset</h3>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Sunrise</span><strong id="solar-weather-sunrise">-</strong></div>
+          <div><span>Sunset</span><strong id="solar-weather-sunset">-</strong></div>
+          <div><span>Daylight Hours</span><strong id="solar-weather-daylight">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card solar-chart-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Correlation</span>
+          <h3>Production vs Weather</h3>
+        </div>
+        <div id="solar-weather-chart" class="solar-history-chart"></div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Impact Analysis</span>
+          <h3>Weather Effects Today</h3>
+        </div>
+        <div id="solar-weather-impact" class="solar-impact-text">-</div>
+      </article>
+    </div>
+  </section>
+
+  <!-- TAB 5: ANALYTICS -->
+  <section id="solar-tab-analytics" class="secondary-panel" data-solar-panel="analytics" hidden>
+    <div class="solar-dashboard-grid">
+      <article class="solar-glass-card solar-kpi-card">
+        <div class="solar-kpi-label">Today</div>
+        <div class="solar-kpi-value" id="solar-analytics-today">-</div>
+        <div class="solar-kpi-sublabel" id="solar-analytics-today-value">-</div>
+      </article>
+
+      <article class="solar-glass-card solar-kpi-card">
+        <div class="solar-kpi-label">Yesterday</div>
+        <div class="solar-kpi-value" id="solar-analytics-yesterday">-</div>
+        <div class="solar-kpi-sublabel" id="solar-analytics-yesterday-value">-</div>
+      </article>
+
+      <article class="solar-glass-card solar-kpi-card">
+        <div class="solar-kpi-label">This Week</div>
+        <div class="solar-kpi-value" id="solar-analytics-week">-</div>
+        <div class="solar-kpi-sublabel" id="solar-analytics-week-value">-</div>
+      </article>
+
+      <article class="solar-glass-card solar-kpi-card">
+        <div class="solar-kpi-label">This Month</div>
+        <div class="solar-kpi-value" id="solar-analytics-month">-</div>
+        <div class="solar-kpi-sublabel" id="solar-analytics-month-value">-</div>
+      </article>
+
+      <article class="solar-glass-card solar-kpi-card">
+        <div class="solar-kpi-label">Lifetime</div>
+        <div class="solar-kpi-value" id="solar-analytics-lifetime">-</div>
+        <div class="solar-kpi-sublabel" id="solar-analytics-lifetime-value">-</div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Best Day</span>
+          <h3>Performance Peak</h3>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>Best Production Day</span><strong id="solar-analytics-best-day">-</strong></div>
+          <div><span>Average Daily</span><strong id="solar-analytics-avg-daily">-</strong></div>
+          <div><span>Best Hour Today</span><strong id="solar-analytics-best-hour">-</strong></div>
+          <div><span>Peak Output</span><strong id="solar-analytics-peak">-</strong></div>
+        </div>
+      </article>
+
+      <article class="solar-glass-card">
+        <div class="solar-card-heading">
+          <span class="solar-kicker">Sustainability</span>
+          <h3>Environmental Impact</h3>
+        </div>
+        <div class="solar-detail-list">
+          <div><span>CO₂ Offset</span><strong id="solar-analytics-co2">-</strong></div>
+          <div><span>Trees Equivalent</span><strong id="solar-analytics-trees">-</strong></div>
+          <div><span>EV Miles Powered</span><strong id="solar-analytics-ev-miles">-</strong></div>
+        </div>
+      </article>
+    </div>
+  </section>
 </section>
 
 <script src="{{ url_for('static', filename='js/history_api.js') }}"></script>

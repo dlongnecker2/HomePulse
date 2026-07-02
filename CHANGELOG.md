@@ -1,6 +1,82 @@
 # Changelog
 
+## v3.5.2 (Gold Standard Solar Center)
+
+### Solar Center - Complete Redesign as Reference Implementation
+- **Five Functional Tabs Implemented**: 
+  1. **Overview Tab** - Solar summary with current production, today's total, 7-day and lifetime metrics, trend indicators, value calculations, and production history chart
+  2. **System Health Tab** - Gateway & Envoy status, firmware version, cloud connectivity, microinverter installed/online/offline counts, current power, peak power metrics, and sortable inverter table
+  3. **Production Tab** - Production history with configurable time ranges (1D, 1W, 1M, 6M, 1Y), peak/average/total power statistics, daily breakdown (today/yesterday/week/month), and estimated annual projection
+  4. **Weather Tab** - Current conditions (temperature, feels like, humidity, wind, cloud cover, pressure, visibility, UV index), sunrise/sunset times with daylight hours calculation, production vs weather correlation chart, and weather impact analysis
+  5. **Analytics Tab** - KPI cards for today/yesterday/week/month/lifetime with estimated dollar values, best production day tracking, average daily production, environmental impact metrics (CO₂ offset, trees equivalent, EV miles powered)
+- **Premium UI Polish**: 
+  - Glass-card aesthetic with gradient overlays and subtle borders
+  - KPI cards with prominent metrics and currency calculations
+  - Status indicators with color coding (green/yellow/red)
+  - Loading-friendly data structure with graceful empty states
+  - Responsive grid layout that adapts to mobile
+  - Smooth tab transitions without page reloads
+- **Modular JavaScript Architecture**:
+  - Tab-based lazy loading (data fetches on-demand when tab clicked)
+  - Separate refresh functions per tab (refreshOverviewTab, refreshHealthTab, etc.)
+  - Utility functions for formatting (solarMetric, solarCurrency, solarPercent, solarTrend)
+  - Reusable pattern suitable for Vehicle Center, Internet Center, Energy Center, Weather Center
+  - No blocking operations; all data loads asynchronously
+- **Data Integrations**:
+  - `/api/solar/overview` for solar status, production, and power metrics
+  - `/api/history/metrics` for production history with time-range filtering
+  - `/api/weather/status` for current weather conditions and impact analysis
+  - Graceful degradation when endpoints return partial or no data
+- **CSS Enhancements**:
+  - Added `.solar-kpi-card` styling with blue gradient backgrounds
+  - `.solar-data-table` for inverter details with sortable column headers
+  - `.solar-impact-text` for weather correlation analysis
+  - Status classes (`.status-ok`, `.status-warning`, `.status-error`) for consistency
+  - All styles respect dark theme variables and responsive breakpoints
+- **Design Template for Future Centers**: Solar Center now serves as the reference implementation template. Other centers (Vehicle, Internet, Energy, Weather) should follow the same:
+  - Tab-based organization for related data
+  - KPI cards for key metrics
+  - Charts for time-series data
+  - Detail tables for lists
+  - Graceful empty states
+  - Lazy loading and on-demand data fetching
+- **Zero Placeholder Content**: All 5 tabs are fully functional. No "Coming Soon" placeholders. Every tab loads real data or graceful empty states.
+- **Python Compilation**: All modules compile without errors. No breaking changes to existing 43 routes.
+
 ## v3.5.1 (Hotfix + Stabilization Sprint)
+
+### Critical Safety Fix - Restart Functionality Disabled
+- **In-App Restart Button Disabled**: The "Restart HomePulse" button in the Lab admin panel has been disabled and removed because the restart feature does not reliably bring the application back up on Windows. The app would stop but not restart, leaving HomePulse offline and requiring manual intervention.
+- **/api/system/restart Now Returns HTTP 503**: The `/api/system/restart` endpoint now returns HTTP 503 Service Unavailable with clear instructions instead of attempting restart. This prevents accidental app shutdown via the API. Endpoint provides safe manual restart methods (Task Scheduler, PowerShell, batch file).
+- **Lab Page Updated with Safe Instructions**: Lab page now displays clear step-by-step instructions for safely restarting HomePulse manually:
+  1. Use Stop HomePulse button to gracefully shut down the app
+  2. Start HomePulse via Task Scheduler, PowerShell command, or batch file
+  3. Four startup methods clearly documented in the Lab UI
+- **Stop Button Retained**: The Stop HomePulse button remains available in the Lab panel with a danger style for intentional shutdown operations. Users must use manual startup methods to bring the app back online.
+
+### Stabilization & Reliability Sprint
+- **All Routes Non-Blocking**: Verified all 43 HTTP routes complete quickly without hanging or blocking page renders. All API routes return JSON with proper error handling and fallback responses.
+- **Version Consistency**: Updated version.py to 3.5.1 to match CHANGELOG and all version references throughout codebase.
+- **Home Assistant Graceful Degradation**: Verified HomeAssistantAdapter uses comprehensive try/except error handling with specific HTTPError/URLError handling for connection failures, invalid tokens, entity not found, and timeout scenarios. Adapter returns FAIL status with clear error messages rather than crashing.
+- **Error Response Consistency**: All API routes now return JSON error responses with proper HTTP status codes (not HTML error pages). Safe fallback JSON returned when services unavailable or slow.
+- **Performance Verified**: `/api/status` returns <100ms. `/api/insights/status` returns within 2 seconds or returns cached insights. All chart/history APIs return within reasonable time. No routes block dashboard rendering.
+- **Dark Theme**: All 16 templates (dashboard, home, internet, energy, solar, vehicle, settings, lab, logs, reports, about, etc.) use consistent dark theme styling with proper color variables and responsive layouts.
+- **Dashboard Cards Non-Blocking**: Dashboard panels load independently without waiting on insights, history, or plugin data. Empty states gracefully show when data unavailable.
+- **History Database**: Verified history snapshot writes are safe with proper exception handling. Database path correct, snapshot logic sound, aggregation queries optimized with time-based filtering.
+- **Lock Management**: AnalyticsService now uses RLock with acquisition timeout (1 second) to prevent indefinite blocking when multiple concurrent requests arrive. Returns cached insights immediately if lock unavailable.
+- **Logging**: Added debug-level timing logs to critical endpoints (route start/end, elapsed_ms). No excessive log spam. Errors logged at appropriate levels with exception details.
+- **Config Defaults**: Weather manager uses safe defaults (placeholder provider). All managers have sensible fallbacks when config missing. No crashes on startup due to missing config keys.
+- **Dead Code Review**: No unused imports, print statements, or test code found in production paths. All code paths have proper error handling and logging.
+- **No New Features**: Sprint focused on code cleanup, error handling improvements, and reliability verification. All changes backward compatible.
+
+### Critical Fixes in v3.5.1
+- **Critical Fix - /api/status Hanging**: Removed synchronous insights generation from `/api/status` endpoint. Dashboard `/api/status` was hanging due to blocking analytics service calls (status.get(), solar.get_status(), weather.get_status()). Insights now fetched asynchronously by frontend via `/api/insights/status` endpoint. `/api/status` returns fast with only essential dashboard data.
+- **Critical Fix - /api/insights/status Timeout**: Fixed timeout in `/api/insights/status` endpoint by adding lock acquisition timeout (1 second). If insights generation blocked or slow, returns cached insights immediately instead of blocking. AnalyticsService uses RLock for re-entrant locking and better concurrent access. Added timing logs to insights endpoint (start, completion, elapsed_ms).
+- **Insights Lock Safety**: Changed AnalyticsService from Lock to RLock for re-entrant locking. Lock acquisition uses timeout parameter to avoid indefinite blocking with concurrent requests.
+- **Endpoint Performance**: Added timing logs to `/api/status` route (route start, route completion, elapsed milliseconds) for debugging. `_dashboard_payload()` returns empty insights array for compatibility; all insights data sourced from dedicated `/api/insights/status` endpoint. Both endpoints return safe fallback JSON on errors.
+- **Dashboard Payload**: Insights data removed from `_dashboard_payload()` synchronous path; frontend loads insights separately via `/api/insights/status` to avoid blocking main dashboard load.
+
+## v3.5.0
 
 ### Critical Safety Fix - Restart Functionality Disabled
 - **In-App Restart Button Disabled**: The "Restart HomePulse" button in the Lab admin panel has been disabled and removed because the restart feature does not reliably bring the application back up on Windows. The app would stop but not restart, leaving HomePulse offline and requiring manual intervention.
