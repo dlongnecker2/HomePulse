@@ -1,5 +1,61 @@
 # Changelog
 
+## v3.5.4 (Premium Chart Polish)
+
+### Chart Hover Tooltips
+- Replaced native browser `<title>` SVG tooltips (plain yellow boxes) with styled overlay tooltips.
+- Singleton `div#hp-chart-tooltip` is created once and reused for all SVG charts.
+- Tooltip content per hover point:
+  - **Time line**: full range-aware label (`formatHistoryTooltip`) — e.g. `Mon Jun 30 20:00`
+  - **Value line**: formatted value + unit — e.g. `53.0 %`
+- Event delegation on the SVG element (single `mouseover` handler per chart, not per circle).
+- Tooltip clamps to viewport edges (`positionTooltip`).
+- Dashboard Chart.js latency chart: improved tooltip with `footerColor` showing
+  `Min / Avg / Max` summary at the bottom of each hover tooltip.
+
+### Chart Summary Stats Bar
+- Min / Avg / Max stats bar appended below every SVG line chart.
+- Comparison chart (Solar + EV) shows per-series peak and average.
+- Dashboard latency chart: dedicated `.chart-footer` with Min / Avg / Max ms values.
+- Stats are recalculated on every range change so they always reflect visible data.
+
+### CSV Export
+- Every SVG line chart and comparison chart now has a small `⬇ CSV` button in the chart footer.
+- Dashboard latency chart has its own `⬇ CSV` button.
+- CSV format:
+  - Line chart: `timestamp, value, unit, range`
+  - Comparison chart: `timestamp, SeriesA, SeriesB, unit, range`
+  - Latency chart: `timestamp, latency_ms, range`
+- Filename convention: `homepulse-<chart-id>-<range>.csv`
+- Uses `URL.createObjectURL` / `revokeObjectURL` for safe in-browser download.
+
+### Framework-First Implementation (no per-center changes needed)
+- All new features implemented in `history_api.js`:
+  - `getTooltipEl()` — singleton tooltip div
+  - `positionTooltip(tip, event)` — viewport-aware positioning
+  - `calcStats(rows)` → `{min, max, avg}`
+  - `exportChartCSV(element, rows, options, range)` — single-series CSV
+  - `exportComparisonCSV(element, rowsA, rowsB, options, range)` — dual-series CSV
+  - `renderChartFooter(target, element, rows, options, range)` — stats + export for line charts
+  - `renderComparisonFooter(target, element, rowsA, rowsB, options, range)` — stats + export for comparison
+- `calcStats` and `exportChartCSV` exported from `HomePulseHistory` for external reuse.
+- Applies automatically to: Solar charts, Vehicle charts, Dashboard Solar/EV comparison, Internet latency.
+
+### Styling
+- `.hp-chart-tooltip` — fixed-position overlay, dark background, blue border, drop shadow.
+- `.hp-tip-time` / `.hp-tip-val` — two-row tooltip layout (muted label + bold value).
+- `.chart-footer` — flex row with stats left + export button right.
+- `.chart-stats-bar` — Min/Avg/Max spaced row, muted labels, white values.
+- `.chart-export-btn` — 24px height, unobtrusive blue tint, overrides default button styles.
+- `.history-point:hover { r: 5 }` — SVG circles enlarge on hover (behind `@supports` guard).
+- All styles in `homepulse.css` under `v3.5.4` section.
+
+### Validation
+- Python compilation: all modules pass.
+- `history_api.js`: 192/192 balanced braces, 370/370 balanced parens.
+- `dashboard_charts.js`: 69/69 balanced braces, 161/161 balanced parens.
+- `homepulse.css`: 566/566 balanced braces.
+
 ## v3.5.3 (Reusable Center Framework & Vehicle Center Upgrade)
 
 ### v3.5.3.3 - Shared Chart Framework: Range-Aware X-Axis Labels

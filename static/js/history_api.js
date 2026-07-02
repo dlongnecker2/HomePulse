@@ -57,6 +57,142 @@ window.HomePulseHistory = (() => {
     }
   }
 
+  // ── Tooltip overlay ────────────────────────────────────────────────────────
+  function getTooltipEl() {
+    let el = document.getElementById("hp-chart-tooltip");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "hp-chart-tooltip";
+      el.className = "hp-chart-tooltip";
+      el.hidden = true;
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  function positionTooltip(tip, event) {
+    const margin = 14;
+    let x = event.clientX + margin;
+    let y = event.clientY + margin;
+    if (x + 200 > window.innerWidth)  x = event.clientX - 200 - margin;
+    if (y + 80  > window.innerHeight) y = event.clientY - 80  - margin;
+    tip.style.left = `${x}px`;
+    tip.style.top  = `${y}px`;
+  }
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  function calcStats(rows) {
+    if (!rows.length) return null;
+    const vals = rows.map(r => r.value);
+    return {
+      min: Math.min(...vals),
+      max: Math.max(...vals),
+      avg: vals.reduce((a, b) => a + b, 0) / vals.length,
+    };
+  }
+
+  // ── CSV export ─────────────────────────────────────────────────────────────
+  function exportChartCSV(element, rows, options, range) {
+    const id = (element.id || "chart").replace(/[^a-z0-9_-]/gi, "-");
+    const unit = options.unit || "";
+    const lines = [
+      `"timestamp","value","unit","range"`,
+      ...rows.map(r => [
+        `"${String(r.tooltip || r.label).replace(/"/g, '""')}"`,
+        r.value,
+        `"${unit.replace(/"/g, '""')}"`,
+        `"${range}"`,
+      ].join(",")),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `homepulse-${id}-${range}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportComparisonCSV(element, rowsA, rowsB, options, range) {
+    const id = (element.id || "chart").replace(/[^a-z0-9_-]/gi, "-");
+    const unit = (options.unit || "kW").replace(/"/g, '""');
+    const maxLen = Math.max(rowsA.length, rowsB.length);
+    const lines = [
+      `"timestamp","${String(options.firstLabel || "A").replace(/"/g, '""')}","${String(options.secondLabel || "B").replace(/"/g, '""')}","unit","range"`,
+      ...Array.from({ length: maxLen }, (_, i) => {
+        const a = rowsA[i]; const b = rowsB[i];
+        const ts = String(a?.tooltip || a?.label || b?.tooltip || b?.label || "").replace(/"/g, '""');
+        return `"${ts}",${a?.value ?? ""},${b?.value ?? ""},"${unit}","${range}"`;
+      }),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `homepulse-${id}-${range}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Chart footer: stats bar + export button ────────────────────────────────
+  function renderChartFooter(target, element, rows, options, range) {
+    const stats = calcStats(rows);
+    if (!stats) return;
+    const unit = escapeText(options.unit || "");
+    const d = options.digits ?? 2;
+    const footer = document.createElement("div");
+    footer.className = "chart-footer";
+    const statsBar = document.createElement("div");
+    statsBar.className = "chart-stats-bar";
+    statsBar.innerHTML =
+      `<span>Min&nbsp;<strong>${formatTick(stats.min, d)}${unit ? "&nbsp;" + unit : ""}</strong></span>` +
+      `<span>Avg&nbsp;<strong>${formatTick(stats.avg, d)}${unit ? "&nbsp;" + unit : ""}</strong></span>` +
+      `<span>Max&nbsp;<strong>${formatTick(stats.max, d)}${unit ? "&nbsp;" + unit : ""}</strong></span>`;
+    const exportBtn = document.createElement("button");
+    exportBtn.type = "button";
+    exportBtn.className = "chart-export-btn";
+    exportBtn.textContent = "\u2b07 CSV";
+    exportBtn.title = "Export chart data as CSV";
+    exportBtn.addEventListener("click", () => exportChartCSV(element, rows, options, range));
+    footer.append(statsBar, exportBtn);
+    target.appendChild(footer);
+  }
+
+  function renderComparisonFooter(target, element, rowsA, rowsB, options, range) {
+    const statsA = calcStats(rowsA);
+    const statsB = calcStats(rowsB);
+    if (!statsA && !statsB) return;
+    const d = options.tickDigits ?? 1;
+    const unitStr = escapeText(options.unit || "kW");
+    const footer = document.createElement("div");
+    footer.className = "chart-footer";
+    const statsBar = document.createElement("div");
+    statsBar.className = "chart-stats-bar";
+    if (statsA) {
+      const la = escapeText(options.firstLabel || "Solar");
+      statsBar.innerHTML +=
+        `<span>${la}&nbsp;peak&nbsp;<strong>${formatTick(statsA.max, d)}&nbsp;${unitStr}</strong></span>` +
+        `<span>${la}&nbsp;avg&nbsp;<strong>${formatTick(statsA.avg, d)}&nbsp;${unitStr}</strong></span>`;
+    }
+    if (statsB) {
+      const lb = escapeText(options.secondLabel || "EV");
+      statsBar.innerHTML +=
+        `<span>${lb}&nbsp;peak&nbsp;<strong>${formatTick(statsB.max, d)}&nbsp;${unitStr}</strong></span>`;
+    }
+    const exportBtn = document.createElement("button");
+    exportBtn.type = "button";
+    exportBtn.className = "chart-export-btn";
+    exportBtn.textContent = "\u2b07 CSV";
+    exportBtn.title = "Export comparison data as CSV";
+    exportBtn.addEventListener("click", () => exportComparisonCSV(element, rowsA, rowsB, options, range));
+    footer.append(statsBar, exportBtn);
+    target.appendChild(footer);
+  }
+
   async function fetchMetrics(moduleName, metricName, hoursOrOptions = 24) {
     const options = typeof hoursOrOptions === "object" && hoursOrOptions !== null
       ? hoursOrOptions
@@ -128,10 +264,33 @@ window.HomePulseHistory = (() => {
       ${rows.map((row, index) => {
         const x = left + (rows.length === 1 ? 0 : (index / (rows.length - 1)) * plotWidth);
         const y = top + plotHeight - (row.value / maxValue) * plotHeight;
-        return `<circle class="history-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3"><title>${escapeText(row.tooltip || row.label)}: ${formatTick(row.value, options.digits ?? 2)} ${escapeText(options.unit || row.unit || "")}</title></circle>`;
+        return `<circle class="history-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3"></circle>`;
       }).join("")}
     `;
     target.appendChild(svg);
+
+    // Styled hover tooltip via event delegation (replaces native <title>)
+    const circles = [...svg.querySelectorAll("circle.history-point")];
+    const tip = getTooltipEl();
+    svg.addEventListener("mouseover", (e) => {
+      const c = e.target.closest("circle.history-point");
+      if (!c) { tip.hidden = true; return; }
+      const i = circles.indexOf(c);
+      if (i < 0 || i >= rows.length) return;
+      const row = rows[i];
+      const unit = options.unit || row.unit || "";
+      tip.innerHTML =
+        `<div class="hp-tip-time">${escapeText(row.tooltip || row.label)}</div>` +
+        `<div class="hp-tip-val">${formatTick(row.value, options.digits ?? 2)}` +
+        (unit ? `<span>\u00a0${escapeText(unit)}</span>` : "") +
+        `</div>`;
+      tip.hidden = false;
+      positionTooltip(tip, e);
+    });
+    svg.addEventListener("mousemove", (e) => { if (!tip.hidden) positionTooltip(tip, e); });
+    svg.addEventListener("mouseleave", () => { tip.hidden = true; });
+
+    renderChartFooter(target, element, rows, options, range);
   }
 
   function renderComparisonChart(element, series, options = {}) {
@@ -187,6 +346,7 @@ window.HomePulseHistory = (() => {
     legend.className = "comparison-legend";
     legend.innerHTML = `<span class="solar">${escapeText(options.firstLabel || "Solar")}</span><span class="ev">${escapeText(options.secondLabel || "EV Charging")}</span>`;
     target.append(svg, legend);
+    renderComparisonFooter(target, element, rowsA, rowsB, options, range);
   }
 
   function renderTarget(element, options = {}) {
@@ -316,5 +476,7 @@ window.HomePulseHistory = (() => {
     normalizeRange,
     formatHistoryLabel,
     formatHistoryTooltip,
+    exportChartCSV,
+    calcStats,
   };
 })();

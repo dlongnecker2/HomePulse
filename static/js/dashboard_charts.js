@@ -55,6 +55,7 @@ async function loadLatencyChart() {
     canvas.hidden = true;
     empty.hidden = false;
     empty.textContent = "No data available for this range yet.";
+    canvas.parentElement?.querySelector(".chart-footer")?.remove();
     return;
   }
   canvas.hidden = false;
@@ -68,6 +69,7 @@ async function loadLatencyChart() {
     latencyChart.options.plugins.averageLatencyLine.value = averageLatency;
     latencyChart.options.scales.x.title.text = xAxisTitle;
     latencyChart.update("active");
+    ensureLatencyFooter(canvas.parentElement, data);
     return;
   }
 
@@ -119,17 +121,29 @@ async function loadLatencyChart() {
         },
         tooltip: {
           enabled: true,
-          backgroundColor: "rgba(15, 23, 42, 0.94)",
-          borderColor: "rgba(255, 255, 255, 0.16)",
+          backgroundColor: "rgba(11, 18, 32, 0.96)",
+          borderColor: "rgba(88, 181, 239, 0.28)",
           borderWidth: 1,
           padding: 11,
-          titleColor: "#ffffff",
-          bodyColor: "#e7edf7",
+          titleColor: "#9cadc4",
+          bodyColor: "#eef5ff",
+          footerColor: "#9cadc4",
+          footerFont: { size: 11 },
           displayColors: false,
           callbacks: {
             label(context) {
               return `Latency: ${context.parsed.y} ms`;
-            }
+            },
+            footer(items) {
+              const chart = items[0]?.chart;
+              if (!chart) return [];
+              const vals = chart.data.datasets[0].data.filter(v => Number.isFinite(Number(v)));
+              if (!vals.length) return [];
+              const min = Math.round(Math.min(...vals));
+              const max = Math.round(Math.max(...vals));
+              const avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+              return [`Min: ${min} ms  \u00b7  Avg: ${avg} ms  \u00b7  Max: ${max} ms`];
+            },
           }
         },
         averageLatencyLine: {
@@ -170,6 +184,8 @@ async function loadLatencyChart() {
       }
     }
   });
+
+  ensureLatencyFooter(canvas.parentElement, data);
 }
 
 async function loadLatencyHistoryData(canvas) {
@@ -237,6 +253,52 @@ function latencyLabel(timestamp, range) {
   const text = String(timestamp);
   if (text.length >= 16 && text.slice(11, 16) !== "00:00") return text.slice(11, 16);
   return text.length >= 10 ? text.slice(5, 10) : text;
+}
+
+function ensureLatencyFooter(container, data) {
+  container?.querySelector(".chart-footer")?.remove();
+  if (!data || !data.values.length) return;
+  const vals = data.values.filter(v => Number.isFinite(Number(v)));
+  if (!vals.length) return;
+  const min = Math.round(Math.min(...vals));
+  const max = Math.round(Math.max(...vals));
+  const avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  const footer = document.createElement("div");
+  footer.className = "chart-footer";
+  const statsBar = document.createElement("div");
+  statsBar.className = "chart-stats-bar";
+  statsBar.innerHTML =
+    `<span>Min&nbsp;<strong>${min}&nbsp;ms</strong></span>` +
+    `<span>Avg&nbsp;<strong>${avg}&nbsp;ms</strong></span>` +
+    `<span>Max&nbsp;<strong>${max}&nbsp;ms</strong></span>`;
+  const exportBtn = document.createElement("button");
+  exportBtn.type = "button";
+  exportBtn.className = "chart-export-btn";
+  exportBtn.textContent = "\u2b07 CSV";
+  exportBtn.title = "Export latency data as CSV";
+  exportBtn.addEventListener("click", () => exportLatencyCSV(data));
+  footer.append(statsBar, exportBtn);
+  container.appendChild(footer);
+}
+
+function exportLatencyCSV(data) {
+  const range = data.range || "1d";
+  const filename = `homepulse-latency-ms-${range}.csv`;
+  const lines = [
+    `"timestamp","latency_ms","range"`,
+    ...data.labels.map((lbl, i) =>
+      `"${String(lbl ?? "").replace(/"/g, '""')}",${data.values[i] ?? ""},"${range}"`
+    ),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }
 
 document.addEventListener("DOMContentLoaded", loadLatencyChart);

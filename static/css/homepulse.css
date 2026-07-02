@@ -3644,3 +3644,100 @@ td {
     margin-top: 12px;
   }
 }
+
+/* ==========================================================================
+   v3.5.4 — Premium Chart Polish
+   ========================================================================== */
+
+/* ── SVG chart tooltip overlay ─────────────────────────────────────────── */
+.hp-chart-tooltip {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  background: rgba(11, 18, 32, 0.96);
+  border: 1px solid rgba(88, 181, 239, 0.28);
+  border-radius: 10px;
+  padding: 9px 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.hp-tip-time {
+  color: #9cadc4;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.hp-tip-val {
+  color: #eef5ff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.hp-tip-val span {
+  color: #9cadc4;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── Chart footer: stats bar + export button ────────────────────────────── */
+.chart-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 2px 2px;
+  flex-wrap: wrap;
+}
+
+.chart-stats-bar {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #9cadc4;
+  line-height: 1.35;
+}
+
+.chart-stats-bar strong {
+  color: #d9e3f0;
+  font-weight: 600;
+}
+
+/* ── Export button ──────────────────────────────────────────────────────── */
+.chart-export-btn {
+  min-height: unset !important;
+  height: 24px;
+  padding: 0 10px;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(88, 181, 239, 0.10);
+  border: 1px solid rgba(88, 181, 239, 0.22);
+  border-radius: 6px;
+  color: #7ec5f4;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background-color 120ms ease;
+}
+
+.chart-export-btn:hover,
+.chart-export-btn:focus-visible {
+  background: rgba(88, 181, 239, 0.20);
+  transform: none;
+  box-shadow: none;
+  outline: none;
+}
+
+/* Slightly enlarge SVG data points on hover for easier targeting */
+.history-point {
+  cursor: crosshair;
+}
+
+@supports (r: 1px) {
+  .history-point:hover { r: 5; }
+}
