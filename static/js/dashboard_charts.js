@@ -60,11 +60,13 @@ async function loadLatencyChart() {
   canvas.hidden = false;
   empty.hidden = true;
   const averageLatency = average(data.values);
+  const xAxisTitle = { "1d": "Time", "1w": "Day", "1m": "Date", "6m": "Month / Date", "1y": "Month" }[data.range || "1d"] || "Time";
 
   if (latencyChart) {
     latencyChart.data.labels = data.labels;
     latencyChart.data.datasets[0].data = data.values;
     latencyChart.options.plugins.averageLatencyLine.value = averageLatency;
+    latencyChart.options.scales.x.title.text = xAxisTitle;
     latencyChart.update("active");
     return;
   }
@@ -160,7 +162,7 @@ async function loadLatencyChart() {
           },
           title: {
             display: true,
-            text: "Time",
+            text: xAxisTitle,
             color: "#6b7688",
             font: { weight: "600" }
           }
@@ -179,11 +181,12 @@ async function loadLatencyHistoryData(canvas) {
       const payload = await window.HomePulseHistory.fetchMetrics("internet", "latency_ms", { range });
       const points = Array.isArray(payload.points) ? payload.points : [];
       return {
-        labels: points.map((point) => latencyLabel(point.timestamp)),
+        labels: points.map((point) => latencyLabel(point.timestamp, range)),
         values: points.map((point) => point.value).filter((value) => Number.isFinite(Number(value))),
+        range,
       };
     } catch (error) {
-      return { labels: [], values: [] };
+      return { labels: [], values: [], range };
     }
   }
   const response = await fetch("/api/charts/latency");
@@ -225,7 +228,11 @@ function ensureLatencyEmptyState(canvas) {
   return empty;
 }
 
-function latencyLabel(timestamp) {
+function latencyLabel(timestamp, range) {
+  if (window.HomePulseHistory?.formatHistoryLabel) {
+    return window.HomePulseHistory.formatHistoryLabel(timestamp, range || "1d");
+  }
+  // Fallback
   if (!timestamp) return "";
   const text = String(timestamp);
   if (text.length >= 16 && text.slice(11, 16) !== "00:00") return text.slice(11, 16);

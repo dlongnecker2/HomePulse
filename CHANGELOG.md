@@ -2,6 +2,47 @@
 
 ## v3.5.3 (Reusable Center Framework & Vehicle Center Upgrade)
 
+### v3.5.3.3 - Shared Chart Framework: Range-Aware X-Axis Labels
+- **Problem**: Every history chart displayed identical x-axis label format regardless of selected range.
+  Clicking 1W/1M/6M/1Y changed the data but x-axis still showed HH:MM (intraday format).
+- **Root cause**: `history_api.js`'s `normalizedPoints` used `shortTime()` unconditionally;
+  `dashboard_charts.js`'s `latencyLabel()` had no range parameter.
+- **Canonical formatter added to `history_api.js`** (single source of truth for all charts):
+  - `formatHistoryLabel(timestamp, range)` — short x-axis tick label:
+    - `1d` → `"20:28"` (HH:MM)
+    - `1w` → `"Mon"` (day name from `Date`)
+    - `1m` → `"6/30"` (month/day)
+    - `6m` → `"Jun 30"` (month name + day)
+    - `1y` → `"Jun"` (month name)
+  - `formatHistoryTooltip(timestamp, range)` — full SVG hover tooltip:
+    - `1d` → `"Jun 30 20:28"`
+    - `1w` → `"Mon Jun 30 20:00"`
+    - `1m` → `"Jun 30"`
+    - `6m` → `"Jun 30, 2026"`
+    - `1y` → `"Jun 2026"`
+  - Both functions exported from the `HomePulseHistory` IIFE.
+- **`history_api.js` wiring**:
+  - `renderLineChart` reads active range (`options.range || selectedRange(element)`) and passes to `normalizedPoints`.
+  - `renderComparisonChart` same.
+  - `normalizedPoints(points, range)` now accepts range; sets both `label` and `tooltip` on each point.
+  - SVG `<circle>` title now uses `row.tooltip || row.label` for richer hover text.
+- **`center_framework.js` updated**:
+  - `formatChartLabel` delegates to `window.HomePulseHistory.formatHistoryLabel` when available;
+    keeps string-slicing fallback for load-order resilience.
+  - `normalizeChartPoints` already passes `timestamp` through (set in v3.5.3.2); no change needed.
+- **`dashboard_charts.js` updated** (Internet Latency / Dashboard Chart.js chart):
+  - `latencyLabel(timestamp, range)` delegates to `formatHistoryLabel`; fallback preserved.
+  - `loadLatencyHistoryData` passes `range` when building labels and returns `range` in result object.
+  - `loadLatencyChart` computes `xAxisTitle` from range (`Time / Day / Date / Month / Date / Month`);
+    sets it on Chart.js x-axis title in both the update path and new chart creation.
+- **Applies to all chart paths**:
+  - Solar Center: Overview, Production, Weather charts (via `renderCenterChart`)
+  - Vehicle Center: Battery, Efficiency charts
+  - Dashboard: Solar/EV comparison chart (via `renderComparisonChart`), Latency chart
+  - Internet/Energy center charts (any future center using `renderCenterChart`)
+- **Out of scope**: `history_charts.js` (history page) — labels are server-pre-formatted, no range selectors.
+- **Validation**: Python compilation passes; 1w APIs confirmed (solar 26pts, internet 26pts aggregated).
+
 ### v3.5.3.2 - Fix: Vehicle Center Chart Range Selector
 - **Root cause – range buttons had no effect**: `refreshBatteryTab` and `refreshEfficiencyTab` always
   fetched `range=1d` regardless of which button was clicked. The `history_api.js` `renderTarget`

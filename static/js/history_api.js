@@ -7,6 +7,56 @@ window.HomePulseHistory = (() => {
     ["1y", "1Y"],
   ];
 
+  const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const DAY_NAMES   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  // Parse "2026-06-30 20:28:52" or ISO strings into a Date object.
+  function parseTs(ts) {
+    if (!ts) return null;
+    const d = new Date(String(ts).replace(" ", "T").replace(/\.\d+$/, ""));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  /**
+   * Short x-axis tick label, range-aware.
+   *   1d → "20:28" (HH:MM)    1w → "Mon" (day name)
+   *   1m → "6/30"              6m → "Jun 30"    1y → "Jun"
+   */
+  function formatHistoryLabel(timestamp, range) {
+    const d = parseTs(timestamp);
+    if (!d) return shortTime(timestamp);
+    const h  = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    switch (String(range || "1d").toLowerCase()) {
+      case "1d":  return `${h}:${mi}`;
+      case "1w":  return DAY_NAMES[d.getDay()];
+      case "1m":  return `${d.getMonth() + 1}/${d.getDate()}`;
+      case "6m":  return `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;
+      case "1y":  return MONTH_NAMES[d.getMonth()];
+      default:    return `${h}:${mi}`;
+    }
+  }
+
+  /**
+   * Full descriptive tooltip label, range-aware.
+   *   1d → "Jun 30 20:28"           1w → "Mon Jun 30 20:00"
+   *   1m → "Jun 30"                 6m → "Jun 30, 2026"    1y → "Jun 2026"
+   */
+  function formatHistoryTooltip(timestamp, range) {
+    const d = parseTs(timestamp);
+    if (!d) return shortTime(timestamp);
+    const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const date = `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;
+    switch (String(range || "1d").toLowerCase()) {
+      case "1d":  return `${date} ${time}`;
+      case "1w":  return `${DAY_NAMES[d.getDay()]} ${date} ${time}`;
+      case "1m":  return date;
+      case "6m":  return `${date}, ${d.getFullYear()}`;
+      case "1y":  return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+      default:    return `${date} ${time}`;
+    }
+  }
+
   async function fetchMetrics(moduleName, metricName, hoursOrOptions = 24) {
     const options = typeof hoursOrOptions === "object" && hoursOrOptions !== null
       ? hoursOrOptions
@@ -35,7 +85,8 @@ window.HomePulseHistory = (() => {
   function renderLineChart(element, points, options = {}) {
     if (!element) return;
     const target = renderTarget(element, options);
-    const rows = normalizedPoints(points);
+    const range = options.range || selectedRange(element);
+    const rows = normalizedPoints(points, range);
     if (rows.length < (options.minimumPoints || 2)) {
       renderEmpty(target, options.emptyMessage || "No data available for this range yet.");
       return;
@@ -77,7 +128,7 @@ window.HomePulseHistory = (() => {
       ${rows.map((row, index) => {
         const x = left + (rows.length === 1 ? 0 : (index / (rows.length - 1)) * plotWidth);
         const y = top + plotHeight - (row.value / maxValue) * plotHeight;
-        return `<circle class="history-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3"><title>${escapeText(row.label)}: ${formatTick(row.value, options.digits ?? 2)} ${escapeText(options.unit || row.unit || "")}</title></circle>`;
+        return `<circle class="history-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3"><title>${escapeText(row.tooltip || row.label)}: ${formatTick(row.value, options.digits ?? 2)} ${escapeText(options.unit || row.unit || "")}</title></circle>`;
       }).join("")}
     `;
     target.appendChild(svg);
@@ -86,8 +137,9 @@ window.HomePulseHistory = (() => {
   function renderComparisonChart(element, series, options = {}) {
     if (!element) return;
     const target = renderTarget(element, options);
-    const first = normalizedPoints(series?.first);
-    const second = normalizedPoints(series?.second);
+    const range = options.range || selectedRange(element);
+    const first = normalizedPoints(series?.first, range);
+    const second = normalizedPoints(series?.second, range);
     const length = Math.min(first.length, second.length);
     if (length < (options.minimumPoints || 2)) {
       renderEmpty(target, options.emptyMessage || "No data available for this range yet.");
@@ -195,10 +247,11 @@ window.HomePulseHistory = (() => {
     element.appendChild(empty);
   }
 
-  function normalizedPoints(points) {
+  function normalizedPoints(points, range) {
     if (!Array.isArray(points)) return [];
     return points.map((point) => ({
-      label: point.label || shortTime(point.timestamp),
+      label:   point.label   || formatHistoryLabel(point.timestamp, range),
+      tooltip: point.tooltip || formatHistoryTooltip(point.timestamp, range),
       value: numberValue(point.value ?? point.kwh),
       unit: point.unit || "",
     })).filter((point) => point.value !== null);
@@ -261,5 +314,7 @@ window.HomePulseHistory = (() => {
     selectedRange,
     setSelectedRange,
     normalizeRange,
+    formatHistoryLabel,
+    formatHistoryTooltip,
   };
 })();

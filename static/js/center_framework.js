@@ -147,28 +147,31 @@ function mapStatusClass(status) {
 /**
  * Format chart x-axis label from a timestamp string, range-aware.
  * - 1d  → HH:MM  (intra-day data)
- * - 1w  → MM-DD  (hourly data across multiple days)
- * - 1m  → MM-DD  (daily data)
- * - 6m  → MM-DD  (weekly/daily data)
- * - 1y  → YYYY-MM (monthly data)
+/**
+ * Format chart x-axis label from a timestamp string, range-aware.
+ * Delegates to window.HomePulseHistory.formatHistoryLabel (history_api.js)
+ * when available; falls back to string-slicing for load-order resilience.
+ *   1d → HH:MM   1w → day name   1m/6m → month/day   1y → month name
  */
 function formatChartLabel(timestamp, range) {
+  // Canonical implementation lives in history_api.js — delegate when loaded
+  if (window.HomePulseHistory?.formatHistoryLabel) {
+    return window.HomePulseHistory.formatHistoryLabel(timestamp, range);
+  }
+  // Fallback string-slicing (no Date parsing required)
   if (!timestamp) return "";
   const text = String(timestamp);
   if (text.length < 10) return text;
   switch (String(range || "1d").toLowerCase()) {
     case "1d":
-      // Show HH:MM for intraday; fall back to MM-DD for midnight-only timestamps
       return text.length >= 16 && text.slice(11, 16) !== "00:00"
         ? text.slice(11, 16)
         : text.slice(5, 10);
     case "1w":
     case "1m":
     case "6m":
-      // Show MM-DD — date gives context across multi-day views
       return text.slice(5, 10);
     case "1y":
-      // Show YYYY-MM for yearly roll-ups
       return text.slice(0, 7);
     default:
       return text.length >= 16 && text.slice(11, 16) !== "00:00"
@@ -186,9 +189,10 @@ function normalizeChartPoints(points, range) {
   if (!Array.isArray(points)) return [];
   return points
     .map((point) => ({
-      label: point.label || formatChartLabel(point.timestamp, range),
-      value: point.value ?? point.kwh,
-      unit: point.unit || "kW",
+      label:     point.label || formatChartLabel(point.timestamp, range),
+      value:     point.value ?? point.kwh,
+      unit:      point.unit || "kW",
+      timestamp: point.timestamp,   // preserved for tooltip generation in history_api.js
     }))
     .filter((point) => parseNumber(point.value) !== null);
 }
