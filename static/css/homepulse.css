@@ -2742,6 +2742,408 @@ button:focus-visible {
   line-height: 1.6;
 }
 
+/* ============================================================================
+   CENTER FRAMEWORK - Reusable Classes for All Centers
+   ============================================================================ */
+
+/* Module Shell & Header */
+.module-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 32px;
+  background: linear-gradient(135deg, rgba(88, 181, 239, 0.04), rgba(88, 181, 239, 0.01));
+  border-bottom: 1px solid rgba(88, 181, 239, 0.15);
+}
+
+.module-header > div {
+  flex: 1;
+}
+
+.module-header .eyebrow {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.module-header h2 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.module-header p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+/* Secondary Navigation (Tabs) */
+.secondary-nav {
+  display: flex;
+  gap: 0;
+  padding: 0 32px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.secondary-tab {
+  padding: 14px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 200ms ease;
+}
+
+.secondary-tab:hover {
+  color: var(--text);
+  border-bottom-color: rgba(88, 181, 239, 0.3);
+}
+
+.secondary-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Panel Content Areas */
+.secondary-panel {
+  display: none;
+  padding: 28px 32px;
+  animation: fadeIn 200ms ease;
+}
+
+.secondary-panel.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dashboard Grid */
+.center-dashboard-grid,
+.solar-dashboard-grid,
+.vehicle-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+/* Glass Cards */
+.center-glass-card,
+.solar-glass-card,
+.vehicle-glass-card {
+  padding: 24px;
+  background: rgba(16, 24, 39, 0.6);
+  border: 1px solid rgba(88, 181, 239, 0.15);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  transition: all 200ms ease;
+}
+
+.center-glass-card:hover,
+.solar-glass-card:hover,
+.vehicle-glass-card:hover {
+  background: rgba(16, 24, 39, 0.8);
+  border-color: rgba(88, 181, 239, 0.25);
+}
+
+/* Card Heading */
+.center-card-heading,
+.solar-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.center-card-heading h3,
+.solar-card-heading h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.center-kicker,
+.solar-kicker {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* Hero Metrics */
+.center-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+
+.center-hero-item,
+.solar-hero-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.center-hero-item .center-label,
+.solar-hero-item .solar-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.center-hero-item .center-value,
+.solar-hero-item .solar-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Stat Rows */
+.center-stat-row,
+.solar-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.center-stat-row div,
+.solar-stat-row div {
+  padding: 12px;
+  background: rgba(5, 11, 20, 0.42);
+  border-radius: 8px;
+  border-left: 2px solid rgba(88, 181, 239, 0.3);
+}
+
+.center-stat-row span,
+.solar-stat-row span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.center-stat-row strong,
+.solar-stat-row strong {
+  display: block;
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Detail Lists */
+.center-detail-list,
+.solar-detail-list {
+  display: grid;
+  gap: 14px;
+}
+
+.center-detail-list > div,
+.solar-detail-list > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.center-detail-list span,
+.solar-detail-list span {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.center-detail-list strong,
+.solar-detail-list strong {
+  font-size: 15px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Chart Panels */
+.center-chart-card,
+.solar-chart-card {
+  grid-column: 1 / -1;
+}
+
+.center-history-chart,
+.solar-history-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  min-height: 280px;
+  padding: 14px;
+  background: rgba(5, 11, 20, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+/* KPI Cards */
+.center-kpi-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(88, 181, 239, 0.08), rgba(88, 181, 239, 0.02));
+  border: 1px solid rgba(88, 181, 239, 0.2);
+}
+
+.center-kpi-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.center-kpi-value {
+  color: var(--accent);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+
+.center-kpi-sublabel {
+  color: #7ead4d;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Data Tables */
+.center-table-container,
+.solar-table-container {
+  overflow-x: auto;
+}
+
+.center-data-table,
+.solar-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.center-data-table thead,
+.solar-data-table thead {
+  background: rgba(88, 181, 239, 0.08);
+  border-bottom: 2px solid rgba(88, 181, 239, 0.2);
+}
+
+.center-data-table th,
+.solar-data-table th {
+  padding: 12px 14px;
+  text-align: left;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.center-data-table td,
+.solar-data-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-soft);
+}
+
+.center-data-table tr:hover,
+.solar-data-table tr:hover {
+  background: rgba(88, 181, 239, 0.04);
+}
+
+.center-data-table .table-empty,
+.solar-data-table .table-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px 14px;
+}
+
+/* Status Indicators */
+.status-ok {
+  color: #16c784;
+  font-weight: 600;
+}
+
+.status-warning {
+  color: #f7c76b;
+  font-weight: 600;
+}
+
+.status-error {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+/* Empty State Cards */
+.center-empty-state,
+.solar-empty-state {
+  padding: 40px 24px;
+  text-align: center;
+  background: rgba(5, 11, 20, 0.42);
+  border: 1px dashed rgba(88, 181, 239, 0.2);
+  border-radius: 12px;
+  grid-column: 1 / -1;
+}
+
+.center-empty-state p,
+.solar-empty-state p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Loading States */
+.center-loading {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(88, 181, 239, 0.3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1120px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -2776,6 +3178,8 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 780px) {
   .history-chart-grid,
   .report-grid,
   .lab-overview-grid,
@@ -2814,9 +3218,6 @@ button:focus-visible {
   .timeline-panel {
     grid-column: 1 / -1;
   }
-}
-
-@media (max-width: 780px) {
   .top-bar {
     position: static;
     display: block;
