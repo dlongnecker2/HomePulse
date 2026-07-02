@@ -2,6 +2,15 @@
 
 ## v3.5.1 (Hotfix + Stabilization Sprint)
 
+### Critical Safety Fix - Restart Functionality Disabled
+- **In-App Restart Button Disabled**: The "Restart HomePulse" button in the Lab admin panel has been disabled and removed because the restart feature does not reliably bring the application back up on Windows. The app would stop but not restart, leaving HomePulse offline and requiring manual intervention.
+- **/api/system/restart Now Returns HTTP 503**: The `/api/system/restart` endpoint now returns HTTP 503 Service Unavailable with clear instructions instead of attempting restart. This prevents accidental app shutdown via the API. Endpoint provides safe manual restart methods (Task Scheduler, PowerShell, batch file).
+- **Lab Page Updated with Safe Instructions**: Lab page now displays clear step-by-step instructions for safely restarting HomePulse manually:
+  1. Use Stop HomePulse button to gracefully shut down the app
+  2. Start HomePulse via Task Scheduler, PowerShell command, or batch file
+  3. Four startup methods clearly documented in the Lab UI
+- **Stop Button Retained**: The Stop HomePulse button remains available in the Lab panel with a danger style for intentional shutdown operations. Users must use manual startup methods to bring the app back online.
+
 ### Stabilization & Reliability Sprint
 - **All Routes Non-Blocking**: Verified all 43 HTTP routes complete quickly without hanging or blocking page renders. All API routes return JSON with proper error handling and fallback responses.
 - **Version Consistency**: Updated version.py to 3.5.1 to match CHANGELOG and all version references throughout codebase.

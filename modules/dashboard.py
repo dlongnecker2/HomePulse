@@ -316,43 +316,27 @@ class Dashboard:
             if not self._valid_admin_action_request():
                 return self._admin_action_forbidden()
             
-            # Check if the scheduled task exists before attempting restart
-            task_status = self.application.scheduled_task_status()
-            if not task_status["exists"]:
-                task_name = self.application._scheduled_task_name
-                error_msg = f"HomePulse scheduled task '{task_name}' not installed on this system"
-                self.application.log.error(error_msg)
-                return jsonify({
-                    "ok": False,
-                    "status": "restart_not_available",
-                    "message": error_msg,
-                    "scheduled_task_exists": False,
-                    "scheduled_task_name": task_name,
-                    "warning": "Cannot restart. The Windows Task Scheduler task is not installed. Run install_startup_task.ps1 to set it up.",
-                    "timestamp": str(datetime.now()),
-                }), 422
+            # Restart functionality is disabled due to reliability issues on Windows.
+            # The app stops but does not reliably restart, leaving HomePulse down.
+            # Users should stop the app and manually restart via Task Scheduler or command line.
+            self.application.log.warning("[/api/system/restart] Restart endpoint called but is disabled for safety")
             
-            try:
-                message = self.application.request_restart(delay_seconds=2)
-                return jsonify({
-                    "ok": True,
-                    "status": "restart_scheduled",
-                    "message": message,
-                    "scheduled_task_exists": True,
-                    "scheduled_task_name": self.application._scheduled_task_name,
-                    "restart_method": "Task Scheduler",
-                    "warning": "HomePulse has no built-in login; this admin action requires the Lab page token.",
-                    "timestamp": str(datetime.now()),
-                })
-            except Exception as exc:
-                self.application.log.exception(f"System restart request failed: {exc}")
-                return jsonify({
-                    "ok": False,
-                    "status": "restart_failed",
-                    "message": f"Restart could not be scheduled: {exc}",
-                    "scheduled_task_exists": task_status["exists"],
-                    "timestamp": str(datetime.now()),
-                }), 500
+            return jsonify({
+                "ok": False,
+                "message": "Restart is disabled for safety. The in-app restart feature does not reliably bring the application back up on Windows.",
+                "instructions": {
+                    "step_1": "Stop HomePulse using the Stop button",
+                    "step_2": "Wait for shutdown to complete",
+                    "step_3": "Start HomePulse using one of these methods:",
+                    "methods": [
+                        "Task Scheduler: Open Task Scheduler, find 'HomePulse', right-click and select 'Run'",
+                        "PowerShell: cd C:\\RouterMonitorV2 && python router_monitor.py",
+                        "Command Prompt: cd C:\\RouterMonitorV2 && python router_monitor.py",
+                        "Batch file: Double-click C:\\RouterMonitorV2\\start_monitor.bat"
+                    ]
+                },
+                "timestamp": str(datetime.now()),
+            }), 503
 
         @self.app.route("/api/system/shutdown", methods=["POST"])
         def api_system_shutdown():

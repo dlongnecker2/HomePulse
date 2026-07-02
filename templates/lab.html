@@ -203,22 +203,34 @@
   <div class="panel-heading compact">
     <div>
       <h2>Admin Actions</h2>
-      <p>Restart or stop the local HomePulse process. These actions require the current Lab page token.</p>
+      <p>Control the local HomePulse process. These actions require the current Lab page token.</p>
     </div>
   </div>
-  {% if not lab.scheduled_task_exists %}
+  
   <div class="rule-notes alert-notes">
-    <div style="color: var(--degraded); font-weight: 700;">⚠️ Scheduled Task Not Installed</div>
-    <div>The Windows Task Scheduler task "HomePulse" is not installed on this system. Restart functionality is disabled.</div>
-    <div>Run <code>scripts/install_startup_task.ps1</code> from an elevated PowerShell prompt to enable automatic startup and restart.</div>
+    <div style="color: var(--degraded); font-weight: 700;">⚠️ Restart Disabled for Safety</div>
+    <div>The in-app restart functionality has been disabled because it is not reliably bringing the application back up on Windows.</div>
+    <div style="margin-top: 12px; font-weight: 600;">To safely restart HomePulse:</div>
+    <ol style="margin: 8px 0; padding-left: 20px;">
+      <li>Click "Stop HomePulse" below to shut down the application gracefully.</li>
+      <li>Wait for the button action to complete.</li>
+      <li>Start HomePulse using one of these methods:
+        <ul style="margin: 8px 0; padding-left: 20px;">
+          <li><strong>Via Task Scheduler:</strong> Open Task Scheduler, find "HomePulse", right-click and select "Run"</li>
+          <li><strong>Via PowerShell:</strong> <code>cd C:\RouterMonitorV2</code> then <code>python router_monitor.py</code></li>
+          <li><strong>Via Command Prompt:</strong> <code>cd C:\RouterMonitorV2 &amp;&amp; python router_monitor.py</code></li>
+          <li><strong>Via start_monitor.bat:</strong> Double-click <code>C:\RouterMonitorV2\start_monitor.bat</code></li>
+        </ul>
+      </li>
+    </ol>
   </div>
-  {% endif %}
+
   <div class="lab-actions">
-    <button type="button" data-admin-action="restart" {% if not lab.scheduled_task_exists %}disabled title="Scheduled task not installed"{% endif %}>Restart HomePulse</button>
-    <button type="button" data-admin-action="shutdown" class="danger-button">Stop HomePulse</button>
+    <button type="button" data-admin-action="shutdown" class="danger-button" title="Gracefully stop HomePulse. Use manual startup methods to restart.">Stop HomePulse</button>
   </div>
+  
   <div class="rule-notes">
-    <div>HomePulse has no built-in login. Keep Lab access limited to trusted local networks.</div>
+    <div><strong>Security Note:</strong> HomePulse has no built-in login. Keep Lab access limited to trusted local networks.</div>
     <div id="admin-action-status">No admin action requested.</div>
   </div>
 </section>
