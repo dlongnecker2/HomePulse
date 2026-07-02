@@ -2,6 +2,39 @@
 
 ## v3.5.3 (Reusable Center Framework & Vehicle Center Upgrade)
 
+### v3.5.3.2 - Fix: Vehicle Center Chart Range Selector
+- **Root cause – range buttons had no effect**: `refreshBatteryTab` and `refreshEfficiencyTab` always
+  fetched `range=1d` regardless of which button was clicked. The `history_api.js` `renderTarget`
+  function calls `setSelectedRange(element, value)` and then `onRangeChange(value)`, but the callbacks
+  ignored the argument and hardcoded `range=1d` in the URL.
+- **Fix pattern** (matches Solar Center's already-correct Production tab):
+  - Read the current range with `window.HomePulseHistory.selectedRange(chartEl)` at the top of each
+    refresh function — this reads from `sessionStorage` / `element.dataset.historyRange`, which
+    `renderTarget` already updated when the button was clicked.
+  - Pass the determined range in the `fetchJSON` URL using `encodeURIComponent(range)`.
+  - Pass the same `range` to `renderCenterChart` so the active button state is rendered correctly.
+- **Efficiency metric name corrected**: was fetching `metric=efficiency_mi_per_kwh` (nonexistent);
+  now correctly fetches `metric=lifetime_efficiency_mi_per_kwh` (matches `collect_vehicle` in
+  `modules/history/service.py`).
+- **Charging chart empty state**: `refreshChargingTab` now renders `vehicle-charging-chart` with a
+  permanent "No charging session history available." message instead of leaving the container blank
+  (no vehicle charging metric is stored; session energy is tracked in the Energy module).
+- **Range-aware x-axis labels in `center_framework.js`**:
+  - Replaced `extractTimeFromTimestamp` (always HH:MM) with `formatChartLabel(timestamp, range)`:
+    - `1d`: HH:MM (intraday)
+    - `1w`, `1m`, `6m`: MM-DD (multi-day view)
+    - `1y`: YYYY-MM (monthly roll-up)
+  - `normalizeChartPoints(points, range)` now accepts a `range` param and delegates to `formatChartLabel`.
+  - `renderCenterChart` resolves the active range (`options.range || selectedRange(element) || "1d"`)
+    and passes it to both `normalizeChartPoints` and `renderLineChart` so x-axis labels and the active
+    button always agree.
+- **Solar Center unaffected**: Production tab was already correct; Overview and Weather charts are
+  intentionally static (no range selector) and continue to work unchanged.
+- **Debug logging added** (console.debug): Battery and Efficiency tabs log the selected range and
+  point count for each fetch to aid future troubleshooting without polluting normal console output.
+- **Validation**: Python compilation passes; APIs confirmed: 1d→282 pts, 1w aggregated hourly,
+  1m aggregated daily, `lifetime_efficiency_mi_per_kwh` returns 282 pts.
+
 ### v3.5.3.1 - Hotfix: Vehicle Center Overview Data Binding
 - **Root Cause**: All 5 Vehicle tabs called `vehicle.status || {}` but `/api/vehicle/status` returns the
   status object directly (flat), so `vehicle.status` was always `undefined` → empty object → all dashes.

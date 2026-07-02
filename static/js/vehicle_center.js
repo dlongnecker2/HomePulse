@@ -127,20 +127,25 @@ function updateOverviewUI(status) {
 
 async function refreshBatteryTab() {
   try {
+    const chartEl = document.getElementById("vehicle-battery-chart");
+    const range = window.HomePulseHistory?.selectedRange(chartEl) || "1d";
+    console.debug(`[VehicleCenter] Battery chart range selected: ${range}`);
+
     const [vehicle, batteryHistory] = await Promise.all([
       fetchJSON("/api/vehicle/status"),
-      fetchJSON("/api/history/metrics?module=vehicle&metric=battery_percent&range=1d"),
+      fetchJSON(`/api/history/metrics?module=vehicle&metric=battery_percent&range=${encodeURIComponent(range)}`),
     ]);
 
+    console.debug(`[VehicleCenter] Battery history points returned: ${(batteryHistory.points || []).length}`);
     const status = vehicle || {};
     updateBatteryUI(status, batteryHistory.points || []);
-    renderCenterChart(document.getElementById("vehicle-battery-chart"), batteryHistory.points || [], {
+    renderCenterChart(chartEl, batteryHistory.points || [], {
       digits: 1,
       yLabel: "%",
       unit: "%",
       xLabel: "Time",
-      range: "1d",
-      emptyMessage: "No battery history available.",
+      range,
+      emptyMessage: "No battery history available for this range.",
       onRangeChange: refreshBatteryTab,
     });
   } catch (error) {
@@ -181,6 +186,15 @@ async function refreshChargingTab() {
     const vehicle = await fetchJSON("/api/vehicle/status");
     const status = vehicle || {};
     updateChargingUI(status);
+    // No vehicle charging session history metric is stored; show a permanent empty state
+    renderCenterChart(document.getElementById("vehicle-charging-chart"), [], {
+      digits: 2,
+      yLabel: "kW",
+      unit: "kW",
+      xLabel: "Time",
+      range: "1d",
+      emptyMessage: "No charging session history available.",
+    });
   } catch (error) {
     console.error("Charging tab error:", error);
   }
@@ -218,20 +232,26 @@ function updateChargingUI(status) {
 
 async function refreshEfficiencyTab() {
   try {
+    const chartEl = document.getElementById("vehicle-efficiency-chart");
+    const range = window.HomePulseHistory?.selectedRange(chartEl) || "1d";
+    console.debug(`[VehicleCenter] Efficiency chart range selected: ${range}`);
+
     const [vehicle, efficiencyHistory] = await Promise.all([
       fetchJSON("/api/vehicle/status"),
-      fetchJSON("/api/history/metrics?module=vehicle&metric=efficiency_mi_per_kwh&range=1d"),
+      // History metric key is lifetime_efficiency_mi_per_kwh (matches collect_vehicle in service.py)
+      fetchJSON(`/api/history/metrics?module=vehicle&metric=lifetime_efficiency_mi_per_kwh&range=${encodeURIComponent(range)}`),
     ]);
 
+    console.debug(`[VehicleCenter] Efficiency history points returned: ${(efficiencyHistory.points || []).length}`);
     const status = vehicle || {};
     updateEfficiencyUI(status);
-    renderCenterChart(document.getElementById("vehicle-efficiency-chart"), efficiencyHistory.points || [], {
+    renderCenterChart(chartEl, efficiencyHistory.points || [], {
       digits: 2,
       yLabel: "mi/kWh",
       unit: "mi/kWh",
       xLabel: "Time",
-      range: "1d",
-      emptyMessage: "No efficiency history available.",
+      range,
+      emptyMessage: "No efficiency history available for this range.",
       onRangeChange: refreshEfficiencyTab,
     });
   } catch (error) {

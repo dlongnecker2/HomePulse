@@ -145,26 +145,52 @@ function mapStatusClass(status) {
 // ============================================================================
 
 /**
+ * Format chart x-axis label from a timestamp string, range-aware.
+ * - 1d  → HH:MM  (intra-day data)
+ * - 1w  → MM-DD  (hourly data across multiple days)
+ * - 1m  → MM-DD  (daily data)
+ * - 6m  → MM-DD  (weekly/daily data)
+ * - 1y  → YYYY-MM (monthly data)
+ */
+function formatChartLabel(timestamp, range) {
+  if (!timestamp) return "";
+  const text = String(timestamp);
+  if (text.length < 10) return text;
+  switch (String(range || "1d").toLowerCase()) {
+    case "1d":
+      // Show HH:MM for intraday; fall back to MM-DD for midnight-only timestamps
+      return text.length >= 16 && text.slice(11, 16) !== "00:00"
+        ? text.slice(11, 16)
+        : text.slice(5, 10);
+    case "1w":
+    case "1m":
+    case "6m":
+      // Show MM-DD — date gives context across multi-day views
+      return text.slice(5, 10);
+    case "1y":
+      // Show YYYY-MM for yearly roll-ups
+      return text.slice(0, 7);
+    default:
+      return text.length >= 16 && text.slice(11, 16) !== "00:00"
+        ? text.slice(11, 16)
+        : text.slice(5, 10);
+  }
+}
+
+/**
  * Normalize data points for chart rendering
  * Expected input: Array of { label, value/kwh, timestamp, unit }
+ * Pass range so x-axis labels are formatted correctly for the time window.
  */
-function normalizeChartPoints(points) {
+function normalizeChartPoints(points, range) {
   if (!Array.isArray(points)) return [];
   return points
     .map((point) => ({
-      label: point.label || extractTimeFromTimestamp(point.timestamp),
+      label: point.label || formatChartLabel(point.timestamp, range),
       value: point.value ?? point.kwh,
       unit: point.unit || "kW",
     }))
     .filter((point) => parseNumber(point.value) !== null);
-}
-
-/**
- * Extract HH:MM time from ISO timestamp
- */
-function extractTimeFromTimestamp(timestamp) {
-  if (!timestamp || String(timestamp).length < 16) return "";
-  return String(timestamp).slice(11, 16);
 }
 
 /**
@@ -183,13 +209,18 @@ function renderCenterChart(chartElement, points, options = {}) {
     return;
   }
 
-  window.HomePulseHistory.renderLineChart(chartElement, normalizeChartPoints(points), {
+  // Determine the active range: caller-supplied > persisted in DOM/sessionStorage > default 1d
+  const range = options.range
+    || window.HomePulseHistory.selectedRange(chartElement)
+    || "1d";
+
+  window.HomePulseHistory.renderLineChart(chartElement, normalizeChartPoints(points, range), {
     digits: options.digits || 2,
     yLabel: options.yLabel || "Value",
     unit: options.unit || "",
     xLabel: options.xLabel || "Time",
-    range: options.range || "1d",
-    emptyMessage: options.emptyMessage || "No data available.",
+    range,
+    emptyMessage: options.emptyMessage || "No data available for this range yet.",
     onRangeChange: options.onRangeChange || null,
   });
 }
