@@ -52,7 +52,8 @@ async function refreshOverviewTab() {
       fetchJSON("/api/history/metrics?module=vehicle&metric=battery_percent&range=1d"),
     ]);
 
-    const status = vehicle.status || {};
+    // API returns the status object directly (not wrapped under a 'status' key)
+    const status = vehicle || {};
     VEHICLE_STATE.data = status;
     VEHICLE_STATE.history = batteryHistory.points || [];
 
@@ -63,28 +64,44 @@ async function refreshOverviewTab() {
 }
 
 function updateOverviewUI(status) {
-  const isOnline = status.available !== false;
+  // Determine online state from availability string returned by the API
+  // "live" and "partial" = data available; all others = offline/unavailable
+  const availability = status.availability || "disabled";
+  const isOnline = availability === "live" || availability === "partial";
   const badge = isOnline ? "Connected" : "Offline";
 
-  setElementText("vehicle-overview-name", status.name || "Vehicle");
+  if (!status.vehicle_name) {
+    console.warn("[VehicleCenter] updateOverviewUI: vehicle_name missing — check /api/vehicle/status response", status);
+  }
+
+  setElementText("vehicle-overview-name", status.vehicle_name || "Vehicle");
   setElementText("vehicle-overview-badge", badge);
-  setElementText("vehicle-overview-battery", status.battery_percent !== undefined ? `${status.battery_percent}%` : "-");
-  setElementText("vehicle-overview-range", status.range_miles ? `${status.range_miles} mi` : "-");
+  setElementText("vehicle-overview-battery",
+    status.battery_percent != null ? `${status.battery_percent}%` : "-");
+  setElementText("vehicle-overview-range",
+    status.range_mi != null ? `${status.range_mi} mi` : "-");
   setElementText("vehicle-overview-plug", status.plug_state || "-");
   setElementText("vehicle-overview-charging", status.charging_state || "-");
-  setElementText("vehicle-overview-odometer", status.odometer_miles ? `${status.odometer_miles} mi` : "-");
-  setElementText("vehicle-overview-energy", formatMetric(status.lifetime_kwh_used, "kWh", 2));
-  setElementText("vehicle-overview-lifetime-eff", status.lifetime_efficiency_mi_per_kwh ? `${status.lifetime_efficiency_mi_per_kwh.toFixed(2)} mi/kWh` : "-");
+  setElementText("vehicle-overview-odometer",
+    status.odometer_mi != null ? `${status.odometer_mi} mi` : "-");
+  setElementText("vehicle-overview-energy",
+    formatMetric(status.lifetime_energy_kwh, "kWh", 2));
+  setElementText("vehicle-overview-lifetime-eff",
+    status.lifetime_efficiency_mi_per_kwh != null
+      ? `${status.lifetime_efficiency_mi_per_kwh.toFixed(2)} mi/kWh` : "-");
   setElementText("vehicle-overview-cost-mile", formatCurrency(status.cost_per_mile));
-  setElementText("vehicle-overview-updated", formatTimestamp(status.last_updated));
+  setElementText("vehicle-overview-updated", formatTimestamp(status.last_update));
 
   // Summary row
-  setElementText("vehicle-summary-miles", status.odometer_miles ? `${status.odometer_miles} mi` : "-");
-  setElementText("vehicle-summary-efficiency", status.lifetime_efficiency_mi_per_kwh ? `${status.lifetime_efficiency_mi_per_kwh.toFixed(2)} mi/kWh` : "-");
+  setElementText("vehicle-summary-miles",
+    status.odometer_mi != null ? `${status.odometer_mi} mi` : "-");
+  setElementText("vehicle-summary-efficiency",
+    status.lifetime_efficiency_mi_per_kwh != null
+      ? `${status.lifetime_efficiency_mi_per_kwh.toFixed(2)} mi/kWh` : "-");
   setElementText(
     "vehicle-summary-cost",
-    status.lifetime_kwh_used && status.cost_per_mile
-      ? formatCurrency(status.lifetime_kwh_used * status.cost_per_mile)
+    status.estimated_lifetime_cost != null
+      ? formatCurrency(status.estimated_lifetime_cost)
       : "-"
   );
 
@@ -92,16 +109,14 @@ function updateOverviewUI(status) {
   const moduleBadge = document.getElementById("vehicle-overview-badge");
   if (moduleBadge) {
     moduleBadge.className = "energy-status-badge";
-    if (isOnline) moduleBadge.classList.add("charging");
-    else moduleBadge.classList.add("offline");
+    moduleBadge.classList.add(isOnline ? "charging" : "offline");
   }
 
   // Update module-level badge
   const headerBadge = document.getElementById("vehicle-module-status-badge");
   if (headerBadge) {
     headerBadge.className = "energy-status-badge";
-    if (isOnline) headerBadge.classList.add("charging");
-    else headerBadge.classList.add("offline");
+    headerBadge.classList.add(isOnline ? "charging" : "offline");
     headerBadge.textContent = badge;
   }
 }
@@ -117,7 +132,7 @@ async function refreshBatteryTab() {
       fetchJSON("/api/history/metrics?module=vehicle&metric=battery_percent&range=1d"),
     ]);
 
-    const status = vehicle.status || {};
+    const status = vehicle || {};
     updateBatteryUI(status, batteryHistory.points || []);
     renderCenterChart(document.getElementById("vehicle-battery-chart"), batteryHistory.points || [], {
       digits: 1,
@@ -140,7 +155,7 @@ function updateBatteryUI(status, points) {
 
   setElementText("vehicle-battery-percent", `${currentBattery}%`);
   setElementText("vehicle-battery-trend", trend);
-  setElementText("vehicle-battery-range", status.range_miles ? `${status.range_miles} mi` : "-");
+  setElementText("vehicle-battery-range", status.range_mi != null ? `${status.range_mi} mi` : "-");
 
   // Low battery warning
   const warning = currentBattery < 20 ? `Low (${currentBattery}%)` : "Normal";
@@ -164,7 +179,7 @@ function updateBatteryUI(status, points) {
 async function refreshChargingTab() {
   try {
     const vehicle = await fetchJSON("/api/vehicle/status");
-    const status = vehicle.status || {};
+    const status = vehicle || {};
     updateChargingUI(status);
   } catch (error) {
     console.error("Charging tab error:", error);
@@ -208,7 +223,7 @@ async function refreshEfficiencyTab() {
       fetchJSON("/api/history/metrics?module=vehicle&metric=efficiency_mi_per_kwh&range=1d"),
     ]);
 
-    const status = vehicle.status || {};
+    const status = vehicle || {};
     updateEfficiencyUI(status);
     renderCenterChart(document.getElementById("vehicle-efficiency-chart"), efficiencyHistory.points || [], {
       digits: 2,
@@ -225,21 +240,25 @@ async function refreshEfficiencyTab() {
 }
 
 function updateEfficiencyUI(status) {
-  const lifetimeKwh = status.lifetime_kwh_used || 0;
+  const lifetimeKwh = status.lifetime_energy_kwh || 0;
   const lifetimeEfficiency = status.lifetime_efficiency_mi_per_kwh || 0;
-  const odometer = status.odometer_miles || 0;
-  const costPerKwh = 0.13; // Assume average electricity rate
-  const lifetimeCost = lifetimeKwh * costPerKwh;
+  const odometer = status.odometer_mi || 0;
+  // Use API-calculated lifetime cost when available, otherwise estimate at $0.13/kWh
+  const costPerKwh = 0.13;
+  const lifetimeCost = status.estimated_lifetime_cost != null
+    ? status.estimated_lifetime_cost
+    : lifetimeKwh * costPerKwh;
   const costPerMile = status.cost_per_mile || 0;
 
   // Lifetime Stats
-  setElementText("vehicle-efficiency-lifetime-mi-per-kwh", `${lifetimeEfficiency.toFixed(2)} mi/kWh`);
+  setElementText("vehicle-efficiency-lifetime-mi-per-kwh",
+    lifetimeEfficiency ? `${lifetimeEfficiency.toFixed(2)} mi/kWh` : "-");
   setElementText("vehicle-efficiency-total-kwh", formatMetric(lifetimeKwh, "kWh", 2));
-  setElementText("vehicle-efficiency-odometer", `${odometer} mi`);
-  setElementText("vehicle-efficiency-lifetime-cost", formatCurrency(lifetimeCost));
+  setElementText("vehicle-efficiency-odometer", odometer ? `${odometer} mi` : "-");
+  setElementText("vehicle-efficiency-lifetime-cost", formatCurrency(lifetimeCost || null));
 
   // Cost Analysis
-  setElementText("vehicle-efficiency-cost-per-mile", formatCurrency(costPerMile));
+  setElementText("vehicle-efficiency-cost-per-mile", formatCurrency(costPerMile || null));
   setElementText("vehicle-efficiency-cost-per-kwh", formatCurrency(costPerKwh));
   setElementText("vehicle-efficiency-rate", formatCurrency(costPerKwh));
 }
@@ -251,7 +270,7 @@ function updateEfficiencyUI(status) {
 async function refreshAnalyticsTab() {
   try {
     const vehicle = await fetchJSON("/api/vehicle/status");
-    const status = vehicle.status || {};
+    const status = vehicle || {};
     updateAnalyticsUI(status);
   } catch (error) {
     console.error("Analytics tab error:", error);
@@ -260,13 +279,13 @@ async function refreshAnalyticsTab() {
 
 function updateAnalyticsUI(status) {
   const battery = status.battery_percent || 0;
-  const range = status.range_miles || 0;
-  const odometer = status.odometer_miles || 0;
-  const energy = status.lifetime_kwh_used || 0;
+  const range = status.range_mi || 0;
+  const odometer = status.odometer_mi || 0;
+  const energy = status.lifetime_energy_kwh || 0;
   const efficiency = status.lifetime_efficiency_mi_per_kwh || 0;
   const costPerMile = status.cost_per_mile || 0;
   const costPerKwh = 0.13; // Assume rate
-  const lifetimeCost = energy * costPerKwh;
+  const lifetimeCost = status.estimated_lifetime_cost != null ? status.estimated_lifetime_cost : energy * costPerKwh;
   const milesPerDollar = costPerMile > 0 ? 1 / costPerMile : 0;
 
   // KPI Cards

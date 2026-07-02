@@ -2,6 +2,25 @@
 
 ## v3.5.3 (Reusable Center Framework & Vehicle Center Upgrade)
 
+### v3.5.3.1 - Hotfix: Vehicle Center Overview Data Binding
+- **Root Cause**: All 5 Vehicle tabs called `vehicle.status || {}` but `/api/vehicle/status` returns the
+  status object directly (flat), so `vehicle.status` was always `undefined` → empty object → all dashes.
+- **Fix**: Changed all tabs to use `vehicle || {}` to unwrap the response correctly.
+- **Field name corrections** throughout `vehicle_center.js` (JS → API):
+  - `status.name` → `status.vehicle_name`
+  - `status.available !== false` → `availability === "live" || availability === "partial"`
+  - `status.range_miles` → `status.range_mi`
+  - `status.odometer_miles` → `status.odometer_mi`
+  - `status.lifetime_kwh_used` → `status.lifetime_energy_kwh`
+  - `status.last_updated` → `status.last_update`
+  - `lifetime_kwh_used * cost_per_mile` → `estimated_lifetime_cost` (use API-calculated value directly)
+- **Availability values**: `availability` field returns `"live"`, `"partial"`, `"waiting"`,
+  `"home_assistant_unavailable"`, `"disabled"`, `"unconfigured"`. Connected badge now shows
+  for `"live"` or `"partial"` states.
+- **Console fallback logging**: `updateOverviewUI` now logs a warning if `vehicle_name` is missing.
+- **No backend changes**: `/api/vehicle/status` was correct; only `vehicle_center.js` was fixed.
+- **Validated**: Python compilation passes; API returns correct field names at `/api/vehicle/status`.
+
 ### Center Framework - Foundation for All Future Centers
 - **Shared CSS Framework** (150+ lines added to homepulse.css):
   - `.module-shell`, `.module-header` - Standard center page layout
