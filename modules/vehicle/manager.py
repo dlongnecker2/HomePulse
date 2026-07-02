@@ -241,6 +241,34 @@ class VehicleManager:
             return "partial", "Vehicle Center is receiving partial vehicle data."
         return "live", "Vehicle Center is receiving live vehicle data."
 
+    def get_unified_status(self, energy_status=None):
+        """
+        Return vehicle status merged with ChargePoint / Energy Center data.
+        Falls back to Chevrolet-only data when energy_status is None or
+        when the Energy Center is disabled / unconfigured.
+        Never raises.
+        """
+        from modules.vehicle.state_engine import merge_vehicle_state
+        base = self.get_status()
+        try:
+            merged = merge_vehicle_state(base, energy_status or {})
+            base.update(merged)
+        except Exception as exc:
+            self.log.debug(f"Vehicle state merge failed (non-fatal): {exc}")
+            # Provide minimal convenience booleans even if merge fails
+            base.setdefault("plugged_in", base.get("plug_state") == "Plugged In")
+            base.setdefault("charging", base.get("charging_state") == "Charging")
+            base.setdefault("charging_power_kw", None)
+            base.setdefault("session_energy_kwh", None)
+            base.setdefault("estimated_miles_added", None)
+            base.setdefault("estimated_cost", None)
+            base.setdefault("charger_name", None)
+            base.setdefault("charger_status", None)
+            base.setdefault("charging_time", None)
+            base.setdefault("miles_per_hour_added", None)
+            base.setdefault("sources", {})
+        return base
+
     def log_refresh_warning(self, key, message, seconds=300):
         now = datetime.now()
         last = self._last_warning_at.get(key)

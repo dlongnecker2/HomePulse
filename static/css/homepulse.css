@@ -3741,3 +3741,46 @@ td {
 @supports (r: 1px) {
   .history-point:hover { r: 5; }
 }
+
+/* ==========================================================================
+   v3.5.5 — Unified Vehicle State
+   ========================================================================== */
+
+/* ── Source badges (inline provenance labels on Vehicle Charging tab) ─────── */
+.source-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  opacity: 0.85;
+  margin-left: 5px;
+  vertical-align: middle;
+  line-height: 1.6;
+}
+
+.source-badge.source-chevrolet {
+  background: rgba(74, 144, 226, 0.14);
+  color: #4a90e2;
+  border: 1px solid rgba(74, 144, 226, 0.25);
+}
+
+.source-badge.source-chargepoint {
+  background: rgba(255, 152, 0, 0.13);
+  color: #ffa726;
+  border: 1px solid rgba(255, 152, 0, 0.22);
+}
+
+.source-badge.source-combined {
+  background: rgba(171, 71, 188, 0.13);
+  color: #ce93d8;
+  border: 1px solid rgba(171, 71, 188, 0.22);
+}
+
+.source-badge.source-calculated {
+  background: rgba(100, 181, 246, 0.08);
+  color: #9cadc4;
+  border: 1px solid rgba(156, 173, 196, 0.18);
+}

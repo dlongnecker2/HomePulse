@@ -144,7 +144,7 @@ class HistoryService:
 
     def collect_vehicle(self, application):
         status = self.safe_status("vehicle", application.vehicle.get_status)
-        return self.metrics_from_status(
+        metrics = self.metrics_from_status(
             "vehicle",
             status,
             {
@@ -156,6 +156,27 @@ class HistoryService:
             },
             source="Vehicle Center",
         )
+        # Record binary plug / charge state from OnStar when live data is present
+        if status and status.get("availability") in ("live", "partial"):
+            plug = status.get("plug_state")
+            charging_state = status.get("charging_state")
+            if plug is not None:
+                metrics.append({
+                    "module": "vehicle",
+                    "metric": "plugged_in",
+                    "value": 1 if plug == "Plugged In" else 0,
+                    "unit": "bool",
+                    "source": "Vehicle Center",
+                })
+            if charging_state is not None:
+                metrics.append({
+                    "module": "vehicle",
+                    "metric": "charging",
+                    "value": 1 if charging_state == "Charging" else 0,
+                    "unit": "bool",
+                    "source": "Vehicle Center",
+                })
+        return metrics
 
     def collect_energy(self, application):
         status = self.safe_status("energy", application.energy.get_status)

@@ -183,46 +183,91 @@ function updateBatteryUI(status, points) {
 
 async function refreshChargingTab() {
   try {
-    const vehicle = await fetchJSON("/api/vehicle/status");
+    const chartEl = document.getElementById("vehicle-charging-chart");
+    const range = window.HomePulseHistory?.selectedRange(chartEl) || "1d";
+
+    const [vehicle, chargingHistory] = await Promise.all([
+      fetchJSON("/api/vehicle/status"),
+      // Charging power history lives under the energy module
+      fetchJSON(`/api/history/metrics?module=energy&metric=charging_power_kw&range=${encodeURIComponent(range)}`),
+    ]);
+
     const status = vehicle || {};
     updateChargingUI(status);
-    // No vehicle charging session history metric is stored; show a permanent empty state
-    renderCenterChart(document.getElementById("vehicle-charging-chart"), [], {
+    renderCenterChart(chartEl, chargingHistory.points || [], {
       digits: 2,
       yLabel: "kW",
       unit: "kW",
       xLabel: "Time",
-      range: "1d",
-      emptyMessage: "No charging session history available.",
+      range,
+      emptyMessage: "No charging session history available for this range.",
+      onRangeChange: refreshChargingTab,
     });
   } catch (error) {
     console.error("Charging tab error:", error);
   }
 }
 
-function updateChargingUI(status) {
-  const isCharging = status.charging_state === "Charging";
-  const chargingPower = status.chargepoint_power_kw || 0;
-  const sessionEnergy = status.chargepoint_session_kwh || 0;
+function setSourceBadge(id, source) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!source) {
+    el.hidden = true;
+    return;
+  }
+  const labels = {
+    chevrolet: "OnStar",
+    chargepoint: "ChargePoint",
+    combined: "Combined",
+    calculated: "Calculated",
+  };
+  el.hidden = false;
+  el.className = `source-badge source-${source}`;
+  el.textContent = labels[source] || source;
+}
 
+function updateChargingUI(status) {
+  const sources = status.sources || {};
+
+  // Vehicle state from Chevrolet / OnStar (always present when configured)
+  setElementText("vehicle-charging-battery",
+    status.battery_percent != null ? `${status.battery_percent}%` : "-");
+  setElementText("vehicle-charging-range",
+    status.range_mi != null ? `${status.range_mi} mi` : "-");
   setElementText("vehicle-charging-plug", status.plug_state || "-");
   setElementText("vehicle-charging-state", status.charging_state || "-");
-  setElementText("vehicle-charging-power", chargingPower > 0 ? formatMetric(chargingPower, "kW", 2) : "Not charging");
-  setElementText("vehicle-charging-energy", formatMetric(sessionEnergy, "kWh", 2));
+  setElementText("vehicle-charging-charger-name", status.charger_name || "-");
+  setElementText("vehicle-charging-charger-status",
+    status.charger_status || (status.charger_name ? "Idle" : "N/A"));
 
-  // Estimates
-  const milesAdded = sessionEnergy * 4; // Approx 4 miles per kWh
-  const chargingCost = sessionEnergy * 0.13; // Assume $0.13/kWh
-  setElementText("vehicle-charging-miles", formatMetric(milesAdded, "mi", 0));
-  setElementText("vehicle-charging-cost", formatCurrency(chargingCost));
-  setElementText("vehicle-charging-time", isCharging ? "Calculating..." : "-");
+  // Source badges
+  setSourceBadge("vehicle-plug-source", sources.plugged_in);
+  setSourceBadge("vehicle-charging-source", sources.charging);
 
-  // ChargePoint status
-  const cpStatus = status.chargepoint_connected ? "Connected" : "N/A";
-  const cpStatusEl = document.getElementById("vehicle-charging-cp-status");
+  // Session data from ChargePoint via unified status
+  const power = status.charging_power_kw;
+  setElementText("vehicle-charging-power",
+    power != null && power > 0 ? formatMetric(power, "kW", 2) : "Not charging");
+  setElementText("vehicle-charging-energy",
+    status.session_energy_kwh != null ? formatMetric(status.session_energy_kwh, "kWh", 2) : "-");
+  setElementText("vehicle-charging-miles",
+    status.estimated_miles_added != null ? formatMetric(status.estimated_miles_added, "mi", 1) : "-");
+  setElementText("vehicle-charging-cost",
+    status.estimated_cost != null ? formatCurrency(status.estimated_cost) : "-");
+  setElementText("vehicle-charging-time",
+    status.charging_time || (status.charging ? "Calculating..." : "-"));
+  setElementText("vehicle-charging-mph",
+    status.miles_per_hour_added != null
+      ? formatMetric(status.miles_per_hour_added, "mi/hr", 1) : "-");
+
+  // Session source badge — show when ChargePoint data is present
+  const sessionSrc = sources.session_energy_kwh || sources.charging_power_kw;
+  setSourceBadge("vehicle-session-source", sessionSrc);
+
+  // Charger status colour
+  const cpStatusEl = document.getElementById("vehicle-charging-charger-status");
   if (cpStatusEl) {
-    cpStatusEl.className = status.chargepoint_connected ? "status-ok" : "status-warning";
-    cpStatusEl.textContent = cpStatus;
+    cpStatusEl.className = status.charger_status ? "status-ok" : "status-warning";
   }
 }
 

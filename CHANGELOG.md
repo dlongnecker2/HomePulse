@@ -1,5 +1,78 @@
 # Changelog
 
+## v3.5.5 (Unified Vehicle State)
+
+### Overview
+Combines Chevrolet / OnStar vehicle telemetry with ChargePoint / Energy Center
+charger data into a single unified `/api/vehicle/status` response.  Each source
+contributes the data it knows best; the API is fully backward-compatible.
+
+### New Backend Module — `modules/vehicle/state_engine.py`
+- `merge_vehicle_state(vehicle_dict, energy_dict)` merges both sources per the
+  rules below.  Never raises; both sources are optional.
+
+### Merge Rules
+| Field | Preferred source | Fallback |
+|---|---|---|
+| battery_percent, range_mi, odometer_mi, lifetime_energy_kwh, lifetime_efficiency_mi_per_kwh | Chevrolet / OnStar | — |
+| plugged_in | OR of both sources | chevrolet alone |
+| charging | ChargePoint (faster) OR Chevrolet | chevrolet |
+| charging_power_kw | ChargePoint | null |
+| session_energy_kwh | ChargePoint | null |
+| estimated_miles_added | ChargePoint → session_energy × vehicle_efficiency | null |
+| estimated_cost | ChargePoint | null |
+| charger_name, charger_status, charging_time, miles_per_hour_added | ChargePoint | null |
+
+### New API Fields (extends existing response, no breaking changes)
+- `plugged_in` (bool) — unified plug state
+- `charging` (bool) — unified charge state (ChargePoint-preferred)
+- `charging_power_kw` — live kW from ChargePoint
+- `session_energy_kwh` — session kWh from ChargePoint
+- `estimated_miles_added` — mi added this session
+- `estimated_cost` — session cost USD
+- `charger_name`, `charger_status`, `charging_time`, `miles_per_hour_added` — charger metadata
+- `sources` — dict of `{ field: "chevrolet" | "chargepoint" | "combined" | "calculated" }` for transparency
+
+### API Route Change (`modules/dashboard.py`)
+- `/api/vehicle/status` now calls `vehicle.get_unified_status(energy_status)`.
+- Energy status fetched once per request; vehicle works independently if energy unavailable.
+- Error fallback response extended with all new unified fields.
+
+### History Recording (`modules/history/service.py`)
+- `collect_vehicle` now also records `plugged_in` (0/1) and `charging` (0/1) from
+  OnStar data when availability is "live" or "partial".
+- Existing energy module already records `charging_power_kw`, `session_energy_kwh`,
+  `estimated_miles_added`, `estimated_cost` — no duplication.
+
+### Vehicle Center UI (`templates/vehicle.html`, `static/js/vehicle_center.js`)
+- **Charging tab** redesigned with two-column layout:
+  - *Connection Status* card: Battery %, EV Range, Plug State (with source badge),
+    Charging State (with source badge), Charger Name, Charger Status.
+  - *Charging Details* card: Power, Session Energy, Est. Miles, Est. Cost,
+    Charging Time, Add Rate — all from ChargePoint via unified status.
+  - *Charging Power* history chart now shows actual `energy/charging_power_kw`
+    history instead of permanent empty state.
+- `updateChargingUI` uses unified fields (`charging_power_kw`, `session_energy_kwh`,
+  `estimated_miles_added`, `estimated_cost`) — eliminates stale hardcoded estimates.
+- `setSourceBadge(id, source)` helper renders inline provenance labels.
+
+### Styling (`static/css/homepulse.css`)
+- `.source-badge` — small uppercase inline pill with border.
+- `.source-badge.source-chevrolet` — blue tint (OnStar).
+- `.source-badge.source-chargepoint` — orange tint (ChargePoint).
+- `.source-badge.source-combined` — purple tint (both sources agree).
+- `.source-badge.source-calculated` — muted (derived value).
+
+### Robustness
+- If ChargePoint / Energy Center is unavailable: Charging tab still shows
+  Chevrolet state; session fields show `"-"`.
+- If Chevrolet is unavailable: battery and range show `"-"`; ChargePoint
+  charging state is still reflected in the unified `charging` boolean.
+- If both unavailable: graceful `"-"` empty state throughout.
+- `get_unified_status` catches merge exceptions and provides safe defaults.
+
+---
+
 ## v3.5.4 (Premium Chart Polish)
 
 ### Chart Hover Tooltips

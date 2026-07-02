@@ -105,39 +105,55 @@
     </div>
   </section>
 
-  <!-- TAB 3: CHARGING -->
+  <!-- TAB 3: CHARGING (v3.5.5 Unified Vehicle State) -->
   <section id="vehicle-tab-charging" class="secondary-panel" data-center-panel="charging" hidden>
     <div class="center-dashboard-grid">
+
       <article class="center-glass-card">
         <div class="center-card-heading">
-          <span class="center-kicker">Charging Status</span>
-          <h3>Current Session</h3>
+          <span class="center-kicker">Vehicle State</span>
+          <h3>Connection Status</h3>
         </div>
         <div class="center-detail-list">
-          <div><span>Plug State</span><strong id="vehicle-charging-plug">-</strong></div>
-          <div><span>Charging State</span><strong id="vehicle-charging-state">-</strong></div>
-          <div><span>Charging Power</span><strong id="vehicle-charging-power">-</strong></div>
-          <div><span>Session Energy</span><strong id="vehicle-charging-energy">-</strong></div>
+          <div><span>Battery</span><strong id="vehicle-charging-battery">-</strong></div>
+          <div><span>EV Range</span><strong id="vehicle-charging-range">-</strong></div>
+          <div>
+            <span>Plug State</span>
+            <strong id="vehicle-charging-plug">-</strong>
+            <span class="source-badge" id="vehicle-plug-source" hidden></span>
+          </div>
+          <div>
+            <span>Charging State</span>
+            <strong id="vehicle-charging-state">-</strong>
+            <span class="source-badge" id="vehicle-charging-source" hidden></span>
+          </div>
+          <div><span>Charger</span><strong id="vehicle-charging-charger-name">-</strong></div>
+          <div><span>Charger Status</span><strong id="vehicle-charging-charger-status" class="status-ok">N/A</strong></div>
         </div>
       </article>
 
       <article class="center-glass-card">
         <div class="center-card-heading">
-          <span class="center-kicker">Estimates</span>
-          <h3>Session Summary</h3>
+          <span class="center-kicker">
+            Active Session
+            <span class="source-badge source-chargepoint" id="vehicle-session-source" hidden>ChargePoint</span>
+          </span>
+          <h3>Charging Details</h3>
         </div>
         <div class="center-detail-list">
+          <div><span>Charging Power</span><strong id="vehicle-charging-power">-</strong></div>
+          <div><span>Session Energy</span><strong id="vehicle-charging-energy">-</strong></div>
           <div><span>Est. Miles Added</span><strong id="vehicle-charging-miles">-</strong></div>
           <div><span>Est. Charging Cost</span><strong id="vehicle-charging-cost">-</strong></div>
-          <div><span>Est. Time to Full</span><strong id="vehicle-charging-time">-</strong></div>
-          <div><span>ChargePoint Status</span><strong id="vehicle-charging-cp-status" class="status-ok">N/A</strong></div>
+          <div><span>Charging Time</span><strong id="vehicle-charging-time">-</strong></div>
+          <div><span>Add Rate</span><strong id="vehicle-charging-mph">-</strong></div>
         </div>
       </article>
 
       <article class="center-glass-card center-chart-card">
         <div class="center-card-heading">
           <span class="center-kicker">History</span>
-          <h3>Charging History</h3>
+          <h3>Charging Power</h3>
         </div>
         <div id="vehicle-charging-chart" class="center-history-chart"></div>
       </article>

@@ -412,7 +412,12 @@ class Dashboard:
         @self.app.route("/api/vehicle/status")
         def api_vehicle_status():
             try:
-                return jsonify(self.application.vehicle.get_status())
+                energy_status = None
+                try:
+                    energy_status = self.application.energy.get_status()
+                except Exception:
+                    pass  # vehicle still works without charger data
+                return jsonify(self.application.vehicle.get_unified_status(energy_status))
             except Exception as exc:
                 self.application.log.exception(f"Vehicle API failed: {exc}")
                 return jsonify({
@@ -424,11 +429,22 @@ class Dashboard:
                     "range_mi": None,
                     "plug_state": None,
                     "charging_state": None,
+                    "plugged_in": None,
+                    "charging": None,
+                    "charging_power_kw": None,
+                    "session_energy_kwh": None,
+                    "estimated_miles_added": None,
+                    "estimated_cost": None,
+                    "charger_name": None,
+                    "charger_status": None,
+                    "charging_time": None,
+                    "miles_per_hour_added": None,
                     "odometer_mi": None,
                     "lifetime_energy_kwh": None,
                     "lifetime_efficiency_mi_per_kwh": None,
                     "estimated_lifetime_cost": None,
                     "cost_per_mile": None,
+                    "sources": {},
                     "last_update": None,
                     "message": f"Vehicle Center status unavailable: {exc}",
                 })
