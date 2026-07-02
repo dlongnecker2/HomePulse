@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-07-01 14:29:51.130097",
-  "pid": 5140,
+  "timestamp": "2026-07-01 14:57:20.749026",
+  "pid": 6084,
   "argv": [
     "router_monitor.py"
   ],
   "executable": "C:\\Users\\Dennis\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
   "working_directory": "C:\\RouterMonitorV2",
   "delay_seconds": 2,
-  "preferred_restart_method": "Task Scheduler",
+  "restart_method": "Task Scheduler",
   "app_name": "HomePulse",
-  "version": "3.4.0"
+  "version": "3.5.0"
 }
