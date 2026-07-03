@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Weather{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Weather Center</h2>
+    <p>Local weather conditions and forecast for your home.</p>
+  </div>
+</section>
+
+<section class="insight-grid">
+  <article class="dashboard-panel compact-panel" id="weather-status-card">
+    <h2>Current Weather</h2>
+    <div class="insight-value text-value" id="weather-condition">Loading...</div>
+    <p id="weather-source">Source: --</p>
+  </article>
+  <article class="dashboard-panel compact-panel">
+    <h2>Configuration</h2>
+    <table id="weather-config-table">
+      <tr><td>Status</td><td><span id="weather-enabled">--</span></td></tr>
+      <tr><td>Location</td><td><span id="weather-location">--</span></td></tr>
+      <tr><td>Provider</td><td><span id="weather-provider">--</span></td></tr>
+    </table>
+  </article>
+  <article class="dashboard-panel compact-panel">
+    <h2>Data Availability</h2>
+    <p id="weather-availability">--</p>
+  </article>
+</section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>Current Conditions</h2>
+    <table id="weather-details-table">
+      <tr><td>Temperature</td><td id="weather-temp">--</td></tr>
+      <tr><td>Humidity</td><td id="weather-humidity">--</td></tr>
+      <tr><td>Cloud Cover</td><td id="weather-clouds">--</td></tr>
+      <tr><td>Wind Speed</td><td id="weather-wind">--</td></tr>
+      <tr><td>Sunshine</td><td id="weather-sunshine">--</td></tr>
+      <tr><td>UV Index</td><td id="weather-uv">--</td></tr>
+    </table>
+  </article>
+
+  <article class="dashboard-panel">
+    <h2>Sunrise / Sunset</h2>
+    <table id="weather-sun-table">
+      <tr><td>Sunrise</td><td id="weather-sunrise">--</td></tr>
+      <tr><td>Sunset</td><td id="weather-sunset">--</td></tr>
+    </table>
+  </article>
+
+  <article class="dashboard-panel">
+    <h2>Forecast</h2>
+    <p id="weather-forecast-message">Forecast data will appear when configured and connected.</p>
+    <div id="weather-forecast-table" hidden>
+      <table>
+        <thead>
+          <tr><th>Date</th><th>High</th><th>Low</th><th>UV Index</th></tr>
+        </thead>
+        <tbody id="weather-forecast-body">
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="dashboard-panel">
+    <h2>Information</h2>
+    <p>
+      This Weather Center displays current weather conditions and forecast for your home location.
+      Configure weather data source in <a href="{{ url_for('settings') }}">Settings</a> to enable live weather tracking.
+    </p>
+    <p id="weather-message" style="color: var(--text-secondary); margin-top: 1em;"></p>
+    <p id="weather-error" style="color: var(--warning-text); display: none;"></p>
+  </article>
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  refreshWeatherCenter();
+  setInterval(refreshWeatherCenter, 60000); // Refresh every minute
+});
+
+async function refreshWeatherCenter() {
+  try {
+    const response = await fetch("/api/weather/status", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Status ${response.status}`);
+    const data = await response.json();
+    updateWeatherCenter(data);
+  } catch (error) {
+    console.error("[WeatherCenter] Refresh failed:", error);
+    document.getElementById("weather-condition").textContent = "Error";
+    document.getElementById("weather-source").textContent = "Source: Error";
+  }
+}
+
+function formatValue(value, unit = "") {
+  if (value === null || value === undefined) return "--";
+  if (Number.isFinite(Number(value))) {
+    return `${Math.round(value * 10) / 10}${unit}`;
+  }
+  return "--";
+}
+
+function formatTime(isoString) {
+  if (!isoString) return "--";
+  try {
+    const d = new Date(isoString);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "--";
+  }
+}
+
+function updateWeatherCenter(data) {
+  // Configuration
+  const enabled = data.enabled ? "Enabled" : "Disabled";
+  document.getElementById("weather-enabled").textContent = enabled;
+  document.getElementById("weather-location").textContent = data.location_name || "--";
+  
+  // Provider display
+  let providerDisplay = data.provider || "None";
+  if (providerDisplay === "placeholder") providerDisplay = "Placeholder (Not Configured)";
+  document.getElementById("weather-provider").textContent = providerDisplay;
+
+  // Current status
+  document.getElementById("weather-condition").textContent = data.condition || "Unknown";
+  document.getElementById("weather-source").textContent = `Source: ${data.source || "None"}`;
+
+  // Live data indicator
+  const liveIndicator = data.live_data ? "Live Data" : "Cached Data";
+  document.getElementById("weather-availability").textContent = liveIndicator;
+
+  // Current conditions - match the actual API response structure
+  document.getElementById("weather-temp").textContent = formatValue(data.temperature_f, "°F");
+  document.getElementById("weather-humidity").textContent = formatValue(data.humidity_percent, "%");
+  document.getElementById("weather-clouds").textContent = formatValue(data.cloud_cover_percent, "%");
+  document.getElementById("weather-wind").textContent = formatValue(data.wind_mph, " mph");
+  document.getElementById("weather-sunshine").textContent = formatValue(data.sunshine_percent, "%");
+  document.getElementById("weather-uv").textContent = formatValue(data.uv_index);
+
+  // Sunrise/Sunset
+  document.getElementById("weather-sunrise").textContent = formatTime(data.sunrise);
+  document.getElementById("weather-sunset").textContent = formatTime(data.sunset);
+
+  // Message
+  if (data.message) {
+    document.getElementById("weather-message").textContent = data.message;
+  }
+
+  // Forecast
+  if (data.forecast_days && data.forecast_days.length > 0) {
+    document.getElementById("weather-forecast-message").style.display = "none";
+    document.getElementById("weather-forecast-table").removeAttribute("hidden");
+    
+    const tbody = document.getElementById("weather-forecast-body");
+    tbody.innerHTML = "";
+    
+    data.forecast_days.forEach(day => {
+      const row = document.createElement("tr");
+      const dateStr = new Date(day.date).toLocaleDateString();
+      const highTemp = formatValue(day.temperature_max_f, "°F");
+      const lowTemp = formatValue(day.temperature_min_f, "°F");
+      const uvMax = formatValue(day.uv_index_max);
+      row.innerHTML = `<td>${dateStr}</td><td>${highTemp}</td><td>${lowTemp}</td><td>${uvMax}</td>`;
+      tbody.appendChild(row);
+    });
+  } else {
+    document.getElementById("weather-forecast-message").style.display = "block";
+    document.getElementById("weather-forecast-table").setAttribute("hidden", "");
+  }
+
+  // Error message
+  if (data.error) {
+    const errorEl = document.getElementById("weather-error");
+    errorEl.textContent = `⚠️ ${data.error}`;
+    errorEl.style.display = "block";
+  } else {
+    document.getElementById("weather-error").style.display = "none";
+  }
+}
+</script>
+{% endblock %}

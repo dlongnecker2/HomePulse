@@ -25,6 +25,7 @@
       <a href="{{ url_for('energy_center') }}" class="{% if request.endpoint == 'energy_center' %}active{% endif %}">Energy Center</a>
       <a href="{{ url_for('solar') }}" class="{% if request.endpoint == 'solar' %}active{% endif %}">Solar Center</a>
       <a href="{{ url_for('vehicle_center') }}" class="{% if request.endpoint == 'vehicle_center' %}active{% endif %}">Vehicle Center</a>
+      <a href="{{ url_for('weather') }}" class="{% if request.endpoint == 'weather' %}active{% endif %}">Weather Center</a>
       <a href="{{ url_for('speed_test_center') }}" class="{% if request.endpoint == 'speed_test_center' %}active{% endif %}">Speed Test</a>
       <a href="{{ url_for('email_center') }}" class="{% if request.endpoint == 'email_center' %}active{% endif %}">Email Center</a>
       <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">Settings</a>

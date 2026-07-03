@@ -101,6 +101,10 @@ class Dashboard:
         def vehicle_center():
             return render_template("vehicle.html", now=datetime.now())
 
+        @self.app.route("/weather")
+        def weather():
+            return render_template("weather.html", now=datetime.now())
+
         @self.app.route("/speed-test")
         def speed_test_center():
             status = self._dashboard_payload()
