@@ -1,128 +1,366 @@
-function homeNumber(value) {
-  if (value === null || value === undefined) return null;
-  const number = Number(String(value).replace("$", "").replace(",", "").trim());
-  return Number.isFinite(number) ? number : null;
+/**
+ * HOME OPERATIONS CENTER
+ * ======================
+ * Mission Control for HomePulse
+ * Displays unified home health, system status, alerts, timeline, and KPIs
+ */
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// UTILITIES
+// ════════════════════════════════════════════════════════════════════════════════════
+
+function setText(id, value, fallback = "—") {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const text = value === null || value === undefined || value === "" ? fallback : String(value);
+  el.textContent = text;
 }
 
-function homeText(id, value, fallback = "--") {
-  const element = document.getElementById(id);
-  if (!element) return;
-  element.textContent = value === null || value === undefined || value === "" ? fallback : String(value);
+function formatMetric(value, unit, digits = 1, fallback = "—") {
+  if (value === null || value === undefined) return fallback;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return `${num.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })} ${unit}`;
 }
 
-function homeMetric(value, unit, digits = 1, fallback = "--") {
-  const number = homeNumber(value);
-  if (number === null) return fallback;
-  return `${number.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })} ${unit}`;
+function formatPercent(value, fallback = "—") {
+  if (value === null || value === undefined) return fallback;
+  const num = Number(value);
+  return Number.isFinite(num) ? `${Math.round(num)}%` : fallback;
 }
 
-function homeCurrency(value, fallback = "--") {
-  const number = homeNumber(value);
-  if (number === null) return fallback;
-  return `$${number.toFixed(2)}`;
+function formatCurrency(value, fallback = "—") {
+  if (value === null || value === undefined) return fallback;
+  const num = Number(String(value).replace("$", "").replace(",", ""));
+  return Number.isFinite(num) ? `$${num.toFixed(2)}` : fallback;
 }
 
-function homeTimestamp(value) {
-  if (!value) return "--";
-  const parsed = new Date(String(value).replace(" ", "T"));
-  return Number.isNaN(parsed.getTime()) ? "--" : parsed.toLocaleString();
+function formatTimestamp(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(String(iso).replace(" ", "T"));
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
 }
 
-function homeClean(value, fallback = "--") {
-  const text = String(value ?? "").trim();
-  if (!text || ["unknown", "unavailable", "none", "null"].includes(text.toLowerCase())) return fallback;
-  return text;
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return "—";
+  const num = Number(seconds);
+  if (!Number.isFinite(num)) return "—";
+  if (num < 60) return `${Math.round(num)}s`;
+  if (num < 3600) return `${Math.round(num / 60)}m`;
+  if (num < 86400) return `${Math.round(num / 3600)}h`;
+  return `${(num / 86400).toFixed(1)}d`;
 }
 
-function weatherIcon(data) {
-  const clouds = homeNumber(data?.cloud_cover_percent);
-  const condition = String(data?.condition || "").toLowerCase();
-  if (!data?.enabled || !data?.live_data) return "?";
-  if (condition.includes("rain")) return "Rain";
-  if (clouds !== null && clouds <= 20) return "Sun";
-  if (clouds !== null && clouds <= 65) return "Partly";
-  if (clouds !== null) return "Cloud";
-  return "Weather";
+function statusDot(status) {
+  const s = String(status || "").toLowerCase();
+  if (s.includes("unhealthy") || s.includes("offline") || s.includes("critical")) return "unhealthy";
+  if (s.includes("degraded") || s.includes("partial") || s.includes("warning")) return "degraded";
+  if (s.includes("disabled") || s.includes("unavailable") || s.includes("unconfigured")) return "disabled";
+  if (s.includes("healthy") || s.includes("live") || s.includes("connected") || s.includes("ok")) return "healthy";
+  return "unknown";
 }
 
-function setTileState(selector, state) {
-  const tile = document.querySelector(selector);
-  if (!tile) return;
-  tile.classList.remove("is-healthy", "is-partial", "is-attention");
-  tile.classList.add(state);
-}
-
-function statusState(value) {
-  const text = String(value || "").toLowerCase();
-  if (text.includes("unhealthy") || text.includes("attention") || text.includes("failed")) return "is-attention";
-  if (text.includes("partial") || text.includes("unknown") || text.includes("unavailable") || text.includes("disabled") || text.includes("waiting")) return "is-partial";
-  return "is-healthy";
-}
+// ════════════════════════════════════════════════════════════════════════════════════
+// MAIN REFRESH
+// ════════════════════════════════════════════════════════════════════════════════════
 
 async function refreshHomeCenter() {
   try {
     const response = await fetch("/api/home/status", { cache: "no-store" });
-    if (!response.ok) throw new Error(`Home status returned ${response.status}`);
+    if (!response.ok) throw new Error(`Status ${response.status}`);
     const data = await response.json();
     updateHomeCenter(data);
   } catch (error) {
-    homeText("home-overall-status", "Attention");
-    homeText("home-last-updated", new Date().toLocaleString());
+    console.error("[HomeCenter] Refresh failed:", error);
+    setText("noc-health-score", "—");
+    setText("noc-updated", "Error");
   }
 }
 
 function updateHomeCenter(data) {
-  const internet = data.internet || {};
-  const solar = data.solar || {};
-  const energy = data.energy || {};
-  const vehicle = data.vehicle || {};
-  const weather = data.weather || {};
-  const lighting = data.lighting || {};
-  const home = data.home || {};
+  // Health Score
+  updateHealthScore(data);
 
-  homeText("home-overall-status", data.overall_status || "Partial");
-  homeText("home-health-score", data.health_score === null || data.health_score === undefined ? "--" : `${data.health_score}%`);
-  homeText("home-last-updated", homeTimestamp(data.last_updated));
+  // Status Ribbon
+  updateStatusRibbon(data);
 
-  homeText("home-internet-status", internet.status);
-  homeText("home-internet-health", internet.health_score === null || internet.health_score === undefined ? "--" : `${internet.health_score}/100`);
-  homeText("home-internet-latency", homeMetric(internet.latency_ms, "ms", 1));
-  homeText("home-internet-speed", internet.download_mbps === null || internet.download_mbps === undefined ? "No speed test" : `${homeMetric(internet.download_mbps, "Mbps", 1)} down`);
-  setTileState('[data-tile="internet"]', statusState(internet.status));
+  // Alerts
+  updateAlerts(data.alerts || []);
 
-  homeText("home-solar-current", solar.enabled ? homeMetric(solar.current_production_kw, "kW", 2) : "Disabled");
-  homeText("home-solar-status", solar.enabled ? solar.status : "Disabled");
-  homeText("home-solar-today", homeMetric(solar.production_today_kwh, "kWh", 2));
-  homeText("home-solar-updated", homeTimestamp(solar.last_updated));
-  setTileState('[data-tile="solar"]', statusState(solar.enabled ? solar.status : "Disabled"));
+  // System Status Grid
+  updateSystemsGrid(data);
 
-  const energyStatus = !energy.enabled ? "Disabled" : energy.is_charging ? "Charging" : energy.configured ? "Not Charging" : "Waiting for Data";
-  homeText("home-energy-status", energyStatus);
-  homeText("home-energy-power", homeMetric(energy.power_kw, "kW", 2));
-  homeText("home-energy-session", homeMetric(energy.session_energy_kwh, "kWh", 2));
-  homeText("home-energy-cost", homeCurrency(energy.charge_cost ?? energy.estimated_cost));
-  setTileState('[data-tile="energy"]', statusState(energyStatus));
+  // Timeline
+  updateTimeline(data.timeline_recent || []);
 
-  homeText("home-vehicle-battery", vehicle.enabled ? homeMetric(vehicle.battery_percent, "%", 0) : "Disabled");
-  homeText("home-vehicle-range", homeMetric(vehicle.range_mi, "mi", 1));
-  homeText("home-vehicle-plug", homeClean(vehicle.plug_state));
-  homeText("home-vehicle-charging", homeClean(vehicle.charging_state));
-  setTileState('[data-tile="vehicle"]', statusState(vehicle.enabled ? vehicle.availability || "Live" : "Disabled"));
+  // KPIs
+  updateKPIs(data);
 
-  homeText("home-weather-icon", weatherIcon(weather));
-  homeText("home-weather-temperature", weather.temperature_f === null || weather.temperature_f === undefined ? "Weather unavailable" : homeMetric(weather.temperature_f, "F", 0));
-  const cloud = homeNumber(weather.cloud_cover_percent);
-  homeText("home-weather-condition", weather.live_data && cloud !== null ? `${homeClean(weather.condition, "Weather")} / ${cloud.toFixed(0)}% clouds` : homeClean(weather.condition, "Weather unavailable"));
-  homeText("home-weather-wind", homeMetric(weather.wind_mph, "mph", 1));
-  homeText("home-weather-sun", weather.sunrise || weather.sunset ? `${homeClean(weather.sunrise)} / ${homeClean(weather.sunset)}` : "--");
-  setTileState('[data-tile="weather"]', statusState(weather.live_data ? weather.condition : "Unavailable"));
+  // Statistics
+  updateStatistics(data);
 
-  homeText("home-lighting-status", lighting.status || "Not configured");
-  homeText("home-lighting-message", lighting.message || "Exterior lighting is not configured yet.");
-  homeText("home-alert-status", home.status || "No active alerts");
+  // Metadata
+  setText("noc-updated", `Updated: ${formatTimestamp(data.last_updated)}`);
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// HEALTH SCORE
+// ════════════════════════════════════════════════════════════════════════════════════
+
+function updateHealthScore(data) {
+  const score = data.health_score ?? "—";
+  const status = data.health_status || "Unknown";
+  const trend = data.health_trend || "→";
+
+  setText("noc-health-score", score);
+  setText("noc-health-status", status);
+  setText("noc-health-trend", trend === "→" ? "→ Stable" : trend === "↑" ? "↑ Improving" : "↓ Declining");
+
+  // Update circle color based on score
+  const circle = document.getElementById("noc-health-circle");
+  if (circle) {
+    circle.classList.remove("excellent", "good", "warning", "critical", "offline");
+    if (score >= 85) circle.classList.add("excellent");
+    else if (score >= 70) circle.classList.add("good");
+    else if (score >= 50) circle.classList.add("warning");
+    else if (score >= 0) circle.classList.add("critical");
+    else circle.classList.add("offline");
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// STATUS RIBBON
+// ════════════════════════════════════════════════════════════════════════════════════
+
+function updateStatusRibbon(data) {
+  const ribbon = document.getElementById("noc-status-ribbon");
+  if (!ribbon) return;
+
+  const systems = [
+    { name: "Internet", status: data.internet?.status },
+    { name: "Solar", status: data.solar?.enabled ? data.solar?.status : "Disabled" },
+    { name: "Vehicle", status: data.vehicle?.enabled ? data.vehicle?.availability : "Disabled" },
+    { name: "Energy", status: data.energy?.enabled ? data.energy?.status : "Disabled" },
+    { name: "Weather", status: data.weather?.enabled ? data.weather?.condition : "Disabled" },
+    { name: "Home Assistant", status: data.home_assistant?.status || "Connected" },
+  ];
+
+  ribbon.innerHTML = systems
+    .map((sys) => {
+      const dotClass = statusDot(sys.status);
+      return `<div class="ribbon-item" title="${sys.name}: ${sys.status}"><span class="ribbon-dot ${dotClass}"></span><span class="ribbon-label">${sys.name}</span></div>`;
+    })
+    .join("");
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ════════════════════════════════════════════════════════════════════════════════════
+
+function updateAlerts(alerts) {
+  const alertsSection = document.getElementById("noc-alerts-section");
+  const noAlertsSection = document.getElementById("noc-no-alerts-section");
+  const alertsList = document.getElementById("noc-alerts-list");
+  const alertCount = document.getElementById("noc-alert-count");
+
+  if (!alerts || alerts.length === 0) {
+    alertsSection?.setAttribute("hidden", "");
+    noAlertsSection?.removeAttribute("hidden");
+    return;
+  }
+
+  alertsSection?.removeAttribute("hidden");
+  noAlertsSection?.setAttribute("hidden", "");
+  alertCount.textContent = alerts.length;
+
+  alertsList.innerHTML = alerts
+    .map((alert) => {
+      const severityClass = `alert-${alert.severity || "info"}`;
+      return `
+      <div class="noc-alert-item ${severityClass}">
+        <div class="alert-header">
+          <strong>${alert.title || "Alert"}</strong>
+          <span class="alert-severity">${(alert.severity || "info").toUpperCase()}</span>
+        </div>
+        <div class="alert-body">${alert.description || ""}</div>
+        <div class="alert-footer">${alert.system || ""} · ${formatTimestamp(alert.timestamp)}</div>
+      </div>
+    `;
+    })
+    .join("");
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// SYSTEMS GRID
+// ════════════════════════════════════════════════════════════════════════════════════
+
+function updateSystemsGrid(data) {
+  updateSystemCard("internet", data.internet);
+  updateSystemCard("solar", data.solar);
+  updateSystemCard("vehicle", data.vehicle);
+  updateSystemCard("energy", data.energy);
+  updateSystemCard("weather", data.weather);
+  updateSystemCard("ha", data.home_assistant);
+}
+
+function updateSystemCard(system, status) {
+  if (!status) {
+    setText(`noc-${system}-badge`, "disabled");
+    setText(`noc-${system}-metric`, "—");
+    return;
+  }
+
+  // Determine status dot color
+  let dotClass = "disabled";
+  if (status.enabled === false) dotClass = "disabled";
+  else if (status.availability === "live" || status.status === "Healthy" || status.status === "Connected")
+    dotClass = "healthy";
+  else if (status.availability === "partial" || status.status === "Degraded" || status.status === "Partial")
+    dotClass = "degraded";
+  else if (
+    status.availability === "unavailable" ||
+    status.status === "Unavailable" ||
+    status.status === "Offline"
+  )
+    dotClass = "unhealthy";
+
+  const badge = document.getElementById(`noc-${system}-badge`);
+  if (badge) {
+    badge.classList.remove("healthy", "degraded", "unhealthy", "disabled");
+    badge.classList.add(dotClass);
+  }
+
+  switch (system) {
+    case "internet":
+      setText("noc-internet-metric", formatMetric(status.health_score, "%", 0) || status.status || "—");
+      setText("noc-internet-latency", formatMetric(status.latency_ms, "ms", 0));
+      setText("noc-internet-loss", formatMetric(status.packet_loss_percent, "%", 1));
+      setText("noc-internet-status", status.status || "—");
+      setText("noc-internet-updated", formatTimestamp(status.last_check));
+      break;
+    case "solar":
+      setText("noc-solar-metric", formatMetric(status.current_production_kw, "kW", 2) || "Disabled");
+      setText("noc-solar-status", status.enabled ? status.status || "—" : "Disabled");
+      setText("noc-solar-today", formatMetric(status.production_today_kwh, "kWh", 1));
+      setText("noc-solar-peak", formatMetric(status.peak_production_kw, "kW", 2));
+      setText("noc-solar-updated", formatTimestamp(status.last_updated));
+      break;
+    case "vehicle":
+      setText("noc-vehicle-metric", formatMetric(status.battery_percent, "%", 0) || "Disabled");
+      setText("noc-vehicle-range", formatMetric(status.range_mi, "mi", 1));
+      setText("noc-vehicle-plugged", status.plugged_in ? "Yes" : "No");
+      setText("noc-vehicle-charging", status.charging ? "Yes" : "No");
+      setText("noc-vehicle-updated", formatTimestamp(status.last_update));
+      break;
+    case "energy":
+      setText("noc-energy-metric", formatMetric(status.power_kw, "kW", 2) || (status.enabled ? "Not Charging" : "Disabled"));
+      setText("noc-energy-power", formatMetric(status.power_kw, "kW", 2));
+      setText("noc-energy-session", formatMetric(status.session_energy_kwh, "kWh", 1));
+      setText("noc-energy-cost", formatCurrency(status.estimated_cost));
+      setText("noc-energy-updated", formatTimestamp(status.last_update));
+      break;
+    case "weather":
+      const tempStr = formatMetric(status.temperature_f, "°F", 0);
+      setText("noc-weather-metric", tempStr || "Unavailable");
+      setText("noc-weather-condition", status.condition || "—");
+      setText("noc-weather-clouds", formatMetric(status.cloud_cover_percent, "%", 0));
+      setText("noc-weather-wind", formatMetric(status.wind_mph, "mph", 1));
+      setText("noc-weather-updated", formatTimestamp(status.last_updated));
+      break;
+    case "ha":
+      setText("noc-ha-detail", status.status || "Connected");
+      setText("noc-ha-message", status.message || "Integration active");
+      break;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// TIMELINE
+// ════════════════════════════════════════════════════════════════════════════════════
+
+function updateTimeline(events) {
+  const timelineList = document.getElementById("noc-timeline-list");
+  const timelineEmpty = document.getElementById("noc-timeline-empty");
+
+  if (!events || events.length === 0) {
+    timelineList.innerHTML = "";
+    timelineEmpty?.removeAttribute("hidden");
+    return;
+  }
+
+  timelineEmpty?.setAttribute("hidden", "");
+  timelineList.innerHTML = events
+    .map((event) => {
+      const severityClass = `timeline-${event.severity || "info"}`;
+      return `
+      <div class="timeline-item ${severityClass}">
+        <div class="timeline-time">${formatTimestamp(event.timestamp)}</div>
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">
+          <div class="timeline-title">${event.title || "Event"}</div>
+          ${event.description ? `<div class="timeline-description">${event.description}</div>` : ""}
+          <div class="timeline-category">${event.category || ""}</div>
+        </div>
+      </div>
+    `;
+    })
+    .join("");
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// KPIs
+// ════════════════════════════════════════════════════════════════════════════════════
+
+function updateKPIs(data) {
+  // Solar KPIs
+  setText("noc-kpi-solar-today", formatMetric(data.solar?.production_today_kwh, "kWh", 1));
+  setText("noc-kpi-solar-peak", formatMetric(data.solar?.peak_production_kw, "kW", 2));
+
+  // Vehicle KPIs
+  setText("noc-kpi-vehicle-battery", formatMetric(data.vehicle?.battery_percent, "%", 0));
+  setText("noc-kpi-vehicle-range", formatMetric(data.vehicle?.range_mi, "mi", 0));
+
+  // Energy KPIs
+  setText("noc-kpi-energy-power", formatMetric(data.energy?.power_kw, "kW", 2));
+  setText("noc-kpi-energy-cost", formatCurrency(data.energy?.estimated_cost));
+
+  // Internet KPIs
+  const healthScore = data.health_breakdown?.internet ?? data.internet?.health_score ?? 0;
+  setText("noc-kpi-internet-health", formatMetric(healthScore, "%", 0));
+  setText("noc-kpi-internet-latency", formatMetric(data.internet?.latency_ms, "ms", 0));
+
+  // Weather KPIs
+  setText("noc-kpi-weather-temp", formatMetric(data.weather?.temperature_f, "°F", 0));
+  setText("noc-kpi-weather-clouds", formatMetric(data.weather?.cloud_cover_percent, "%", 0));
+
+  // System KPIs
+  const uptimeSeconds = data.system?.uptime_seconds || 0;
+  setText("noc-kpi-system-uptime", `${Math.round(uptimeSeconds / 3600)} hrs`);
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// STATISTICS
+// ════════════════════════════════════════════════════════════════════════════════════
+
+function updateStatistics(data) {
+  const uptimeSeconds = data.system?.uptime_seconds || 0;
+  const uptime =
+    uptimeSeconds < 3600
+      ? `${Math.round(uptimeSeconds / 60)} min`
+      : `${Math.round(uptimeSeconds / 3600)} hrs`;
+  setText("noc-stat-uptime", uptime);
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ════════════════════════════════════════════════════════════════════════════════════
 
 document.addEventListener("DOMContentLoaded", () => {
   refreshHomeCenter();
-  setInterval(refreshHomeCenter, 30000);
+  setInterval(refreshHomeCenter, 30000); // Refresh every 30 seconds
 });

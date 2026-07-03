@@ -1,5 +1,140 @@
 # Changelog
 
+## v3.6.0 (Home Operations Center - Mission Control)
+
+### Overview
+Transforms HomePulse into a professional Network Operations Center (NOC) for your connected home.
+The Home page becomes Mission Control — displaying unified health score, system status, active alerts,
+and real-time timeline in a single view.  All other Centers become drill-down pages.
+
+### Architecture — New Modules (`modules/home/`)
+
+#### 1. **Timeline Service** (`timeline_service.py`)
+- In-memory ring buffer (max 500 events)
+- Thread-safe event recording
+- Queryable by category, severity, time range
+- Public API: `record_event(category, title, description, severity, timestamp)`
+- Event categories: system, internet, solar, vehicle, energy, weather, recovery, home_assistant
+- Severity levels: critical, warning, info, success
+- Methods: `get_events()`, `get_summary()`, `event_count()`
+
+#### 2. **Health Score Engine** (`health_score.py`)
+- Unified 0-100% health score based on all systems
+- Weighting: Internet (30%), Solar (15%), Vehicle (15%), Energy (15%), Weather (10%), HA (10%), System (5%)
+- System scoring: Disabled (-20%), Unconfigured (-60%), Unavailable (-80%), Partial (-30%), Healthy (+100%)
+- Trend calculation: ↑ Improving, ↓ Declining, → Stable
+- Returns: `{score, status_text ("Excellent"/"Good"/"Warning"/"Critical"/"Offline"), trend, breakdown}`
+
+#### 3. **Alert Manager** (`alert_manager.py`)
+- Detects active issues across all systems
+- Alert types: Internet (latency, packet loss, offline), Solar (offline), Vehicle (battery low),
+  Energy (offline), Weather (alerts), Home Assistant (offline)
+- Configurable thresholds: latency (100ms warning, 300ms critical), packet loss (2% warning, 10% critical),
+  battery (20% low)
+- Severity levels: critical, warning, info
+- Sorting by priority: critical → warning → info
+
+#### 4. **Summary Cards Engine** (`summary_cards.py`)
+- Calculates KPI values for dashboard summary cards
+- Reusable for other Centers
+- Fields: Solar (peak, current, today), Vehicle (battery, range, power),
+  Energy (power, cost, session), Internet (latency, uptime, loss), Weather (temp, clouds)
+
+### API Enhancements (`modules/dashboard.py`)
+
+**Updated Endpoint: `/api/home/status`**
+
+Extended response now includes:
+- `health_score` — 0-100 numeric score
+- `health_status` — "Excellent" / "Good" / "Warning" / "Critical" / "Offline"
+- `health_trend` — "↑" / "↓" / "→"
+- `health_breakdown` — score for each system
+- `alerts` — list of active alerts (up to 10)
+  - `{severity, title, description, system, timestamp}`
+- `timeline_summary` — event summary for last 24 hours
+  - `{total, by_category, by_severity, most_recent, older_cutoff_hours}`
+- `timeline_recent` — last 20 events from today
+- `system` — HomePulse system status
+  - `{enabled, status, uptime_seconds, message}`
+- `home_assistant` — placeholder for HA integration
+  - `{enabled, configured, status, availability, message}`
+
+### Template Redesign (`templates/home.html`)
+
+**Layout:**
+1. **Header** — Page title, version, uptime, last updated
+2. **Health Score Card** — Large circular gauge (0-100%) with status text and trend
+3. **Status Ribbon** — System status dots (● Internet ● Solar ● Vehicle ● Energy ● Weather ● HA)
+4. **Active Alerts** — Severity-colored cards (critical/warning/info) or "No Active Alerts"
+5. **System Status Grid** — 6 clickable cards (Internet, Solar, Vehicle, Energy, Weather, HA)
+   - Each card shows: icon, status dot, primary metric, secondary metrics, last updated
+   - Clicking card navigates to related Center
+6. **Quick Actions** — Buttons for Solar, Vehicle, Internet, Energy, Weather, Settings, Diagnostics, Refresh
+7. **Today's Timeline** — Chronological event log (newest first) with timestamps and categories
+8. **Summary KPIs** — 6 card panels: Solar Today, EV Battery, Charging Power, Internet Health, Temperature, Uptime
+9. **Insights** — Placeholder for future insights engine (reuses existing insights if available)
+10. **Recovery Summary** — Placeholder for future Recovery Engine
+11. **Home Statistics** — System stats: Version, Running Time, Modules Loaded, Database Records
+
+### Frontend Controller (`static/js/home_center.js`)
+
+- Refreshes `/api/home/status` every 30 seconds
+- Rendering functions:
+  - `updateHealthScore()` — color-codes circle based on score
+  - `updateStatusRibbon()` — generates system dots with hover tooltips
+  - `updateAlerts()` — renders active alerts or "no alerts" state
+  - `updateSystemsGrid()` — populates 6 system cards with live data
+  - `updateTimeline()` — renders chronological event log
+  - `updateKPIs()` — displays summary KPI cards
+- Utility functions: `formatMetric()`, `formatCurrency()`, `formatTimestamp()`, `statusDot()`
+
+### Styling (`static/css/homepulse.css`)
+
+New classes (v3.6.0 section, ~600 lines):
+- `.noc-*` — Mission Control namespace
+- `.health-circle` — Circular gauge (excellent/good/warning/critical/offline)
+- `.ribbon-dot` — Status indicator dots (healthy/degraded/unhealthy/disabled)
+- `.noc-system-card` — Clickable system status cards with hover effects
+- `.noc-alert-item` — Alert cards with severity borders
+- `.timeline-item` — Event timeline entries
+- `.noc-kpi-card` — Summary KPI cards
+- Responsive breakpoints: 1024px, 768px
+- Dark theme colors consistent with HomePulse
+
+### Application Integration (`modules/application.py`)
+
+New instance attributes:
+- `self.timeline` — TimelineService instance
+- `self.health_score` — HealthScoreEngine instance
+- `self.alert_manager` — AlertManager instance
+
+### Features
+
+✓ Unified health score from all systems  
+✓ Real-time alert detection with severity levels  
+✓ Chronological event timeline (max 500 events)  
+✓ System status overview (6 core systems + HA)  
+✓ Clickable drill-down to each Center  
+✓ Quick actions for common tasks  
+✓ Summary KPIs at-a-glance  
+✓ Professional NOC styling with animations  
+✓ Responsive mobile layout  
+✓ No existing APIs broken  
+✓ All Centers remain fully functional  
+
+### Future Enhancements (Prepared in Architecture)
+
+- Recovery Engine integration (events, summary, recovery stats)
+- Notification Center (alerts → notifications)
+- Automation Engine (trigger → action)
+- Custom event recording from plugins
+- Advanced insights engine
+- Predictive health scoring
+- Energy cost analysis
+- Solar efficiency metrics
+
+---
+
 ## v3.5.5 (Unified Vehicle State)
 
 ### Overview

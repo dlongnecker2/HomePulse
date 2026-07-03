@@ -18,6 +18,7 @@ from modules.diagnostics import Diagnostics
 from modules.email_notifier import EmailNotifier
 from modules.energy import EnergyManager
 from modules.history import HistoryService
+from modules.home import TimelineService, HealthScoreEngine, AlertManager
 from modules.logger import get_logger
 from modules.network import NetworkMonitor
 from modules.port_check import check_dashboard_port
@@ -48,6 +49,9 @@ class Application:
         self.solar = SolarManager(self.config, self.log)
         self.weather = WeatherManager(self.config, self.log)
         self.history = HistoryService(self.config, self.log)
+        self.timeline = TimelineService()
+        self.health_score = HealthScoreEngine()
+        self.alert_manager = AlertManager(self.log)
         self.plugin_manager = PluginManager(self, self.log)
         self.plugin_manager.register_compatibility_plugins()
         self._last_energy_charging_state = None

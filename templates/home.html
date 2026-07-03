@@ -1,118 +1,313 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} Home Center{% endblock %}
+{% block title %}{{ app_name }} Home Operations Center{% endblock %}
 {% block content %}
-<section class="page-heading home-center-heading">
-  <div>
-    <h2>Home Center</h2>
-    <p>At-a-glance operational status for the home, powered by the HomePulse platform registry.</p>
+<section class="noc-header">
+  <div class="noc-title">
+    <h1>🏠 Home Operations Center</h1>
+    <p>Real-time monitoring and control for your connected home</p>
   </div>
-  <a class="home-center-dashboard-link" href="{{ url_for('home') }}">Dashboard</a>
-</section>
-
-<section class="home-overview-band">
-  <div>
-    <span>Overall Status</span>
-    <strong id="home-overall-status">Collecting</strong>
-  </div>
-  <div>
-    <span>HomePulse Health</span>
-    <strong id="home-health-score">--</strong>
-  </div>
-  <div>
-    <span>Last Updated</span>
-    <strong id="home-last-updated">--</strong>
+  <div class="noc-meta">
+    <span id="noc-version">v{{ version }}</span>
+    <span id="noc-uptime">Uptime: --</span>
+    <span id="noc-updated">Updated: --</span>
   </div>
 </section>
 
-<section class="home-tile-grid" aria-label="Home Center summary tiles">
-  <article class="home-tile" data-tile="internet">
-    <div class="home-tile-topline">
-      <span class="home-tile-icon">Net</span>
-      <strong>Internet</strong>
-    </div>
-    <div id="home-internet-status" class="home-tile-value">Collecting</div>
-    <div class="home-tile-details">
-      <div><span>Health</span><strong id="home-internet-health">--</strong></div>
-      <div><span>Latency</span><strong id="home-internet-latency">--</strong></div>
-      <div><span>Last Speed Test</span><strong id="home-internet-speed">--</strong></div>
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 1: HEALTH SCORE & STATUS RIBBON
+     ════════════════════════════════════════════════════════════════════════════════════ -->
+
+<section class="noc-health-section">
+  <article class="noc-health-card">
+    <div class="health-gauge">
+      <div id="noc-health-circle" class="health-circle excellent">
+        <div class="health-score-value" id="noc-health-score">--</div>
+        <div class="health-score-unit">%</div>
+      </div>
+      <div class="health-details">
+        <div class="health-status" id="noc-health-status">Excellent</div>
+        <div class="health-trend" id="noc-health-trend">→ Stable</div>
+        <button type="button" class="noc-btn-secondary" onclick="window.location.href='/dev'">Diagnostics</button>
+      </div>
     </div>
   </article>
 
-  <article class="home-tile" data-tile="solar">
-    <div class="home-tile-topline">
-      <span class="home-tile-icon">Sun</span>
-      <strong>Solar</strong>
-    </div>
-    <div id="home-solar-current" class="home-tile-value">Collecting</div>
-    <div class="home-tile-details">
-      <div><span>Status</span><strong id="home-solar-status">--</strong></div>
-      <div><span>Today</span><strong id="home-solar-today">--</strong></div>
-      <div><span>Last Update</span><strong id="home-solar-updated">--</strong></div>
-    </div>
-  </article>
+  <div id="noc-status-ribbon" class="noc-status-ribbon">
+    <!-- Populated by JS with system status dots -->
+  </div>
+</section>
 
-  <article class="home-tile" data-tile="energy">
-    <div class="home-tile-topline">
-      <span class="home-tile-icon">EV</span>
-      <strong>Energy / ChargePoint</strong>
-    </div>
-    <div id="home-energy-status" class="home-tile-value">Collecting</div>
-    <div class="home-tile-details">
-      <div><span>Power</span><strong id="home-energy-power">--</strong></div>
-      <div><span>Session</span><strong id="home-energy-session">--</strong></div>
-      <div><span>Cost</span><strong id="home-energy-cost">--</strong></div>
-    </div>
-  </article>
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 2: ACTIVE ALERTS
+     ════════════════════════════════════════════════════════════════════════════════════ -->
 
-  <article class="home-tile" data-tile="vehicle">
-    <div class="home-tile-topline">
-      <span class="home-tile-icon">Car</span>
-      <strong>Vehicle</strong>
-    </div>
-    <div id="home-vehicle-battery" class="home-tile-value">Collecting</div>
-    <div class="home-tile-details">
-      <div><span>Range</span><strong id="home-vehicle-range">--</strong></div>
-      <div><span>Plug</span><strong id="home-vehicle-plug">--</strong></div>
-      <div><span>Charging</span><strong id="home-vehicle-charging">--</strong></div>
-    </div>
-  </article>
+<section id="noc-alerts-section" class="noc-alerts-section" hidden>
+  <div class="noc-section-title">
+    <h2>⚠️ Active Alerts</h2>
+    <span id="noc-alert-count" class="noc-badge-count">0</span>
+  </div>
+  <div id="noc-alerts-list" class="noc-alerts-list">
+    <!-- Populated by JS -->
+  </div>
+</section>
 
-  <article class="home-tile" data-tile="weather">
-    <div class="home-tile-topline">
-      <span id="home-weather-icon" class="home-tile-icon">?</span>
-      <strong>Weather</strong>
-    </div>
-    <div id="home-weather-temperature" class="home-tile-value">Collecting</div>
-    <div class="home-tile-details">
-      <div><span>Condition</span><strong id="home-weather-condition">--</strong></div>
-      <div><span>Wind</span><strong id="home-weather-wind">--</strong></div>
-      <div><span>Sunrise / Sunset</span><strong id="home-weather-sun">--</strong></div>
-    </div>
-  </article>
+<section id="noc-no-alerts-section" class="noc-no-alerts-section">
+  <div class="noc-no-alerts-icon">✓</div>
+  <div>No Active Alerts</div>
+</section>
 
-  <article class="home-tile is-placeholder" data-tile="lighting">
-    <div class="home-tile-topline">
-      <span class="home-tile-icon">Light</span>
-      <strong>Exterior Lights</strong>
-    </div>
-    <div id="home-lighting-status" class="home-tile-value">Not configured</div>
-    <p id="home-lighting-message">Govee/Home Assistant lighting entities are not configured yet.</p>
-  </article>
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 3: SYSTEM STATUS GRID
+     ════════════════════════════════════════════════════════════════════════════════════ -->
 
-  <article class="home-tile is-placeholder" data-tile="home">
-    <div class="home-tile-topline">
-      <span class="home-tile-icon">Home</span>
-      <strong>Home Status</strong>
+<section class="noc-systems-grid">
+  <div class="noc-section-title">
+    <h2>🖥️ System Status</h2>
+  </div>
+  <div class="noc-grid">
+    <!-- Internet -->
+    <a href="/internet" class="noc-system-card internet">
+      <div class="noc-card-header">
+        <span class="noc-system-icon">📡</span>
+        <span class="noc-system-name">Internet</span>
+        <span id="noc-internet-badge" class="noc-status-dot healthy"></span>
+      </div>
+      <div class="noc-card-primary" id="noc-internet-metric">--</div>
+      <div class="noc-card-secondary">
+        <div><span>Latency</span><strong id="noc-internet-latency">--</strong></div>
+        <div><span>Packet Loss</span><strong id="noc-internet-loss">--</strong></div>
+        <div><span>Status</span><strong id="noc-internet-status">--</strong></div>
+      </div>
+      <div class="noc-card-updated" id="noc-internet-updated">--</div>
+    </a>
+
+    <!-- Solar -->
+    <a href="/solar" class="noc-system-card solar">
+      <div class="noc-card-header">
+        <span class="noc-system-icon">☀️</span>
+        <span class="noc-system-name">Solar</span>
+        <span id="noc-solar-badge" class="noc-status-dot disabled"></span>
+      </div>
+      <div class="noc-card-primary" id="noc-solar-metric">--</div>
+      <div class="noc-card-secondary">
+        <div><span>Status</span><strong id="noc-solar-status">Disabled</strong></div>
+        <div><span>Today</span><strong id="noc-solar-today">--</strong></div>
+        <div><span>Peak</span><strong id="noc-solar-peak">--</strong></div>
+      </div>
+      <div class="noc-card-updated" id="noc-solar-updated">--</div>
+    </a>
+
+    <!-- Vehicle -->
+    <a href="/vehicle" class="noc-system-card vehicle">
+      <div class="noc-card-header">
+        <span class="noc-system-icon">🚗</span>
+        <span class="noc-system-name">Vehicle</span>
+        <span id="noc-vehicle-badge" class="noc-status-dot disabled"></span>
+      </div>
+      <div class="noc-card-primary" id="noc-vehicle-metric">--</div>
+      <div class="noc-card-secondary">
+        <div><span>Range</span><strong id="noc-vehicle-range">--</strong></div>
+        <div><span>Plugged</span><strong id="noc-vehicle-plugged">--</strong></div>
+        <div><span>Charging</span><strong id="noc-vehicle-charging">--</strong></div>
+      </div>
+      <div class="noc-card-updated" id="noc-vehicle-updated">--</div>
+    </a>
+
+    <!-- Energy -->
+    <a href="/energy" class="noc-system-card energy">
+      <div class="noc-card-header">
+        <span class="noc-system-icon">⚡</span>
+        <span class="noc-system-name">Energy</span>
+        <span id="noc-energy-badge" class="noc-status-dot disabled"></span>
+      </div>
+      <div class="noc-card-primary" id="noc-energy-metric">--</div>
+      <div class="noc-card-secondary">
+        <div><span>Power</span><strong id="noc-energy-power">--</strong></div>
+        <div><span>Session</span><strong id="noc-energy-session">--</strong></div>
+        <div><span>Cost</span><strong id="noc-energy-cost">--</strong></div>
+      </div>
+      <div class="noc-card-updated" id="noc-energy-updated">--</div>
+    </a>
+
+    <!-- Weather -->
+    <a href="/weather" class="noc-system-card weather">
+      <div class="noc-card-header">
+        <span id="noc-weather-icon" class="noc-system-icon">🌡️</span>
+        <span class="noc-system-name">Weather</span>
+        <span id="noc-weather-badge" class="noc-status-dot disabled"></span>
+      </div>
+      <div class="noc-card-primary" id="noc-weather-metric">--</div>
+      <div class="noc-card-secondary">
+        <div><span>Condition</span><strong id="noc-weather-condition">--</strong></div>
+        <div><span>Clouds</span><strong id="noc-weather-clouds">--</strong></div>
+        <div><span>Wind</span><strong id="noc-weather-wind">--</strong></div>
+      </div>
+      <div class="noc-card-updated" id="noc-weather-updated">--</div>
+    </a>
+
+    <!-- Home Assistant -->
+    <a href="/dev" class="noc-system-card home-assistant">
+      <div class="noc-card-header">
+        <span class="noc-system-icon">🏡</span>
+        <span class="noc-system-name">Home Assistant</span>
+        <span id="noc-ha-badge" class="noc-status-dot healthy"></span>
+      </div>
+      <div class="noc-card-primary" id="noc-ha-status">Connected</div>
+      <div class="noc-card-secondary">
+        <div><span>Status</span><strong id="noc-ha-detail">Ready</strong></div>
+        <div><span>Entities</span><strong id="noc-ha-entities">--</strong></div>
+        <div><span>Message</span><strong id="noc-ha-message">Integration active</strong></div>
+      </div>
+      <div class="noc-card-updated">Now</div>
+    </a>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 4: QUICK ACTIONS
+     ════════════════════════════════════════════════════════════════════════════════════ -->
+
+<section class="noc-quick-actions">
+  <div class="noc-section-title">
+    <h2>⚙️ Quick Access</h2>
+  </div>
+  <div class="noc-actions-grid">
+    <a href="/solar" class="noc-action-btn solar">Solar Center</a>
+    <a href="/vehicle" class="noc-action-btn vehicle">Vehicle Center</a>
+    <a href="/internet" class="noc-action-btn internet">Internet Health</a>
+    <a href="/energy" class="noc-action-btn energy">Energy Center</a>
+    <a href="/weather" class="noc-action-btn weather">Weather</a>
+    <a href="/settings" class="noc-action-btn settings">Settings</a>
+    <button type="button" class="noc-action-btn test" onclick="location.href='/dev'">Diagnostics</button>
+    <a href="/home" class="noc-action-btn refresh" onclick="location.reload()">Refresh</a>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 5: TODAY'S TIMELINE
+     ════════════════════════════════════════════════════════════════════════════════════ -->
+
+<section class="noc-timeline-section">
+  <div class="noc-section-title">
+    <h2>📅 Today's Timeline</h2>
+  </div>
+  <div id="noc-timeline-list" class="noc-timeline-list">
+    <!-- Populated by JS -->
+  </div>
+  <div id="noc-timeline-empty" class="noc-timeline-empty" hidden>
+    Timeline will populate automatically as HomePulse observes your home.
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 6: SUMMARY KPIS
+     ════════════════════════════════════════════════════════════════════════════════════ -->
+
+<section class="noc-summary-kpis">
+  <div class="noc-section-title">
+    <h2>📊 Summary KPIs</h2>
+  </div>
+  <div class="noc-kpi-grid">
+    <!-- Solar KPIs -->
+    <div class="noc-kpi-card solar">
+      <div class="noc-kpi-label">Solar Today</div>
+      <div class="noc-kpi-value" id="noc-kpi-solar-today">-- kWh</div>
+      <div class="noc-kpi-sublabel">Peak: <span id="noc-kpi-solar-peak">--</span> kW</div>
     </div>
-    <div id="home-alert-status" class="home-tile-value">No active alerts</div>
-    <div class="home-placeholder-list">
-      <span>Garage</span>
-      <span>Locks</span>
-      <span>Doors</span>
-      <span>Climate</span>
-      <span>Cameras</span>
+
+    <!-- Vehicle KPIs -->
+    <div class="noc-kpi-card vehicle">
+      <div class="noc-kpi-label">EV Battery</div>
+      <div class="noc-kpi-value" id="noc-kpi-vehicle-battery">-- %</div>
+      <div class="noc-kpi-sublabel">Range: <span id="noc-kpi-vehicle-range">--</span> mi</div>
     </div>
-  </article>
+
+    <!-- Energy KPIs -->
+    <div class="noc-kpi-card energy">
+      <div class="noc-kpi-label">Charging Power</div>
+      <div class="noc-kpi-value" id="noc-kpi-energy-power">-- kW</div>
+      <div class="noc-kpi-sublabel">Session: <span id="noc-kpi-energy-cost">--</span></div>
+    </div>
+
+    <!-- Internet KPIs -->
+    <div class="noc-kpi-card internet">
+      <div class="noc-kpi-label">Internet Health</div>
+      <div class="noc-kpi-value" id="noc-kpi-internet-health">-- %</div>
+      <div class="noc-kpi-sublabel">Latency: <span id="noc-kpi-internet-latency">--</span> ms</div>
+    </div>
+
+    <!-- Weather KPIs -->
+    <div class="noc-kpi-card weather">
+      <div class="noc-kpi-label">Temperature</div>
+      <div class="noc-kpi-value" id="noc-kpi-weather-temp">-- °F</div>
+      <div class="noc-kpi-sublabel">Clouds: <span id="noc-kpi-weather-clouds">--</span> %</div>
+    </div>
+
+    <!-- System KPIs -->
+    <div class="noc-kpi-card system">
+      <div class="noc-kpi-label">HomePulse Uptime</div>
+      <div class="noc-kpi-value" id="noc-kpi-system-uptime">-- hrs</div>
+      <div class="noc-kpi-sublabel">Database: <span id="noc-kpi-system-history">--</span> records</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 7: INSIGHTS
+     ════════════════════════════════════════════════════════════════════════════════════ -->
+
+<section class="noc-insights-section">
+  <div class="noc-section-title">
+    <h2>💡 Insights</h2>
+  </div>
+  <div id="noc-insights-list" class="noc-insights-list">
+    <!-- Populated by JS -->
+  </div>
+  <div id="noc-insights-empty" class="noc-insights-empty" hidden>
+    Insights will appear as HomePulse analyzes your home's patterns.
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 8: RECOVERY SUMMARY (Placeholder for Future)
+     ════════════════════════════════════════════════════════════════════════════════════ -->
+
+<section class="noc-recovery-section">
+  <div class="noc-section-title">
+    <h2>🔧 Automatic Recovery</h2>
+  </div>
+  <div class="noc-recovery-placeholder">
+    <div>No automatic recoveries have occurred today.</div>
+    <div class="noc-recovery-detail">Recovery Engine integration coming in v3.7.0</div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════════════════
+     SECTION 9: HOME STATISTICS
+     ════════════════════════════════════════════════════════════════════════════════════ -->
+
+<section class="noc-statistics-section">
+  <div class="noc-section-title">
+    <h2>📈 Home Statistics</h2>
+  </div>
+  <div class="noc-stats-grid">
+    <div class="noc-stat-item">
+      <span class="noc-stat-label">HomePulse Version</span>
+      <strong id="noc-stat-version">{{ version }}</strong>
+    </div>
+    <div class="noc-stat-item">
+      <span class="noc-stat-label">Running Time</span>
+      <strong id="noc-stat-uptime">-- hrs</strong>
+    </div>
+    <div class="noc-stat-item">
+      <span class="noc-stat-label">Modules Loaded</span>
+      <strong id="noc-stat-modules">--</strong>
+    </div>
+    <div class="noc-stat-item">
+      <span class="noc-stat-label">Database Records</span>
+      <strong id="noc-stat-records">--</strong>
+    </div>
+  </div>
 </section>
 
 <script src="{{ url_for('static', filename='js/home_center.js') }}"></script>

@@ -735,10 +735,30 @@ class Dashboard:
         internet = self._home_internet_status(dashboard_status)
         solar = self._safe_center_status("solar", self.application.solar.get_status)
         energy = self._safe_center_status("energy", self.application.energy.get_status)
-        vehicle = self._safe_center_status("vehicle", self.application.vehicle.get_status)
+        vehicle_dict = self._safe_center_status("vehicle", self.application.vehicle.get_status)
+        # Get unified vehicle status (merged with charger data)
+        try:
+            vehicle = self.application.vehicle.get_unified_status(energy)
+        except Exception:
+            vehicle = vehicle_dict
         weather = self._safe_center_status("weather", self.application.weather.get_status)
         lighting = self._lighting_placeholder()
         home = self._home_placeholder()
+        
+        # Compute health score and alerts
+        statuses = {
+            "internet": internet,
+            "solar": solar,
+            "vehicle": vehicle,
+            "energy": energy,
+            "weather": weather,
+            "home_assistant": self._home_assistant_status(),
+            "system": self._system_status(),
+        }
+        health_result = self.application.health_score.compute(statuses)
+        alerts = self.application.alert_manager.detect_alerts(statuses)
+        alerts.sort(key=lambda a: self.application.alert_manager.severity_priority(a.get("severity")))
+        
         overall_status = self._overall_home_status(internet, solar, energy, vehicle, weather)
         return {
             "internet": internet,
@@ -749,10 +769,36 @@ class Dashboard:
             "lighting": lighting,
             "home": home,
             "overall_status": overall_status,
-            "health_score": self._home_health_score(internet, solar, energy, vehicle, weather),
+            "health_score": health_result.get("score"),
+            "health_status": health_result.get("status_text"),
+            "health_trend": health_result.get("trend"),
+            "health_breakdown": health_result.get("breakdown"),
+            "alerts": alerts[:10],  # Top 10 alerts
+            "timeline_summary": self.application.timeline.get_summary(hours_back=24),
+            "timeline_recent": self.application.timeline.get_events(limit=20, hours_back=24),
             "widgets": self.application.plugin_manager.widget_registry.all(),
             "devices": self.application.plugin_manager.device_registry.all(),
             "last_updated": str(datetime.now()),
+        }
+
+    def _home_assistant_status(self):
+        """Placeholder for Home Assistant integration status."""
+        return {
+            "enabled": True,
+            "configured": True,
+            "status": "Connected",
+            "availability": "live",
+            "message": "Home Assistant integration ready (future: entity counts, automation status)",
+        }
+
+    def _system_status(self):
+        """System health (HomePulse itself)."""
+        uptime_seconds = (datetime.now() - self.application.started_at).total_seconds()
+        return {
+            "enabled": True,
+            "status": "Healthy",
+            "uptime_seconds": int(uptime_seconds),
+            "message": "HomePulse running normally",
         }
 
     def _home_internet_status(self, status):
