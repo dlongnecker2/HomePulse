@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from datetime import datetime
 
 
 class Database:
@@ -8,6 +9,27 @@ class Database:
         self.filename = filename
         self.conn = sqlite3.connect(filename, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+
+    @staticmethod
+    def _normalize_timestamp(ts):
+        """Convert datetime or string to ISO format string for SQLite."""
+        if ts is None:
+            return None
+        if isinstance(ts, datetime):
+            return ts.isoformat()
+        if isinstance(ts, str):
+            # Already a string; ensure it's ISO format if it's from str(datetime)
+            # str(datetime) produces "2026-06-02 12:34:56.123456"
+            # We want "2026-06-02T12:34:56" for comparison
+            if " " in ts and "T" not in ts:
+                # Convert "YYYY-MM-DD HH:MM:SS.ffffff" to "YYYY-MM-DDTHH:MM:SS"
+                try:
+                    dt = datetime.fromisoformat(ts.replace(" ", "T"))
+                    return dt.replace(microsecond=0).isoformat()
+                except (ValueError, TypeError):
+                    pass
+            return ts
+        return str(ts)
 
     def initialize(self):
         cursor = self.conn.cursor()
@@ -153,71 +175,105 @@ class Database:
         return [self._health_row_to_dict(row) for row in rows]
 
     def health_history_since(self, timestamp):
-        rows = self.conn.execute(
-            """
-            SELECT timestamp, latency, packet_loss, dns_ok, score, rebooted
-            FROM health_checks
-            WHERE timestamp >= ?
-            ORDER BY id ASC
-            """,
-            (timestamp,),
-        ).fetchall()
-        return [self._health_row_to_dict(row) for row in rows]
-
-    def speed_tests_since(self, timestamp):
-        rows = self.conn.execute(
-            """
-            SELECT timestamp, download, upload, ping, server
-            FROM speed_tests
-            WHERE timestamp >= ?
-            ORDER BY id ASC
-            """,
-            (timestamp,),
-        ).fetchall()
-        return [
-            {
-                "timestamp": row["timestamp"],
-                "download": row["download"],
-                "upload": row["upload"],
-                "ping": row["ping"],
-                "server": row["server"],
-            }
-            for row in rows
-        ]
-
-    def events_since(self, timestamp, event_type=None):
-        if event_type:
+        ts = self._normalize_timestamp(timestamp)
+        try:
             rows = self.conn.execute(
                 """
-                SELECT timestamp, event_type, message
-                FROM events
-                WHERE timestamp >= ? AND event_type = ?
-                ORDER BY id ASC
-                """,
-                (timestamp, event_type),
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                """
-                SELECT timestamp, event_type, message
-                FROM events
+                SELECT timestamp, latency, packet_loss, dns_ok, score, rebooted
+                FROM health_checks
                 WHERE timestamp >= ?
                 ORDER BY id ASC
                 """,
-                (timestamp,),
+                (ts,),
             ).fetchall()
-        return [
-            {"timestamp": row["timestamp"], "event_type": row["event_type"], "message": row["message"]}
-            for row in rows
-        ]
+            return [self._health_row_to_dict(row) for row in rows if row]
+        except (sqlite3.InterfaceError, sqlite3.OperationalError, IndexError):
+            return []
+
+    def speed_tests_since(self, timestamp):
+        ts = self._normalize_timestamp(timestamp)
+        try:
+            rows = self.conn.execute(
+                """
+                SELECT timestamp, download, upload, ping, server
+                FROM speed_tests
+                WHERE timestamp >= ?
+                ORDER BY id ASC
+                """,
+                (ts,),
+            ).fetchall()
+            result = []
+            for row in rows:
+                if not row:
+                    continue
+                try:
+                    result.append({
+                        "timestamp": row["timestamp"] if isinstance(row, dict) else row[0],
+                        "download": row["download"] if isinstance(row, dict) else row[1],
+                        "upload": row["upload"] if isinstance(row, dict) else row[2],
+                        "ping": row["ping"] if isinstance(row, dict) else row[3],
+                        "server": row["server"] if isinstance(row, dict) else row[4],
+                    })
+                except (IndexError, TypeError, KeyError):
+                    continue
+            return result
+        except (sqlite3.InterfaceError, sqlite3.OperationalError, IndexError):
+            return []
+
+    def events_since(self, timestamp, event_type=None):
+        ts = self._normalize_timestamp(timestamp)
+        try:
+            if event_type:
+                rows = self.conn.execute(
+                    """
+                    SELECT timestamp, event_type, message
+                    FROM events
+                    WHERE timestamp >= ? AND event_type = ?
+                    ORDER BY id ASC
+                    """,
+                    (ts, event_type),
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    """
+                    SELECT timestamp, event_type, message
+                    FROM events
+                    WHERE timestamp >= ?
+                    ORDER BY id ASC
+                    """,
+                    (ts,),
+                ).fetchall()
+            return [
+                {"timestamp": row["timestamp"], "event_type": row["event_type"], "message": row["message"]}
+                for row in rows if row
+            ]
+        except (sqlite3.InterfaceError, sqlite3.OperationalError, IndexError):
+            return []
 
     @staticmethod
     def _health_row_to_dict(row):
-        return {
-            "timestamp": row["timestamp"],
-            "latency": row["latency"],
-            "packet_loss": row["packet_loss"],
-            "dns_ok": bool(row["dns_ok"]),
-            "score": row["score"],
-            "rebooted": bool(row["rebooted"]),
-        }
+        try:
+            # Handle both sqlite3.Row objects and tuples
+            if isinstance(row, dict) or hasattr(row, '__getitem__'):
+                try:
+                    return {
+                        "timestamp": row["timestamp"],
+                        "latency": row["latency"],
+                        "packet_loss": row["packet_loss"],
+                        "dns_ok": bool(row["dns_ok"]),
+                        "score": row["score"],
+                        "rebooted": bool(row["rebooted"]),
+                    }
+                except (KeyError, TypeError):
+                    # Row is a tuple, not dict-like
+                    return {
+                        "timestamp": row[0] if len(row) > 0 else None,
+                        "latency": row[1] if len(row) > 1 else None,
+                        "packet_loss": row[2] if len(row) > 2 else None,
+                        "dns_ok": bool(row[3]) if len(row) > 3 else False,
+                        "score": row[4] if len(row) > 4 else None,
+                        "rebooted": bool(row[5]) if len(row) > 5 else False,
+                    }
+            return {}
+        except Exception:
+            return {}

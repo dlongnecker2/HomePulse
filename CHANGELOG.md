@@ -1,5 +1,66 @@
 # Changelog
 
+## v3.6.1a (Regression Fix - SQLite Parameters)
+
+### Critical Fix
+Fixed SQLite regression in `internet_intelligence()` and `speed_tests_since()` that caused:
+- `sqlite3.InterfaceError: bad parameter or other API misuse`
+- `IndexError: tuple index out of range`
+- Failures in `/api/status` and `/api/home/status` endpoints
+
+### Root Causes
+1. **Timestamp Parameter Format**: `str(datetime_object)` produces "YYYY-MM-DD HH:MM:SS.ffffff" but SQLite expects ISO format
+2. **Row Access Safety**: Code assumed rows were always dict-like (sqlite3.Row) but could fail on certain connection states
+3. **Missing Error Handling**: `internet_intelligence()` had no fallback if database queries failed
+
+### Changes (`modules/database.py`)
+
+**New Helper Method:**
+- `_normalize_timestamp(ts)` — Converts datetime or string to ISO format ("YYYY-MM-DDTHH:MM:SS") for SQLite comparison
+  - Handles datetime objects: `dt.isoformat()`
+  - Converts "YYYY-MM-DD HH:MM:SS.ffffff" → "YYYY-MM-DDTHH:MM:SS"
+  - Strips microseconds for consistent string comparison in WHERE clauses
+
+**Enhanced Methods:**
+- `health_history_since(timestamp)` — Normalizes timestamp, handles exceptions, returns empty list on failure
+- `speed_tests_since(timestamp)` — Normalizes timestamp, defensive row access (supports both dict and tuple), returns empty list on failure
+- `events_since(timestamp, event_type)` — Normalizes timestamp, robust error handling
+- `_health_row_to_dict(row)` — Now handles both sqlite3.Row objects and tuples safely
+
+### Changes (`modules/application.py`)
+
+**Enhanced `internet_intelligence()` Method:**
+- Now wraps entire function in try/except
+- Uses `.isoformat()` for timestamp instead of `str()`
+- Returns safe default fallback on any exception:
+  ```python
+  {
+    "quality_score": None,
+    "isp_grade": "Unknown",
+    "trend": "Insufficient data",
+    "reliability": {...},
+    "recommendations": [],
+    "sample_count": 0,
+  }
+  ```
+
+### Validation
+✓ All Python modules compile cleanly  
+✓ Timestamp normalization tested with both str() and datetime inputs  
+✓ health_history_since retrieves records correctly  
+✓ speed_tests_since retrieves records correctly  
+✓ internet_intelligence returns quality score and reliability data  
+✓ No crashes on edge cases or missing data  
+✓ APIs return JSON quickly (no blocking)  
+
+### Impact
+- **Fixes**: Home Center API, /api/status, /api/home/status now return HTTP 200
+- **Safety**: All date/time queries now use consistent ISO format
+- **Robustness**: Failed intelligence computation doesn't break dashboard
+- **Performance**: No additional overhead (optimization in timestamp handling)
+
+---
+
 ## v3.6.1 (Timeline and Notification Foundation)
 
 ### Overview

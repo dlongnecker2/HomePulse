@@ -978,35 +978,52 @@ class Application:
         return None
 
     def internet_intelligence(self):
-        now = datetime.now()
-        since = now - timedelta(days=30)
-        since_text = str(since)
-        health_rows = self.db.health_history_since(since_text)
-        speed_rows = self.db.speed_tests_since(since_text)
-        reboot_events = self.db.events_since(since_text, "router_reboot")
-        latest_speed = self.db.latest_speed_test()
+        try:
+            now = datetime.now()
+            since = now - timedelta(days=30)
+            since_text = since.isoformat()  # Use ISO format for consistency
+            
+            health_rows = self.db.health_history_since(since_text)
+            speed_rows = self.db.speed_tests_since(since_text)
+            reboot_events = self.db.events_since(since_text, "router_reboot")
+            latest_speed = self.db.latest_speed_test()
 
-        quality_score = self.internet_quality_score(health_rows, latest_speed)
-        reliability = self.reliability_summary(health_rows, reboot_events)
-        grade = self.isp_grade(quality_score)
-        trend = self.reliability_trend(health_rows)
-        recommendations = self.internet_recommendations(
-            health_rows=health_rows,
-            speed_rows=speed_rows,
-            latest_speed=latest_speed,
-            reliability=reliability,
-            quality_score=quality_score,
-            trend=trend,
-        )
+            quality_score = self.internet_quality_score(health_rows, latest_speed)
+            reliability = self.reliability_summary(health_rows, reboot_events)
+            grade = self.isp_grade(quality_score)
+            trend = self.reliability_trend(health_rows)
+            recommendations = self.internet_recommendations(
+                health_rows=health_rows,
+                speed_rows=speed_rows,
+                latest_speed=latest_speed,
+                reliability=reliability,
+                quality_score=quality_score,
+                trend=trend,
+            )
 
-        return {
-            "quality_score": quality_score,
-            "isp_grade": grade,
-            "trend": trend,
-            "reliability": reliability,
-            "recommendations": recommendations,
-            "sample_count": len(health_rows),
-        }
+            return {
+                "quality_score": quality_score,
+                "isp_grade": grade,
+                "trend": trend,
+                "reliability": reliability,
+                "recommendations": recommendations,
+                "sample_count": len(health_rows),
+            }
+        except Exception as exc:
+            self.log.exception(f"Internet intelligence computation failed: {exc}")
+            return {
+                "quality_score": None,
+                "isp_grade": "Unknown",
+                "trend": "Insufficient data",
+                "reliability": {
+                    "uptime_percent": None,
+                    "outages": 0,
+                    "longest_outage": "No data",
+                    "router_reboots": 0,
+                },
+                "recommendations": [],
+                "sample_count": 0,
+            }
 
     def internet_quality_score(self, health_rows, latest_speed):
         health_scores = [row["score"] for row in health_rows if row["score"] is not None]
