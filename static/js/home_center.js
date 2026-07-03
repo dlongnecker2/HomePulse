@@ -71,10 +71,25 @@ function statusDot(status) {
 
 async function refreshHomeCenter() {
   try {
-    const response = await fetch("/api/home/status", { cache: "no-store" });
-    if (!response.ok) throw new Error(`Status ${response.status}`);
-    const data = await response.json();
-    updateHomeCenter(data);
+    const [homeResponse, timelineResponse, notifResponse] = await Promise.all([
+      fetch("/api/home/status", { cache: "no-store" }),
+      fetch("/api/timeline/recent?limit=50", { cache: "no-store" }),
+      fetch("/api/notifications/recent?limit=20", { cache: "no-store" }),
+    ]);
+
+    if (!homeResponse.ok) throw new Error(`Home status ${homeResponse.status}`);
+    const homeData = await homeResponse.json();
+    updateHomeCenter(homeData);
+
+    if (timelineResponse.ok) {
+      const timelineData = await timelineResponse.json();
+      updateTimeline(timelineData.events || []);
+    }
+
+    if (notifResponse.ok) {
+      const notifData = await notifResponse.json();
+      updateNotifications(notifData);
+    }
   } catch (error) {
     console.error("[HomeCenter] Refresh failed:", error);
     setText("noc-health-score", "—");
@@ -94,9 +109,6 @@ function updateHomeCenter(data) {
 
   // System Status Grid
   updateSystemsGrid(data);
-
-  // Timeline
-  updateTimeline(data.timeline_recent || []);
 
   // KPIs
   updateKPIs(data);
@@ -310,6 +322,24 @@ function updateTimeline(events) {
     `;
     })
     .join("");
+}
+
+/**
+ * Update notifications display.
+ * Notifications are user-facing messages (different from alerts = current conditions).
+ */
+function updateNotifications(data) {
+  const unreadCount = data.unread_count || 0;
+  const notifications = data.notifications || [];
+  
+  // Log for debugging (no dedicated UI panel yet, but infrastructure in place)
+  if (unreadCount > 0) {
+    console.log(`[Notifications] ${unreadCount} unread`);
+  }
+  
+  // Future: Add notification panel to display warnings/critical notifications
+  // Update notification badge on Home Center or in navbar
+  // For now, notifications feed the alert system for display
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════

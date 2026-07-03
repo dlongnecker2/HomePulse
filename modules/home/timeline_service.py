@@ -5,8 +5,9 @@ Records and retrieves events from throughout the home monitoring lifecycle.
 Supports extensibility — any module can record events without knowing storage details.
 
 Architecture:
-- In-memory ring buffer (max 500 events)
-- Optionally persisted to database
+- In-memory ring buffer (max 500 events) for fast Home page access
+- Optional database persistence for long-term history
+- De-duplication to prevent event spam
 - Queryable by category, severity, time range
 - Thread-safe append operations
 - Scrolls newest first
@@ -15,6 +16,8 @@ Architecture:
 from datetime import datetime, timedelta
 from collections import deque
 from threading import Lock
+import hashlib
+import uuid
 
 
 class TimelineService:
@@ -31,6 +34,8 @@ class TimelineService:
     CAT_WEATHER = "weather"
     CAT_RECOVERY = "recovery"
     CAT_HOME_ASSISTANT = "home_assistant"
+    CAT_LIGHTING = "lighting"
+    CAT_NOTIFICATION = "notification"
 
     # Severity levels (lower value = more severe)
     SEV_CRITICAL = "critical"  # System down, immediate attention
@@ -38,12 +43,14 @@ class TimelineService:
     SEV_INFO = "info"  # Normal operational event
     SEV_SUCCESS = "success"  # Positive event (e.g., connection restored)
 
-    def __init__(self, max_events=500):
+    def __init__(self, max_events=500, dedup_minutes=10):
         self.max_events = max_events
+        self.dedup_minutes = dedup_minutes
         self._events = deque(maxlen=max_events)
+        self._dedup_hashes = {}  # {hash: last_timestamp} for de-duplication
         self._lock = Lock()
 
-    def record_event(self, category, title, description="", severity="info", timestamp=None):
+    def record_event(self, category, title, description="", severity="info", timestamp=None, source="system", check_dedup=True, metadata=None):
         """
         Record an event.
 
@@ -59,10 +66,16 @@ class TimelineService:
             Severity level (use SEV_* constants)
         timestamp : datetime | None
             Event timestamp; defaults to now()
+        source : str
+            Source module or component
+        check_dedup : bool
+            Whether to check de-duplication (default True)
+        metadata : dict | None
+            Additional event metadata
 
         Returns
         -------
-        dict : The recorded event
+        dict : The recorded event, or None if de-duplicated
         """
         if timestamp is None:
             timestamp = datetime.now()
@@ -72,18 +85,41 @@ class TimelineService:
             except (ValueError, TypeError):
                 timestamp = datetime.now()
 
+        # De-duplication check
+        if check_dedup:
+            dedup_key = f"{category}:{title}:{description}".lower()
+            dedup_hash = hashlib.md5(dedup_key.encode()).hexdigest()
+            now = datetime.now()
+
+            with self._lock:
+                last_time = self._dedup_hashes.get(dedup_hash)
+                if last_time and (now - last_time).total_seconds() < self.dedup_minutes * 60:
+                    return None  # De-duplicated
+
+                self._dedup_hashes[dedup_hash] = now
+
         event = {
+            "id": str(uuid.uuid4()),
             "category": str(category).strip(),
             "title": str(title).strip(),
             "description": str(description).strip(),
             "severity": str(severity).strip().lower(),
             "timestamp": timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp),
+            "source": str(source).strip(),
+            "metadata": metadata or {},
         }
 
         with self._lock:
             self._events.append(event)
 
+        # Optional: persist to database (feature for future)
+        # For now, in-memory ring buffer is sufficient
+
         return event
+
+    def set_database(self, database):
+        """Reserve for future database persistence."""
+        pass
 
     def get_events(self, category=None, severity=None, limit=100, hours_back=24):
         """

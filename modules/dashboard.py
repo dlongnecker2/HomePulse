@@ -379,6 +379,76 @@ class Dashboard:
                     "home": self._home_placeholder(alerts=["Home Center status unavailable."]),
                 }), 500
 
+        @self.app.route("/api/timeline/recent")
+        def api_timeline_recent():
+            """Get recent timeline events."""
+            try:
+                limit = request.args.get("limit", 50, type=int)
+                category = request.args.get("category", None)
+                severity = request.args.get("severity", None)
+                hours_back = request.args.get("hours_back", 24, type=int)
+                
+                events = self.application.timeline.get_events(
+                    category=category,
+                    severity=severity,
+                    limit=limit,
+                    hours_back=hours_back,
+                )
+                return jsonify({"events": events, "count": len(events)})
+            except Exception as exc:
+                self.application.log.exception(f"Timeline API failed: {exc}")
+                return jsonify({"events": [], "count": 0, "error": str(exc)}), 500
+
+        @self.app.route("/api/notifications/recent")
+        def api_notifications_recent():
+            """Get recent notifications."""
+            try:
+                limit = request.args.get("limit", 50, type=int)
+                unread_only = request.args.get("unread_only", False, type=lambda x: x.lower() == "true")
+                severity = request.args.get("severity", None)
+                hours_back = request.args.get("hours_back", 24, type=int)
+                
+                notifications = self.application.notification_manager.get_notifications(
+                    limit=limit,
+                    unread_only=unread_only,
+                    severity=severity,
+                    hours_back=hours_back,
+                )
+                unread_count = self.application.notification_manager.get_unread_count()
+                return jsonify({
+                    "notifications": notifications,
+                    "count": len(notifications),
+                    "unread_count": unread_count,
+                })
+            except Exception as exc:
+                self.application.log.exception(f"Notifications API failed: {exc}")
+                return jsonify({"notifications": [], "count": 0, "unread_count": 0, "error": str(exc)}), 500
+
+        @self.app.route("/api/notifications/mark-read", methods=["POST"])
+        def api_notifications_mark_read():
+            """Mark a notification as read."""
+            try:
+                data = request.get_json() or {}
+                notification_id = data.get("notification_id")
+                if not notification_id:
+                    return jsonify({"error": "notification_id required"}), 400
+                
+                success = self.application.notification_manager.mark_read(notification_id)
+                return jsonify({"success": success})
+            except Exception as exc:
+                self.application.log.exception(f"Mark read failed: {exc}")
+                return jsonify({"error": str(exc)}), 500
+
+        @self.app.route("/api/notifications/clear", methods=["POST"])
+        def api_notifications_clear():
+            """Clear all notifications."""
+            try:
+                count = self.application.notification_manager.clear()
+                return jsonify({"cleared": count})
+            except Exception as exc:
+                self.application.log.exception(f"Clear notifications failed: {exc}")
+                return jsonify({"error": str(exc)}), 500
+
         @self.app.route("/api/energy/status")
         def api_energy_status():
             try:

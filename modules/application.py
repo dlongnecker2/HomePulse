@@ -21,6 +21,7 @@ from modules.history import HistoryService
 from modules.home import TimelineService, HealthScoreEngine, AlertManager
 from modules.logger import get_logger
 from modules.network import NetworkMonitor
+from modules.notifications import NotificationManager
 from modules.port_check import check_dashboard_port
 from modules.router_rebooter import RouterRebooter
 from modules.scheduler import Scheduler
@@ -52,6 +53,7 @@ class Application:
         self.timeline = TimelineService()
         self.health_score = HealthScoreEngine()
         self.alert_manager = AlertManager(self.log)
+        self.notification_manager = NotificationManager()
         self.plugin_manager = PluginManager(self, self.log)
         self.plugin_manager.register_compatibility_plugins()
         self._last_energy_charging_state = None
@@ -62,6 +64,24 @@ class Application:
         self._last_restart_method = None
         self._scheduled_task_name = "HomePulse"
         self._restart_exit_delay_seconds = 4
+        
+        # State tracking for event recording (de-duplicated by timeline service)
+        self._last_internet_status = None
+        self._last_vehicle_plugged_in = None
+        self._last_vehicle_charging = None
+        self._last_solar_available = None
+        self._last_solar_producing = None
+        self._last_energy_charger_available = None
+        self._last_home_assistant_available = None
+        
+        # Record startup event
+        self.timeline.record_event(
+            category=self.timeline.CAT_SYSTEM,
+            title="HomePulse Started",
+            description=f"Version {APP_VERSION}",
+            severity=self.timeline.SEV_SUCCESS,
+            source="system",
+        )
 
     def process_identity(self):
         task_status = self.scheduled_task_status()
