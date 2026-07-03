@@ -653,6 +653,172 @@ class Application:
         except Exception as exc:
             self.log.exception(f"Energy charging alert failed: {exc}")
 
+    def record_timeline_event(
+        self,
+        category,
+        title,
+        description="",
+        severity="info",
+        source="application",
+        check_dedup=True,
+        metadata=None,
+    ):
+        """Safely record a timeline event without interrupting core flows."""
+        try:
+            return self.timeline.record_event(
+                category=category,
+                title=title,
+                description=description,
+                severity=severity,
+                source=source,
+                check_dedup=check_dedup,
+                metadata=metadata,
+            )
+        except Exception as exc:
+            self.log.debug(f"Timeline record failed ({title}): {exc}", exc_info=True)
+            return None
+
+    def publish_internet_status_change(self, previous_status, current_status, details="", score=None):
+        """Publish internet status transitions only when state changes."""
+        previous = str(previous_status or "").strip()
+        current = str(current_status or "").strip()
+        if not previous or not current or previous == current:
+            return
+
+        severity = self.timeline.SEV_SUCCESS if current.lower() in {"healthy", "available", "up"} else self.timeline.SEV_WARNING
+        description = f"Internet status changed from {previous} to {current}."
+        if details:
+            description = f"{description} {details}"
+
+        self.record_timeline_event(
+            category=self.timeline.CAT_INTERNET,
+            title="Internet Status Changed",
+            description=description,
+            severity=severity,
+            source="network",
+            metadata={"previous_status": previous, "current_status": current, "score": score},
+        )
+
+    def publish_router_reboot_timeline(self, event_type, message, result=None):
+        """Mirror key router reboot DB events into the Home timeline."""
+        title_map = {
+            "router_reboot": "Router Reboot Executed",
+            "router_reboot_recommended": "Router Reboot Recommended",
+            "router_reboot_skipped": "Router Reboot Skipped",
+        }
+        severity = self.timeline.SEV_WARNING
+        if event_type == "router_reboot" and result is not None:
+            severity = self.timeline.SEV_SUCCESS if getattr(result, "internet_restored", False) else self.timeline.SEV_WARNING
+
+        self.record_timeline_event(
+            category=self.timeline.CAT_RECOVERY,
+            title=title_map.get(event_type, "Router Recovery Event"),
+            description=message,
+            severity=severity,
+            source="router_rebooter",
+            metadata={"event_type": event_type},
+        )
+
+    def observe_vehicle_status(self, vehicle_status):
+        """Record vehicle plug/charging state transitions for Home timeline."""
+        if not isinstance(vehicle_status, dict):
+            return
+
+        plugged_in = vehicle_status.get("plugged_in")
+        if plugged_in is None:
+            plugged_in = vehicle_status.get("plug_state") == "Plugged In"
+
+        charging = vehicle_status.get("charging")
+        if charging is None:
+            charging = vehicle_status.get("charging_state") == "Charging"
+
+        if self._last_vehicle_plugged_in is None:
+            self._last_vehicle_plugged_in = bool(plugged_in)
+        elif bool(plugged_in) != self._last_vehicle_plugged_in:
+            now_plugged = bool(plugged_in)
+            self.record_timeline_event(
+                category=self.timeline.CAT_VEHICLE,
+                title="Vehicle Plug State Changed",
+                description=(
+                    "Vehicle is now plugged in."
+                    if now_plugged
+                    else "Vehicle is now unplugged."
+                ),
+                severity=self.timeline.SEV_INFO,
+                source="vehicle",
+                metadata={"plugged_in": now_plugged},
+            )
+            self._last_vehicle_plugged_in = now_plugged
+
+        if self._last_vehicle_charging is None:
+            self._last_vehicle_charging = bool(charging)
+        elif bool(charging) != self._last_vehicle_charging:
+            now_charging = bool(charging)
+            self.record_timeline_event(
+                category=self.timeline.CAT_VEHICLE,
+                title="Vehicle Charging State Changed",
+                description=(
+                    "Vehicle charging started."
+                    if now_charging
+                    else "Vehicle charging stopped."
+                ),
+                severity=self.timeline.SEV_SUCCESS if now_charging else self.timeline.SEV_INFO,
+                source="vehicle",
+                metadata={"charging": now_charging},
+            )
+            self._last_vehicle_charging = now_charging
+
+    def publish_solar_production_transition(self, was_producing, is_producing, raw_status=None):
+        """Publish a single solar production transition event."""
+        self.record_timeline_event(
+            category=self.timeline.CAT_SOLAR,
+            title="Solar Production State Changed",
+            description=(
+                "Solar production started (Producing)."
+                if is_producing
+                else "Solar production is now standby/not producing."
+            ),
+            severity=self.timeline.SEV_SUCCESS if is_producing else self.timeline.SEV_INFO,
+            source="solar",
+            metadata={
+                "was_producing": bool(was_producing),
+                "is_producing": bool(is_producing),
+                "status": raw_status,
+            },
+        )
+
+    def observe_solar_status(self, solar_status):
+        """Record solar producing vs standby transitions only."""
+        if not isinstance(solar_status, dict):
+            return
+
+        status_text = str(solar_status.get("status") or "").strip()
+        normalized = status_text.lower()
+        if not normalized:
+            return
+
+        if normalized == "producing":
+            is_producing = True
+        elif normalized in {"standby / night", "standby", "not producing"}:
+            is_producing = False
+        else:
+            return
+
+        if self._last_solar_producing is None:
+            self._last_solar_producing = is_producing
+            return
+
+        if is_producing == self._last_solar_producing:
+            return
+
+        was_producing = self._last_solar_producing
+        self._last_solar_producing = is_producing
+        self.publish_solar_production_transition(
+            was_producing=was_producing,
+            is_producing=is_producing,
+            raw_status=status_text,
+        )
+
     def normalize_custom_speedtest_times(self, raw_times):
         pieces = raw_times.replace(",", "\n").splitlines()
         normalized = []
@@ -710,6 +876,7 @@ class Application:
         return hour, minute
 
     def health_check(self):
+        previous_status = self.status.get().get("internet", {}).get("status")
         result = self.network.check()
         now = str(datetime.now())
         self.status.update_internet(
@@ -733,6 +900,12 @@ class Application:
             f"Internet Health: {result.status} | Score={result.score} | "
             f"Latency={result.latency}ms | PacketLoss={result.packet_loss}% | "
             f"DNS={result.dns_ok} | {result.details}"
+        )
+        self.publish_internet_status_change(
+            previous_status=previous_status,
+            current_status=result.status,
+            details=result.details,
+            score=result.score,
         )
 
     def daily_speed_test(self):
@@ -889,6 +1062,7 @@ class Application:
         )
         self.log.warning(message)
         self.db.add_event(timestamp=str(now), event_type="router_reboot_recommended", message=message)
+        self.publish_router_reboot_timeline("router_reboot_recommended", message)
 
     def execute_router_reboot(self, now, reasons):
         context = self.reboot_context(now, reasons)
@@ -899,6 +1073,7 @@ class Application:
         message = self.reboot_event_message(context, result)
         self.db.add_event(timestamp=str(now), event_type="router_reboot", message=message)
         self.log.warning(message)
+        self.publish_router_reboot_timeline("router_reboot", message, result=result)
         self.email_notifier.send_reboot_notification(context, result)
 
     def reboot_context(self, now, reasons):

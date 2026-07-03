@@ -808,6 +808,7 @@ class Dashboard:
         dashboard_status = self._dashboard_payload()
         internet = self._home_internet_status(dashboard_status)
         solar = self._safe_center_status("solar", self.application.solar.get_status)
+        self.application.observe_solar_status(solar)
         energy = self._safe_center_status("energy", self.application.energy.get_status)
         vehicle_dict = self._safe_center_status("vehicle", self.application.vehicle.get_status)
         # Get unified vehicle status (merged with charger data)
@@ -815,6 +816,7 @@ class Dashboard:
             vehicle = self.application.vehicle.get_unified_status(energy)
         except Exception:
             vehicle = vehicle_dict
+        self.application.observe_vehicle_status(vehicle)
         weather = self._safe_center_status("weather", self.application.weather.get_status)
         lighting = self._lighting_placeholder()
         home = self._home_placeholder()
