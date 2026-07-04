@@ -1,4 +1,6 @@
 import json
+import socket
+import ssl
 from datetime import datetime
 from urllib.parse import urlencode
 from urllib.error import URLError, HTTPError
@@ -13,14 +15,20 @@ WEATHER_DEFAULTS = {
     "provider": "placeholder",
 }
 
+OPEN_METEO_TIMEOUT_SECONDS = 10
+OPEN_METEO_CACHE_SECONDS = 600
+OPEN_METEO_FAILURE_COOLDOWN_SECONDS = 180
+
 
 class WeatherManager:
     def __init__(self, config, log):
         self.config = config
         self.log = log
         self._last_status = None
+        self._last_error_status = None
         self._last_warning_at = None
         self._last_fetch_at = None
+        self._last_failure_at = None
 
     def weather_config(self):
         configured = dict(self.config.get("weather", default={}))
@@ -55,8 +63,15 @@ class WeatherManager:
         )
 
     def open_meteo_status(self, weather):
-        if self._last_status and self._last_fetch_at and (datetime.now() - self._last_fetch_at).total_seconds() < 600:
+        now = datetime.now()
+        if self._last_status and self._last_fetch_at and (now - self._last_fetch_at).total_seconds() < OPEN_METEO_CACHE_SECONDS:
             return dict(self._last_status)
+
+        if self._last_failure_at and (now - self._last_failure_at).total_seconds() < OPEN_METEO_FAILURE_COOLDOWN_SECONDS:
+            if self._last_status:
+                return self.stale_cached_status(self._last_status, self._last_error_status)
+            if self._last_error_status:
+                return dict(self._last_error_status)
 
         latitude = self.parse_float(weather.get("latitude"))
         longitude = self.parse_float(weather.get("longitude"))
@@ -83,28 +98,31 @@ class WeatherManager:
         })
         url = f"https://api.open-meteo.com/v1/forecast?{params}"
         try:
-            with urlopen(url, timeout=8) as response:
+            with urlopen(url, timeout=OPEN_METEO_TIMEOUT_SECONDS) as response:
                 payload = json.loads(response.read().decode("utf-8", errors="replace"))
+            self.validate_open_meteo_payload(payload)
             status = self.open_meteo_payload(weather, payload)
             self._last_status = status
-            self._last_fetch_at = datetime.now()
+            self._last_fetch_at = now
+            self._last_failure_at = None
+            self._last_error_status = None
             return status
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-            self.log_weather_warning(f"Open-Meteo weather fetch failed: {exc}")
-            if self._last_status:
-                cached = dict(self._last_status)
-                cached["live_data"] = False
-                cached["error"] = f"Using last known weather data: {exc}"
-                cached["source"] = "Open-Meteo cached"
-                return cached
-            return self.status_payload(
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, ValueError, ssl.SSLError, socket.timeout) as exc:
+            error_text = self.describe_provider_error(exc)
+            self.log_weather_warning(f"Open-Meteo weather fetch failed: {error_text}")
+            self._last_failure_at = now
+            self._last_error_status = self.status_payload(
                 weather,
                 enabled=True,
-                condition="Weather unavailable",
+                condition="Weather provider error",
                 source="Open-Meteo",
                 live_data=False,
-                error=str(exc),
+                error=error_text,
             )
+            self._last_error_status["message"] = "Open-Meteo provider error; retrying after cooldown."
+            if self._last_status:
+                return self.stale_cached_status(self._last_status, self._last_error_status)
+            return dict(self._last_error_status)
 
     def open_meteo_payload(self, weather, payload):
         current = payload.get("current") or {}
@@ -166,6 +184,54 @@ class WeatherManager:
             "error": error,
             "message": "Weather Center is ready for a live provider." if enabled else "Weather Center is disabled.",
         }
+
+    def stale_cached_status(self, cached_status, error_status):
+        stale = dict(cached_status)
+        stale["live_data"] = False
+        stale["stale"] = True
+        stale["source"] = "Open-Meteo (stale cache)"
+        stale["condition"] = f"{stale.get('condition') or 'Weather available'} (stale)"
+        stale["error"] = error_status.get("error") if error_status else "Using stale weather data due to provider error."
+        stale["message"] = "Showing last known weather due to Open-Meteo provider issue."
+        return stale
+
+    @staticmethod
+    def validate_open_meteo_payload(payload):
+        if not isinstance(payload, dict):
+            raise ValueError("Malformed response: payload is not an object")
+        current = payload.get("current")
+        if not isinstance(current, dict):
+            raise ValueError("Malformed response: missing current section")
+        if "temperature_2m" not in current:
+            raise ValueError("Malformed response: current.temperature_2m missing")
+        daily = payload.get("daily")
+        if not isinstance(daily, dict):
+            raise ValueError("Malformed response: missing daily section")
+
+    @staticmethod
+    def describe_provider_error(exc):
+        if isinstance(exc, HTTPError):
+            return f"HTTP failure ({exc.code}): {exc.reason}"
+        if isinstance(exc, json.JSONDecodeError):
+            return "Malformed response: invalid JSON"
+
+        reason = exc.reason if isinstance(exc, URLError) and hasattr(exc, "reason") else exc
+        reason_text = str(reason or exc)
+        lowered = reason_text.lower()
+
+        if isinstance(reason, socket.gaierror) or "name or service not known" in lowered or "nodename nor servname" in lowered:
+            return f"DNS failure: {reason_text}"
+        if "handshake" in lowered and "timed out" in lowered:
+            return f"SSL handshake timeout: {reason_text}"
+        if isinstance(reason, ssl.SSLError) and "timed out" in lowered:
+            return f"SSL handshake timeout: {reason_text}"
+        if isinstance(exc, (TimeoutError, socket.timeout)) or "timed out" in lowered:
+            return f"Provider timeout: {reason_text}"
+        if isinstance(exc, URLError):
+            return f"Provider connection failure: {reason_text}"
+        if isinstance(exc, ValueError):
+            return f"Malformed response: {reason_text}"
+        return f"Provider error: {reason_text}"
 
     @staticmethod
     def parse_float(value):
