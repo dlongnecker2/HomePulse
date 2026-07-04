@@ -17,9 +17,9 @@ class OpenMeteoProvider(WeatherProvider):
         params = urlencode({
             "latitude": latitude,
             "longitude": longitude,
-            "current": "temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,uv_index",
-            "hourly": "temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,uv_index",
-            "daily": "sunrise,sunset,uv_index_max,temperature_2m_max,temperature_2m_min",
+            "current": "temperature_2m,apparent_temperature,relative_humidity_2m,cloud_cover,wind_speed_10m,uv_index",
+            "hourly": "temperature_2m,apparent_temperature,relative_humidity_2m,cloud_cover,wind_speed_10m,uv_index",
+            "daily": "sunrise,sunset,uv_index_max,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
             "temperature_unit": "fahrenheit",
             "wind_speed_unit": "mph",
             "timezone": "auto",
@@ -37,6 +37,7 @@ class OpenMeteoProvider(WeatherProvider):
 
         cloud_cover = self.parse_float(current.get("cloud_cover"))
         temperature = self.parse_float(current.get("temperature_2m"))
+        apparent_temperature = self.parse_float(current.get("apparent_temperature"))
         humidity = self.parse_float(current.get("relative_humidity_2m"))
         wind = self.parse_float(current.get("wind_speed_10m"))
         uv = self.parse_float(current.get("uv_index"))
@@ -51,6 +52,8 @@ class OpenMeteoProvider(WeatherProvider):
             "provider": self.provider_key,
             "live_data": True,
             "temperature_f": temperature,
+            "feels_like_f": apparent_temperature,
+            "apparent_temperature_f": apparent_temperature,
             "condition": self.condition_from_clouds(cloud_cover),
             "cloud_cover_percent": cloud_cover,
             "sunshine_percent": sunshine,
@@ -100,6 +103,8 @@ class OpenMeteoProvider(WeatherProvider):
                 "sunset": self.item_at(daily.get("sunset"), index),
                 "temperature_max_f": self.item_at(daily.get("temperature_2m_max"), index),
                 "temperature_min_f": self.item_at(daily.get("temperature_2m_min"), index),
+                "precipitation_probability_percent": self.item_at(daily.get("precipitation_probability_max"), index),
+                "precipitation_chance_percent": self.item_at(daily.get("precipitation_probability_max"), index),
                 "uv_index_max": self.item_at(daily.get("uv_index_max"), index),
             })
         return rows
@@ -111,6 +116,7 @@ class OpenMeteoProvider(WeatherProvider):
             rows.append({
                 "timestamp": timestamp,
                 "temperature_f": self.item_at(hourly.get("temperature_2m"), index),
+                "apparent_temperature_f": self.item_at(hourly.get("apparent_temperature"), index),
                 "cloud_cover_percent": self.item_at(hourly.get("cloud_cover"), index),
                 "humidity_percent": self.item_at(hourly.get("relative_humidity_2m"), index),
                 "wind_mph": self.item_at(hourly.get("wind_speed_10m"), index),

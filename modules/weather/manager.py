@@ -1,9 +1,15 @@
 import json
+import math
 import socket
 import ssl
 from copy import deepcopy
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 from urllib.error import HTTPError, URLError
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover - Python < 3.9 compatibility guard
+    ZoneInfo = None
 
 from modules.weather.providers import NationalWeatherServiceProvider, OpenMeteoProvider
 
@@ -126,7 +132,7 @@ class WeatherManager:
                 error=None,
             )
             return self.attach_framework_fields(
-                status,
+                self.normalize_status(weather, status),
                 weather,
                 attempted_providers=[],
                 provider_errors={},
@@ -146,7 +152,7 @@ class WeatherManager:
             )
             status["message"] = "Enable at least one weather provider in Settings."
             return self.attach_framework_fields(
-                status,
+                self.normalize_status(weather, status),
                 weather,
                 attempted_providers=[],
                 provider_errors={},
@@ -181,7 +187,7 @@ class WeatherManager:
             attempted.append(key)
 
             if state["last_status"] and state["last_fetch_at"] and (now - state["last_fetch_at"]).total_seconds() < PROVIDER_CACHE_SECONDS:
-                status = dict(state["last_status"])
+                status = self.normalize_status(weather, dict(state["last_status"]))
                 return self.attach_framework_fields(
                     status,
                     weather,
@@ -198,7 +204,7 @@ class WeatherManager:
                 continue
 
             try:
-                status = provider.fetch_status(weather, PROVIDER_TIMEOUT_SECONDS)
+                status = self.normalize_status(weather, provider.fetch_status(weather, PROVIDER_TIMEOUT_SECONDS))
                 state["last_status"] = dict(status)
                 state["last_fetch_at"] = now
                 state["last_failure_at"] = None
@@ -228,7 +234,7 @@ class WeatherManager:
                 state["last_error_status"]["message"] = f"{provider.source_name} provider error; failover will continue."
 
                 if state["last_status"]:
-                    stale_candidates.append((key, self.stale_cached_status(state["last_status"], state["last_error_status"], provider.source_name)))
+                    stale_candidates.append((key, self.stale_cached_status(state["last_status"], state["last_error_status"], provider.source_name, weather)))
 
         if stale_candidates:
             selected_key, stale_status = stale_candidates[0]
@@ -253,7 +259,7 @@ class WeatherManager:
         )
         status["message"] = "All weather providers failed and no cached weather is available."
         return self.attach_framework_fields(
-            status,
+            self.normalize_status(weather, status),
             weather,
             attempted_providers=attempted,
             provider_errors=provider_errors,
@@ -271,9 +277,14 @@ class WeatherManager:
             "provider": weather.get("provider") or "placeholder",
             "live_data": live_data,
             "temperature_f": None,
+            "feels_like_f": None,
+            "apparent_temperature_f": None,
             "condition": condition,
             "cloud_cover_percent": None,
+            "cloud_cover_estimated": False,
+            "cloud_cover_estimation_method": None,
             "sunshine_percent": None,
+            "precipitation_probability_percent": None,
             "humidity_percent": None,
             "wind_mph": None,
             "uv_index": None,
@@ -307,7 +318,7 @@ class WeatherManager:
             result["provider"] = selected_provider
         return result
 
-    def stale_cached_status(self, cached_status, error_status, provider_source_name):
+    def stale_cached_status(self, cached_status, error_status, provider_source_name, weather):
         stale = dict(cached_status)
         stale["live_data"] = False
         stale["stale"] = True
@@ -315,7 +326,147 @@ class WeatherManager:
         stale["condition"] = f"{stale.get('condition') or 'Weather available'} (stale)"
         stale["error"] = error_status.get("error") if error_status else "Using stale weather data due to provider error."
         stale["message"] = f"Showing last known weather due to {provider_source_name} provider issue."
-        return stale
+        return self.normalize_status(weather, stale)
+
+    def normalize_status(self, weather, status):
+        normalized = dict(status or {})
+
+        if normalized.get("feels_like_f") is None and normalized.get("apparent_temperature_f") is not None:
+            normalized["feels_like_f"] = self.parse_numeric(normalized.get("apparent_temperature_f"))
+
+        cloud_cover = self.parse_numeric(normalized.get("cloud_cover_percent"))
+        if cloud_cover is not None:
+            normalized["cloud_cover_percent"] = round(max(0.0, min(100.0, cloud_cover)), 1)
+
+        if normalized.get("sunshine_percent") is None and normalized.get("cloud_cover_percent") is not None:
+            cloud_cover_value = self.parse_numeric(normalized.get("cloud_cover_percent"))
+            if cloud_cover_value is not None:
+                normalized["sunshine_percent"] = round(max(0.0, min(100.0, 100.0 - cloud_cover_value)), 1)
+
+        precipitation = self.pick_first_numeric(
+            normalized.get("precipitation_probability_percent"),
+            normalized.get("precipitation_chance_percent"),
+            normalized.get("precipitation_probability"),
+        )
+        normalized["precipitation_probability_percent"] = precipitation
+
+        forecast_days = normalized.get("forecast_days")
+        if isinstance(forecast_days, list):
+            adjusted_days = []
+            for day in forecast_days:
+                if not isinstance(day, dict):
+                    adjusted_days.append(day)
+                    continue
+                day_copy = dict(day)
+                day_precip = self.pick_first_numeric(
+                    day_copy.get("precipitation_probability_percent"),
+                    day_copy.get("precipitation_chance_percent"),
+                    day_copy.get("precipitation_probability"),
+                    day_copy.get("precipitation_percent"),
+                )
+                day_copy["precipitation_probability_percent"] = day_precip
+                day_copy["precipitation_chance_percent"] = day_precip
+                adjusted_days.append(day_copy)
+            normalized["forecast_days"] = adjusted_days
+
+        if normalized.get("sunrise") is None or normalized.get("sunset") is None:
+            calculated_sunrise, calculated_sunset = self.calculate_sunrise_sunset(weather)
+            if normalized.get("sunrise") is None:
+                normalized["sunrise"] = calculated_sunrise
+            if normalized.get("sunset") is None:
+                normalized["sunset"] = calculated_sunset
+
+        normalized.setdefault("cloud_cover_estimated", False)
+        normalized.setdefault("cloud_cover_estimation_method", None)
+        return normalized
+
+    def calculate_sunrise_sunset(self, weather):
+        latitude = self.parse_numeric(weather.get("latitude"))
+        longitude = self.parse_numeric(weather.get("longitude"))
+        if latitude is None or longitude is None:
+            return None, None
+
+        tzinfo = self.resolve_timezone(weather)
+        if tzinfo is None:
+            return None, None
+
+        target_date = datetime.now(tzinfo).date()
+        sunrise_dt = self.compute_solar_event_utc(target_date, latitude, longitude, tzinfo, is_sunrise=True)
+        sunset_dt = self.compute_solar_event_utc(target_date, latitude, longitude, tzinfo, is_sunrise=False)
+        return self.iso_local(sunrise_dt), self.iso_local(sunset_dt)
+
+    def resolve_timezone(self, weather):
+        configured_tz = str(weather.get("timezone", "") or "").strip()
+        if configured_tz and ZoneInfo is not None:
+            try:
+                return ZoneInfo(configured_tz)
+            except Exception:
+                self.log.debug(f"Invalid configured weather timezone '{configured_tz}', falling back to local timezone")
+
+        return datetime.now().astimezone().tzinfo
+
+    @staticmethod
+    def compute_solar_event_utc(target_date, latitude, longitude, tzinfo, is_sunrise):
+        day_of_year = target_date.timetuple().tm_yday
+        longitude_hour = longitude / 15.0
+
+        base_hour = 6.0 if is_sunrise else 18.0
+        t = day_of_year + ((base_hour - longitude_hour) / 24.0)
+
+        mean_anomaly = (0.9856 * t) - 3.289
+        true_longitude = mean_anomaly + (1.916 * math.sin(math.radians(mean_anomaly))) + (0.020 * math.sin(math.radians(2 * mean_anomaly))) + 282.634
+        true_longitude = true_longitude % 360.0
+
+        right_ascension = math.degrees(math.atan(0.91764 * math.tan(math.radians(true_longitude))))
+        right_ascension = right_ascension % 360.0
+
+        true_longitude_quadrant = math.floor(true_longitude / 90.0) * 90.0
+        right_ascension_quadrant = math.floor(right_ascension / 90.0) * 90.0
+        right_ascension = right_ascension + (true_longitude_quadrant - right_ascension_quadrant)
+        right_ascension_hours = right_ascension / 15.0
+
+        sin_declination = 0.39782 * math.sin(math.radians(true_longitude))
+        cos_declination = math.cos(math.asin(sin_declination))
+        cos_hour_angle = (
+            math.cos(math.radians(90.833))
+            - (sin_declination * math.sin(math.radians(latitude)))
+        ) / (cos_declination * math.cos(math.radians(latitude)))
+
+        if cos_hour_angle > 1 or cos_hour_angle < -1:
+            return None
+
+        hour_angle = 360.0 - math.degrees(math.acos(cos_hour_angle)) if is_sunrise else math.degrees(math.acos(cos_hour_angle))
+        hour_angle_hours = hour_angle / 15.0
+
+        local_mean_time = hour_angle_hours + right_ascension_hours - (0.06571 * t) - 6.622
+        universal_time_hours = (local_mean_time - longitude_hour) % 24.0
+
+        utc_midnight = datetime.combine(target_date, time(0, 0), tzinfo=timezone.utc)
+        event_utc = utc_midnight + timedelta(hours=universal_time_hours)
+        return event_utc.astimezone(tzinfo)
+
+    @staticmethod
+    def iso_local(value):
+        if not isinstance(value, datetime):
+            return None
+        return value.isoformat(timespec="seconds")
+
+    @staticmethod
+    def parse_numeric(value):
+        try:
+            if value in (None, ""):
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def pick_first_numeric(cls, *values):
+        for value in values:
+            number = cls.parse_numeric(value)
+            if number is not None:
+                return round(max(0.0, min(100.0, number)), 1)
+        return None
 
     @staticmethod
     def describe_provider_error(exc):
