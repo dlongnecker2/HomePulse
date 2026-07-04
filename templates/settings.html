@@ -354,15 +354,23 @@
       <label class="field-label" for="weather-longitude">Longitude</label>
       <input id="weather-longitude" name="weather_longitude" type="number" step="0.000001" value="{{ weather_config.get("longitude", "") }}" placeholder="Optional">
 
-      <label class="field-label" for="weather-provider">Provider</label>
-      <select id="weather-provider" name="weather_provider">
-        {% set weather_provider = weather_config.get("provider", "placeholder") %}
-        <option value="placeholder" {% if weather_provider == "placeholder" %}selected{% endif %}>Placeholder / future provider</option>
-        <option value="open_meteo" {% if weather_provider == "open_meteo" %}selected{% endif %}>Open-Meteo (no API key)</option>
-        <option value="national_weather_service" {% if weather_provider in ("national_weather_service", "nws", "weather_gov") %}selected{% endif %}>National Weather Service (weather.gov)</option>
-        <option value="manual" {% if weather_provider == "manual" %}selected{% endif %}>Manual placeholder</option>
-      </select>
-      <p class="settings-help">Open-Meteo and National Weather Service both require latitude and longitude and do not require an API key.</p>
+      {% set weather_providers = weather_config.get("providers", {}) %}
+      {% set weather_nws_enabled = weather_providers.get("national_weather_service", {}).get("enabled", true) %}
+      {% set weather_open_meteo_enabled = weather_providers.get("open_meteo", {}).get("enabled", true) %}
+
+      <h4>Weather Providers</h4>
+      <label class="option-row">
+        <input type="checkbox" name="weather_provider_national_weather_service_enabled" {% if weather_nws_enabled %}checked{% endif %}>
+        <span>Enable National Weather Service (weather.gov)</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="weather_provider_open_meteo_enabled" {% if weather_open_meteo_enabled %}checked{% endif %}>
+        <span>Enable Open-Meteo</span>
+      </label>
+
+      <p class="settings-help">Strategy: Automatic Failover</p>
+      <p class="settings-help">Priority: 1) National Weather Service, 2) Open-Meteo</p>
+      <p class="settings-help">Both providers require latitude and longitude and do not require an API key.</p>
     </section>
 
     <section class="settings-section">

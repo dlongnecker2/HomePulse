@@ -429,6 +429,8 @@ class Application:
             "weather_latitude",
             "weather_longitude",
             "weather_provider",
+            "weather_provider_national_weather_service_enabled",
+            "weather_provider_open_meteo_enabled",
         )
         if any(key in form for key in weather_form_keys):
             weather = self.config.data.setdefault("weather", {})
@@ -436,8 +438,23 @@ class Application:
             weather["location_name"] = form.get("weather_location_name", "Home").strip() or "Home"
             weather["latitude"] = form.get("weather_latitude", "").strip()
             weather["longitude"] = form.get("weather_longitude", "").strip()
-            provider = form.get("weather_provider", "placeholder").strip() or "placeholder"
-            weather["provider"] = provider
+            providers = weather.setdefault("providers", {})
+            providers.setdefault("national_weather_service", {})
+            providers.setdefault("open_meteo", {})
+            providers["national_weather_service"]["enabled"] = (
+                form.get("weather_provider_national_weather_service_enabled") == "on"
+            )
+            providers["open_meteo"]["enabled"] = (
+                form.get("weather_provider_open_meteo_enabled") == "on"
+            )
+
+            # Keep a selected-provider key for diagnostics/backward compatibility,
+            # but strategy is framework-based automatic failover.
+            legacy_provider = form.get("weather_provider", "").strip().lower()
+            if legacy_provider in ("national_weather_service", "open_meteo", "manual", "placeholder"):
+                weather["provider"] = legacy_provider
+            weather["provider_strategy"] = "automatic_failover"
+            weather["provider_priority"] = ["national_weather_service", "open_meteo"]
             self.weather.config = self.config
 
         router_reboot = self.config.data.setdefault("router_reboot", {})

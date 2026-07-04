@@ -17,7 +17,13 @@ DEFAULT_CONFIG = {
         "location_name": "Home",
         "latitude": "",
         "longitude": "",
-        "provider": "placeholder",
+        "provider": "open_meteo",
+        "provider_strategy": "automatic_failover",
+        "provider_priority": ["national_weather_service", "open_meteo"],
+        "providers": {
+            "national_weather_service": {"enabled": True},
+            "open_meteo": {"enabled": True},
+        },
     },
     "solar": {
         "enabled": False,
@@ -82,6 +88,7 @@ class Config:
         had_speedtest_interval = "speedtest_interval_minutes" in self.data
         changed = self._merge_defaults(self.data, DEFAULT_CONFIG)
         changed = self._normalize_speedtest_interval(had_speedtest_interval) or changed
+        changed = self._normalize_weather_provider_framework() or changed
         changed = self._fill_blank_energy_entities() or changed
         if changed:
             self.save()
@@ -139,6 +146,61 @@ class Config:
             if self.data.get("speedtest_times") != times:
                 self.data["speedtest_times"] = times
                 changed = True
+        return changed
+
+    def _normalize_weather_provider_framework(self):
+        weather = self.data.setdefault("weather", {})
+        changed = False
+
+        legacy_provider = str(weather.get("provider", "open_meteo") or "open_meteo").strip().lower()
+        providers = weather.get("providers")
+
+        if not isinstance(providers, dict):
+            providers = {}
+            if legacy_provider in ("manual", "placeholder"):
+                providers["national_weather_service"] = {"enabled": False}
+                providers["open_meteo"] = {"enabled": False}
+            else:
+                # Migrate old single-provider configs to framework defaults.
+                providers["national_weather_service"] = {"enabled": True}
+                providers["open_meteo"] = {"enabled": True}
+            weather["providers"] = providers
+            changed = True
+
+        for key in ("national_weather_service", "open_meteo"):
+            entry = providers.get(key)
+            if not isinstance(entry, dict):
+                providers[key] = {"enabled": True}
+                changed = True
+            elif "enabled" not in entry:
+                providers[key]["enabled"] = True
+                changed = True
+
+        strategy = str(weather.get("provider_strategy", "") or "").strip().lower()
+        if strategy != "automatic_failover":
+            weather["provider_strategy"] = "automatic_failover"
+            changed = True
+
+        default_priority = ["national_weather_service", "open_meteo"]
+        priority = weather.get("provider_priority")
+        if not isinstance(priority, list):
+            weather["provider_priority"] = list(default_priority)
+            changed = True
+        else:
+            normalized = []
+            seen = set()
+            for key in priority:
+                text = str(key or "").strip().lower()
+                if text in default_priority and text not in seen:
+                    normalized.append(text)
+                    seen.add(text)
+            for key in default_priority:
+                if key not in seen:
+                    normalized.append(key)
+            if normalized != priority:
+                weather["provider_priority"] = normalized
+                changed = True
+
         return changed
 
     def _legacy_speedtest_interval(self):
