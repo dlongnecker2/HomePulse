@@ -4,7 +4,7 @@
 <section class="page-heading">
   <div>
     <h2>Lighting Center</h2>
-    <p>Provider-based exterior lighting status with Govee discovery.</p>
+    <p>Vendor-neutral lighting status from Home Assistant light entities.</p>
   </div>
 </section>
 
@@ -14,9 +14,10 @@
     <table>
       <tr><td>Status</td><td id="lighting-status">--</td></tr>
       <tr><td>Provider</td><td id="lighting-provider">--</td></tr>
-      <tr><td>Devices</td><td id="lighting-device-count">--</td></tr>
-      <tr><td>Online</td><td id="lighting-online-count">--</td></tr>
-      <tr><td>Powered On</td><td id="lighting-power-on-count">--</td></tr>
+      <tr><td>Total Lights</td><td id="lighting-total">--</td></tr>
+      <tr><td>Lights On</td><td id="lighting-on">--</td></tr>
+      <tr><td>Lights Off</td><td id="lighting-off">--</td></tr>
+      <tr><td>Unavailable</td><td id="lighting-unavailable">--</td></tr>
     </table>
     <p id="lighting-message" style="color: var(--text-secondary); margin-top: 1em;">Loading...</p>
     <p id="lighting-error" style="color: var(--warning-text); display: none;"></p>
@@ -31,29 +32,31 @@
       <tr><td>Fallback Used</td><td id="lighting-fallback-used">--</td></tr>
       <tr><td>Last Updated</td><td id="lighting-last-updated">--</td></tr>
     </table>
-    <p id="lighting-scene-note" style="color: var(--text-secondary); margin-top: 1em;"></p>
+    <p id="lighting-highlight" style="color: var(--text-secondary); margin-top: 1em;"></p>
   </article>
 </section>
 
 <section class="content-grid">
   <article class="dashboard-panel">
-    <h2>Discovered Devices</h2>
-    <p id="lighting-devices-empty">No devices available.</p>
-    <div id="lighting-devices-table" hidden>
+    <h2>Light Entities</h2>
+    <p id="lighting-lights-empty">No light entities available.</p>
+    <div id="lighting-lights-table" hidden>
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Online</th>
-            <th>Power</th>
+            <th>Entity ID</th>
+            <th>Friendly Name</th>
+            <th>Integration</th>
+            <th>State</th>
             <th>Brightness</th>
-            <th>Color</th>
-            <th>Mode/Effect</th>
-            <th>Model</th>
-            <th>Device ID</th>
+            <th>Color Mode</th>
+            <th>RGB</th>
+            <th>Effect</th>
+            <th>Last Changed</th>
+            <th>Last Updated</th>
           </tr>
         </thead>
-        <tbody id="lighting-devices-body"></tbody>
+        <tbody id="lighting-lights-body"></tbody>
       </table>
     </div>
   </article>
@@ -100,9 +103,10 @@ async function refreshLightingCenter() {
 function updateLightingCenter(data) {
   document.getElementById("lighting-status").textContent = textOrDash(data.status);
   document.getElementById("lighting-provider").textContent = textOrDash(data.selected_provider || data.provider);
-  document.getElementById("lighting-device-count").textContent = textOrDash(data.device_count);
-  document.getElementById("lighting-online-count").textContent = textOrDash(data.online_count);
-  document.getElementById("lighting-power-on-count").textContent = textOrDash(data.power_on_count);
+  document.getElementById("lighting-total").textContent = textOrDash(data.total_lights);
+  document.getElementById("lighting-on").textContent = textOrDash(data.lights_on);
+  document.getElementById("lighting-off").textContent = textOrDash(data.lights_off);
+  document.getElementById("lighting-unavailable").textContent = textOrDash(data.unavailable_lights);
   document.getElementById("lighting-message").textContent = textOrDash(data.message);
 
   document.getElementById("lighting-strategy").textContent = textOrDash(data.provider_strategy);
@@ -110,7 +114,13 @@ function updateLightingCenter(data) {
   document.getElementById("lighting-attempted-providers").textContent = formatList(data.attempted_providers);
   document.getElementById("lighting-fallback-used").textContent = data.fallback_used ? "Yes" : "No";
   document.getElementById("lighting-last-updated").textContent = formatTime(data.last_updated);
-  document.getElementById("lighting-scene-note").textContent = data.scene_note ? `Note: ${data.scene_note}` : "";
+  const highlight = data.exterior_highlight || {};
+  if (highlight.present) {
+    const names = Array.isArray(highlight.names) ? highlight.names.join(", ") : "";
+    document.getElementById("lighting-highlight").textContent = `Exterior highlight: ${highlight.on || 0}/${highlight.total || 0} on${names ? ` (${names})` : ""}`;
+  } else {
+    document.getElementById("lighting-highlight").textContent = "Exterior highlight: no exterior-tagged lights detected.";
+  }
 
   const errorEl = document.getElementById("lighting-error");
   if (data.error) {
@@ -120,30 +130,36 @@ function updateLightingCenter(data) {
     errorEl.style.display = "none";
   }
 
-  const devices = Array.isArray(data.devices) ? data.devices : [];
-  const table = document.getElementById("lighting-devices-table");
-  const empty = document.getElementById("lighting-devices-empty");
-  const body = document.getElementById("lighting-devices-body");
+  const lights = Array.isArray(data.lights) ? data.lights : [];
+  const table = document.getElementById("lighting-lights-table");
+  const empty = document.getElementById("lighting-lights-empty");
+  const body = document.getElementById("lighting-lights-body");
 
   body.innerHTML = "";
-  if (devices.length === 0) {
+  if (lights.length === 0) {
     table.setAttribute("hidden", "");
-    empty.textContent = data.configured ? "No devices available." : "Not configured. Add a Govee API key in Settings.";
+    empty.textContent = data.configured ? "No light entities available." : "Not configured. Configure Home Assistant token in Recovery settings and enable Lighting provider in Settings.";
     empty.style.display = "block";
     return;
   }
 
-  devices.forEach((device) => {
+  lights.forEach((light) => {
     const row = document.createElement("tr");
+    const rgb = Array.isArray(light.rgb_color) ? `rgb(${light.rgb_color.join(", ")})` : "--";
+    const brightness = light.brightness_percent !== null && light.brightness_percent !== undefined
+      ? `${Math.round(Number(light.brightness_percent))}%`
+      : "--";
     row.innerHTML = `
-      <td>${textOrDash(device.device_name)}</td>
-      <td>${device.online === true ? "Online" : device.online === false ? "Offline" : "--"}</td>
-      <td>${textOrDash(device.power_state)}</td>
-      <td>${device.brightness_percent === null || device.brightness_percent === undefined ? "--" : `${Math.round(Number(device.brightness_percent))}%`}</td>
-      <td>${textOrDash(device.color)}</td>
-      <td>${textOrDash(device.scene_or_effect || device.mode || "scene name unavailable from provider")}</td>
-      <td>${textOrDash(device.model)}</td>
-      <td>${textOrDash(device.device_id_masked || device.device_id)}</td>
+      <td>${textOrDash(light.entity_id)}</td>
+      <td>${textOrDash(light.friendly_name)}</td>
+      <td>${textOrDash(light.integration || light.source)}</td>
+      <td>${textOrDash(light.state)}</td>
+      <td>${brightness}</td>
+      <td>${textOrDash(light.color_mode)}</td>
+      <td>${rgb}</td>
+      <td>${textOrDash(light.effect)}</td>
+      <td>${formatTime(light.last_changed)}</td>
+      <td>${formatTime(light.last_updated)}</td>
     `;
     body.appendChild(row);
   });

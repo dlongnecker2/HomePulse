@@ -158,6 +158,47 @@
     "location_name": "Home",
     "latitude": "47.115934",
     "longitude": "-122.797612",
-    "provider": "open_meteo"
+    "provider": "open_meteo",
+    "provider_strategy": "automatic_failover",
+    "provider_priority": [
+      "national_weather_service",
+      "open_meteo"
+    ],
+    "providers": {
+      "national_weather_service": {
+        "enabled": true
+      },
+      "open_meteo": {
+        "enabled": true
+      }
+    }
+  },
+  "lighting": {
+    "enabled": false,
+    "provider_strategy": "automatic_failover",
+    "provider_priority": [
+      "home_assistant"
+    ],
+    "providers": {
+      "home_assistant": {
+        "enabled": false,
+        "exterior_keywords": "govee,h706b,exterior,outdoor,porch,driveway,deck,spot,side light,back deck,back spot"
+      }
+    }
+  },
+  "garden": {
+    "enabled": false,
+    "provider_strategy": "automatic_failover",
+    "provider_priority": [
+      "bhyve"
+    ],
+    "providers": {
+      "bhyve": {
+        "enabled": false,
+        "username": "",
+        "password": "",
+        "access_token": ""
+      }
+    }
   }
 }

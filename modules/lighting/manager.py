@@ -5,18 +5,17 @@ from copy import deepcopy
 from datetime import datetime
 from urllib.error import HTTPError, URLError
 
-from modules.lighting.providers import GoveeLightingProvider
+from modules.lighting.providers import HomeAssistantLightingProvider
 
 
 LIGHTING_DEFAULTS = {
     "enabled": False,
     "provider_strategy": "automatic_failover",
-    "provider_priority": ["govee"],
+    "provider_priority": ["home_assistant"],
     "providers": {
-        "govee": {
+        "home_assistant": {
             "enabled": False,
-            "api_key": "",
-            "device_name_filter": "",
+            "exterior_keywords": "govee,h706b,exterior,outdoor,porch,driveway,deck,spot,side light,back deck,back spot",
         }
     },
 }
@@ -32,7 +31,7 @@ class LightingManager:
         self.log = log
         self._last_warning_at = None
         self.providers = {
-            "govee": GoveeLightingProvider(),
+            "home_assistant": HomeAssistantLightingProvider(),
         }
         self._provider_state = {
             key: {
@@ -59,22 +58,33 @@ class LightingManager:
             else:
                 merged[key] = value
 
-        govee_cfg = merged.setdefault("providers", {}).setdefault("govee", {})
-        govee_cfg["enabled"] = bool(govee_cfg.get("enabled", False))
-        govee_cfg["api_key"] = str(govee_cfg.get("api_key") or "")
-        govee_cfg["device_name_filter"] = str(govee_cfg.get("device_name_filter") or "")
+        # Migration: preserve old govee.enabled as new home_assistant.enabled fallback.
+        providers = merged.setdefault("providers", {})
+        govee_legacy = providers.get("govee") if isinstance(providers.get("govee"), dict) else {}
+        home_assistant_cfg = providers.setdefault("home_assistant", {})
+        legacy_enabled = bool(govee_legacy.get("enabled", False))
+        home_assistant_cfg["enabled"] = bool(home_assistant_cfg.get("enabled", legacy_enabled))
+        home_assistant_cfg["exterior_keywords"] = str(
+            home_assistant_cfg.get(
+                "exterior_keywords",
+                "govee,h706b,exterior,outdoor,porch,driveway,deck,spot,side light,back deck,back spot",
+            )
+            or ""
+        )
+
+        merged["router_recovery"] = self.config.get("router_reboot", default={})
 
         priority = merged.get("provider_priority")
         if not isinstance(priority, list) or not priority:
-            priority = ["govee"]
+            priority = ["home_assistant"]
         else:
             normalized = []
             for key in priority:
                 text = str(key or "").strip().lower()
-                if text == "govee" and text not in normalized:
+                if text == "home_assistant" and text not in normalized:
                     normalized.append(text)
-            if "govee" not in normalized:
-                normalized.append("govee")
+            if "home_assistant" not in normalized:
+                normalized.append("home_assistant")
             priority = normalized
 
         merged["provider_priority"] = priority
@@ -114,7 +124,7 @@ class LightingManager:
                 source="Lighting framework",
                 live_data=False,
                 error="No lighting providers are enabled.",
-                message="Enable the Govee provider in Settings to discover lighting devices.",
+                message="Enable the Home Assistant lighting provider in Settings.",
             )
             return self.attach_framework_fields(status, lighting, [], {}, None, False)
 
@@ -202,14 +212,21 @@ class LightingManager:
             "enabled": enabled,
             "configured": configured,
             "status": status,
-            "provider": "govee",
+            "provider": "home_assistant",
             "source": source,
             "live_data": live_data,
-            "device_count": 0,
-            "online_count": 0,
-            "power_on_count": 0,
-            "devices": [],
-            "scene_note": None,
+            "total_lights": 0,
+            "lights_on": 0,
+            "lights_off": 0,
+            "unavailable_lights": 0,
+            "exterior_highlight": {
+                "present": False,
+                "total": 0,
+                "on": 0,
+                "names": [],
+                "govee_present": False,
+            },
+            "lights": [],
             "last_updated": str(datetime.now()),
             "error": error,
             "message": message,

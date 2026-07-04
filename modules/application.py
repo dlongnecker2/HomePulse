@@ -468,22 +468,21 @@ class Application:
 
         lighting_form_keys = (
             "lighting_enabled",
-            "lighting_provider_govee_enabled",
-            "govee_api_key",
-            "govee_device_name_filter",
+            "lighting_provider_home_assistant_enabled",
+            "lighting_exterior_keywords",
         )
         if any(key in form for key in lighting_form_keys):
             lighting = self.config.data.setdefault("lighting", {})
             lighting["enabled"] = form.get("lighting_enabled") == "on"
             providers = lighting.setdefault("providers", {})
-            govee = providers.setdefault("govee", {})
-            govee["enabled"] = form.get("lighting_provider_govee_enabled") == "on"
-            govee["device_name_filter"] = form.get("govee_device_name_filter", "").strip()
-            new_govee_key = form.get("govee_api_key", "")
-            if new_govee_key:
-                govee["api_key"] = new_govee_key.strip()
+            home_assistant = providers.setdefault("home_assistant", {})
+            home_assistant["enabled"] = form.get("lighting_provider_home_assistant_enabled") == "on"
+            home_assistant["exterior_keywords"] = form.get(
+                "lighting_exterior_keywords",
+                "govee,h706b,exterior,outdoor,porch,driveway,deck,spot,side light,back deck,back spot",
+            ).strip()
             lighting["provider_strategy"] = "automatic_failover"
-            lighting["provider_priority"] = ["govee"]
+            lighting["provider_priority"] = ["home_assistant"]
             self.lighting.config = self.config
 
         garden_form_keys = (
@@ -894,49 +893,37 @@ class Application:
         if not isinstance(lighting_status, dict):
             return
 
-        devices = lighting_status.get("devices")
-        if not isinstance(devices, list):
+        lights = lighting_status.get("lights")
+        if not isinstance(lights, list):
             return
 
         current = {}
-        for device in devices:
-            if not isinstance(device, dict):
+        for light in lights:
+            if not isinstance(light, dict):
                 continue
-            device_key = str(device.get("device_id") or device.get("device_id_masked") or device.get("device_name") or "").strip()
-            if not device_key:
+            light_key = str(light.get("entity_id") or light.get("friendly_name") or "").strip()
+            if not light_key:
                 continue
-            current[device_key] = {
-                "name": str(device.get("device_name") or "Govee device"),
-                "online": device.get("online"),
-                "power_state": str(device.get("power_state") or "").strip().lower(),
+            current[light_key] = {
+                "name": str(light.get("friendly_name") or light.get("entity_id") or "Light"),
+                "state": str(light.get("state") or "").strip().lower(),
             }
 
-        for device_key, state in current.items():
-            previous = self._last_lighting_device_state.get(device_key)
+        for light_key, state in current.items():
+            previous = self._last_lighting_device_state.get(light_key)
             if previous is None:
                 continue
 
-            if state.get("online") in (True, False) and previous.get("online") in (True, False) and state.get("online") != previous.get("online"):
-                is_online = bool(state.get("online"))
-                self.record_timeline_event(
-                    category=self.timeline.CAT_LIGHTING,
-                    title="Lighting Device Connectivity Changed",
-                    description=f"{state.get('name')} is now {'online' if is_online else 'offline'}.",
-                    severity=self.timeline.SEV_SUCCESS if is_online else self.timeline.SEV_WARNING,
-                    source="lighting",
-                    metadata={"device": state.get("name"), "online": is_online},
-                )
-
-            previous_power = str(previous.get("power_state") or "")
-            current_power = str(state.get("power_state") or "")
-            if previous_power and current_power and previous_power != current_power:
+            previous_state = str(previous.get("state") or "")
+            current_state = str(state.get("state") or "")
+            if previous_state and current_state and previous_state != current_state:
                 self.record_timeline_event(
                     category=self.timeline.CAT_LIGHTING,
                     title="Lighting Power State Changed",
-                    description=f"{state.get('name')} changed power state to {current_power}.",
+                    description=f"{state.get('name')} changed state to {current_state}.",
                     severity=self.timeline.SEV_INFO,
                     source="lighting",
-                    metadata={"device": state.get("name"), "power_state": current_power},
+                    metadata={"light": state.get("name"), "state": current_state},
                 )
 
         self._last_lighting_device_state = current

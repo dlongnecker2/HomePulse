@@ -1,3 +1,3 @@
-from modules.lighting.providers.govee import GoveeLightingProvider
+from modules.lighting.providers.home_assistant import HomeAssistantLightingProvider
 
-__all__ = ["GoveeLightingProvider"]
+__all__ = ["HomeAssistantLightingProvider"]

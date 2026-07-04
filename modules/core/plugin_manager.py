@@ -119,7 +119,7 @@ class PluginManager:
                 "lightbulb",
                 "lighting",
                 "exterior_lights",
-                ["placeholder", "home_assistant_ready"],
+                ["home_assistant_light_entities", "vendor_neutral"],
                 60,
             ),
             CompatibilityPlugin(

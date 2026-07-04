@@ -289,10 +289,11 @@ function updateSystemCard(system, status) {
       setText("noc-weather-updated", formatTimestamp(status.last_updated));
       break;
     case "lighting":
-      setText("noc-lighting-metric", status.configured ? `${status.device_count ?? 0} devices` : "Not configured");
+      setText("noc-lighting-metric", status.configured ? `${status.total_lights ?? 0} lights` : "Not configured");
       setText("noc-lighting-status", status.status || "—");
-      setText("noc-lighting-online", status.online_count ?? "—");
-      setText("noc-lighting-powered", status.power_on_count ?? "—");
+      setText("noc-lighting-on", status.lights_on ?? "—");
+      setText("noc-lighting-off", status.lights_off ?? "—");
+      setText("noc-lighting-unavailable", status.unavailable_lights ?? "—");
       setText("noc-lighting-updated", formatTimestamp(status.last_updated));
       break;
     case "garden":

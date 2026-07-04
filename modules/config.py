@@ -28,12 +28,11 @@ DEFAULT_CONFIG = {
     "lighting": {
         "enabled": False,
         "provider_strategy": "automatic_failover",
-        "provider_priority": ["govee"],
+        "provider_priority": ["home_assistant"],
         "providers": {
-            "govee": {
+            "home_assistant": {
                 "enabled": False,
-                "api_key": "",
-                "device_name_filter": "",
+                "exterior_keywords": "govee,h706b,exterior,outdoor,porch,driveway,deck,spot,side light,back deck,back spot",
             }
         },
     },
@@ -236,24 +235,32 @@ class Config:
 
         providers = lighting.get("providers")
         if not isinstance(providers, dict):
-            providers = {"govee": {"enabled": False, "api_key": "", "device_name_filter": ""}}
+            providers = {
+                "home_assistant": {
+                    "enabled": False,
+                    "exterior_keywords": "govee,h706b,exterior,outdoor,porch,driveway,deck,spot,side light,back deck,back spot",
+                }
+            }
             lighting["providers"] = providers
             changed = True
 
-        govee = providers.get("govee")
-        if not isinstance(govee, dict):
-            providers["govee"] = {"enabled": False, "api_key": "", "device_name_filter": ""}
-            govee = providers["govee"]
+        # Migrate any previous govee-enabled flag into home_assistant provider.
+        legacy_govee = providers.get("govee") if isinstance(providers.get("govee"), dict) else {}
+
+        home_assistant = providers.get("home_assistant")
+        if not isinstance(home_assistant, dict):
+            providers["home_assistant"] = {
+                "enabled": bool(legacy_govee.get("enabled", False)),
+                "exterior_keywords": "govee,h706b,exterior,outdoor,porch,driveway,deck,spot,side light,back deck,back spot",
+            }
+            home_assistant = providers["home_assistant"]
             changed = True
 
-        if "enabled" not in govee:
-            govee["enabled"] = False
+        if "enabled" not in home_assistant:
+            home_assistant["enabled"] = bool(legacy_govee.get("enabled", False))
             changed = True
-        if "api_key" not in govee:
-            govee["api_key"] = ""
-            changed = True
-        if "device_name_filter" not in govee:
-            govee["device_name_filter"] = ""
+        if "exterior_keywords" not in home_assistant:
+            home_assistant["exterior_keywords"] = "govee,h706b,exterior,outdoor,porch,driveway,deck,spot,side light,back deck,back spot"
             changed = True
 
         strategy = str(lighting.get("provider_strategy", "") or "").strip().lower()
@@ -263,16 +270,16 @@ class Config:
 
         priority = lighting.get("provider_priority")
         if not isinstance(priority, list):
-            lighting["provider_priority"] = ["govee"]
+            lighting["provider_priority"] = ["home_assistant"]
             changed = True
         else:
             normalized = []
             for key in priority:
                 text = str(key or "").strip().lower()
-                if text == "govee" and text not in normalized:
+                if text == "home_assistant" and text not in normalized:
                     normalized.append(text)
-            if "govee" not in normalized:
-                normalized.append("govee")
+            if "home_assistant" not in normalized:
+                normalized.append("home_assistant")
             if normalized != priority:
                 lighting["provider_priority"] = normalized
                 changed = True
