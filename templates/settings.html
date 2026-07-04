@@ -359,9 +359,10 @@
         {% set weather_provider = weather_config.get("provider", "placeholder") %}
         <option value="placeholder" {% if weather_provider == "placeholder" %}selected{% endif %}>Placeholder / future provider</option>
         <option value="open_meteo" {% if weather_provider == "open_meteo" %}selected{% endif %}>Open-Meteo (no API key)</option>
+        <option value="national_weather_service" {% if weather_provider in ("national_weather_service", "nws", "weather_gov") %}selected{% endif %}>National Weather Service (weather.gov)</option>
         <option value="manual" {% if weather_provider == "manual" %}selected{% endif %}>Manual placeholder</option>
       </select>
-      <p class="settings-help">Open-Meteo requires latitude and longitude and does not require an API key. Weather.gov or Home Assistant weather entities can be added later.</p>
+      <p class="settings-help">Open-Meteo and National Weather Service both require latitude and longitude and do not require an API key.</p>
     </section>
 
     <section class="settings-section">
