@@ -180,7 +180,25 @@ function forecastPrecip(day) {
 }
 
 function firstForecastDay(data) {
-  return Array.isArray(data.forecast_days) && data.forecast_days.length > 0 ? data.forecast_days[0] : null;
+  const days = futureForecastDays(data, 1);
+  return days.length > 0 ? days[0] : null;
+}
+
+function isFutureDate(value) {
+  if (!value) return false;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dt.setHours(0, 0, 0, 0);
+  return dt.getTime() > today.getTime();
+}
+
+function futureForecastDays(data, limit = 5) {
+  const rows = Array.isArray(data.forecast_days) ? data.forecast_days.filter((d) => d && typeof d === "object") : [];
+  const futureRows = rows.filter((day) => isFutureDate(day.date));
+  if (futureRows.length > 0) return futureRows.slice(0, limit);
+  return rows.slice(0, limit);
 }
 
 function outlookMessage(data) {
@@ -284,14 +302,15 @@ function updateWeatherCenter(data) {
   }
 
   // Forecast
-  if (data.forecast_days && data.forecast_days.length > 0) {
+  const forecastRows = futureForecastDays(data, 5);
+  if (forecastRows.length > 0) {
     document.getElementById("weather-forecast-message").style.display = "none";
     document.getElementById("weather-forecast-table").removeAttribute("hidden");
     
     const tbody = document.getElementById("weather-forecast-body");
     tbody.innerHTML = "";
     
-    data.forecast_days.forEach(day => {
+    forecastRows.forEach(day => {
       const row = document.createElement("tr");
       const dateStr = new Date(day.date).toLocaleDateString();
       const forecastCond = forecastCondition(day, condition);

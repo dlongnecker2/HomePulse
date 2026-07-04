@@ -369,6 +369,15 @@ class WeatherManager:
                 adjusted_days.append(day_copy)
             normalized["forecast_days"] = adjusted_days
 
+        if normalized.get("uv_index") is None and isinstance(normalized.get("forecast_days"), list):
+            for day in normalized.get("forecast_days"):
+                if not isinstance(day, dict):
+                    continue
+                uv_fallback = self.parse_numeric(day.get("uv_index_max"))
+                if uv_fallback is not None:
+                    normalized["uv_index"] = round(max(0.0, min(100.0, uv_fallback)), 1)
+                    break
+
         if normalized.get("sunrise") is None or normalized.get("sunset") is None:
             calculated_sunrise, calculated_sunset = self.calculate_sunrise_sunset(weather)
             if normalized.get("sunrise") is None:

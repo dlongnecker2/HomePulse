@@ -3,8 +3,9 @@ from copy import deepcopy
 from pathlib import Path
 
 CONFIG_FILE = Path("config.json")
+CONFIG_DEFAULTS_FILE = Path("config.defaults.json")
 
-DEFAULT_CONFIG = {
+BUILTIN_DEFAULT_CONFIG = {
     "speedtest_interval_minutes": 60,
     "history": {
         "enabled": True,
@@ -102,11 +103,31 @@ DEFAULT_CONFIG = {
     },
 }
 
-ENERGY_ENTITY_DEFAULTS = DEFAULT_CONFIG["energy"]["home_assistant_entities"]
+def _load_default_config():
+    if CONFIG_DEFAULTS_FILE.exists():
+        try:
+            with open(CONFIG_DEFAULTS_FILE, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if isinstance(payload, dict):
+                return payload
+        except Exception:
+            # Fall back to builtin defaults if defaults file is invalid.
+            pass
+    return deepcopy(BUILTIN_DEFAULT_CONFIG)
+
+
+DEFAULT_CONFIG = _load_default_config()
+ENERGY_ENTITY_DEFAULTS = DEFAULT_CONFIG.get("energy", {}).get("home_assistant_entities", {})
 
 
 class Config:
     def __init__(self):
+        if not CONFIG_FILE.exists():
+            defaults = deepcopy(DEFAULT_CONFIG)
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(defaults, f, indent=2)
+                f.write("\n")
+
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             self.data = json.load(f)
         had_speedtest_interval = "speedtest_interval_minutes" in self.data

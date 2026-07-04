@@ -118,7 +118,7 @@ class NationalWeatherServiceProvider(WeatherProvider):
 
         rows = []
         for index, period in enumerate(daily_periods):
-            if len(rows) >= 3:
+            if len(rows) >= 7:
                 break
             if not isinstance(period, dict):
                 continue

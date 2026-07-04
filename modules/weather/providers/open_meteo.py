@@ -23,7 +23,7 @@ class OpenMeteoProvider(WeatherProvider):
             "temperature_unit": "fahrenheit",
             "wind_speed_unit": "mph",
             "timezone": "auto",
-            "forecast_days": 3,
+            "forecast_days": 7,
         })
         url = f"https://api.open-meteo.com/v1/forecast?{params}"
         payload = self.request_json(url, timeout_seconds)
@@ -41,6 +41,8 @@ class OpenMeteoProvider(WeatherProvider):
         humidity = self.parse_float(current.get("relative_humidity_2m"))
         wind = self.parse_float(current.get("wind_speed_10m"))
         uv = self.parse_float(current.get("uv_index"))
+        if uv is None:
+            uv = self.parse_float(self.item_at(daily.get("uv_index_max"), 0))
         sunshine = round(max(0, min(100, 100 - cloud_cover)), 1) if cloud_cover is not None else None
 
         return {
@@ -96,7 +98,7 @@ class OpenMeteoProvider(WeatherProvider):
     def forecast_days(self, daily):
         times = daily.get("time") or []
         rows = []
-        for index, day in enumerate(times[:3]):
+        for index, day in enumerate(times[:7]):
             rows.append({
                 "date": day,
                 "sunrise": self.item_at(daily.get("sunrise"), index),
