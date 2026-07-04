@@ -191,7 +191,7 @@ function formatUvDisplay(value, estimated) {
   const uv = toNumber(value);
   if (uv === null) return "--";
   const label = `${Math.round(uv * 10) / 10}`;
-  return estimated ? `${label} (Est.)` : label;
+  return estimated ? `${label} Est.` : label;
 }
 
 function firstForecastDay(data) {

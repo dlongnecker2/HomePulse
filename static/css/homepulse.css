@@ -2751,7 +2751,14 @@ button:focus-visible {
 .weather-condition-cell {
   display: inline-flex;
   align-items: center;
-  min-width: 170px;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.weather-condition-cell span:last-child {
+  min-width: 0;
+  white-space: normal;
 }
 
 .forecast-table {
@@ -2783,23 +2790,40 @@ button:focus-visible {
 
 .forecast-table th:nth-child(1),
 .forecast-table td:nth-child(1) {
-  width: 17%;
+  width: 14%;
 }
 
 .forecast-table th:nth-child(2),
 .forecast-table td:nth-child(2) {
-  width: 30%;
+  width: 28%;
 }
 
 .forecast-table th:nth-child(3),
 .forecast-table td:nth-child(3),
 .forecast-table th:nth-child(4),
-.forecast-table td:nth-child(4),
+.forecast-table td:nth-child(4) {
+  width: 10%;
+  text-align: right;
+}
+
 .forecast-table th:nth-child(5),
 .forecast-table td:nth-child(5),
 .forecast-table th:nth-child(6),
 .forecast-table td:nth-child(6) {
-  width: 13%;
+  width: 12%;
+  text-align: right;
+}
+
+.forecast-table th:nth-child(5),
+.forecast-table td:nth-child(5),
+.forecast-table th:nth-child(7),
+.forecast-table td:nth-child(7) {
+  white-space: nowrap;
+}
+
+.forecast-table th:nth-child(7),
+.forecast-table td:nth-child(7) {
+  width: 14%;
   text-align: right;
 }
 
