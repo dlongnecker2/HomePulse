@@ -68,6 +68,7 @@
             <th>Condition</th>
             <th>High</th>
             <th>Low</th>
+            <th>Wind</th>
             <th>Precip</th>
             <th>UV Index</th>
           </tr>
@@ -177,6 +178,20 @@ function forecastPrecip(day) {
     if (num !== null) return `${Math.round(num)}%`;
   }
   return "--";
+}
+
+function forecastWind(day) {
+  const wind = toNumber(day.wind_mph);
+  if (wind !== null) return `${Math.round(wind * 10) / 10} mph`;
+  if (day.wind_text) return String(day.wind_text);
+  return "--";
+}
+
+function formatUvDisplay(value, estimated) {
+  const uv = toNumber(value);
+  if (uv === null) return "--";
+  const label = `${Math.round(uv * 10) / 10}`;
+  return estimated ? `${label} (Est.)` : label;
 }
 
 function firstForecastDay(data) {
@@ -290,7 +305,7 @@ function updateWeatherCenter(data) {
   document.getElementById("weather-clouds").textContent = formatValue(data.cloud_cover_percent, "%");
   document.getElementById("weather-wind").textContent = formatValue(data.wind_mph, " mph");
   document.getElementById("weather-sunshine").textContent = formatValue(data.sunshine_percent, "%");
-  document.getElementById("weather-uv").textContent = formatValue(data.uv_index);
+  document.getElementById("weather-uv").textContent = formatUvDisplay(data.uv_index, data.uv_index_estimated === true);
 
   // Sunrise/Sunset
   document.getElementById("weather-sunrise").textContent = formatTime(data.sunrise);
@@ -316,13 +331,15 @@ function updateWeatherCenter(data) {
       const forecastCond = forecastCondition(day, condition);
       const highTemp = formatValue(day.temperature_max_f, "°F");
       const lowTemp = formatValue(day.temperature_min_f, "°F");
+      const wind = forecastWind(day);
       const precip = forecastPrecip(day);
-      const uvMax = formatValue(day.uv_index_max);
+      const uvMax = formatUvDisplay(day.uv_index_max, day.uv_index_estimated === true);
       row.innerHTML = `
         <td>${dateStr}</td>
         <td><div class="weather-condition-cell">${conditionCell(forecastCond)}</div></td>
         <td>${highTemp}</td>
         <td>${lowTemp}</td>
+        <td>${wind}</td>
         <td>${precip}</td>
         <td>${uvMax}</td>
       `;

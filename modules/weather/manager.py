@@ -288,6 +288,8 @@ class WeatherManager:
             "humidity_percent": None,
             "wind_mph": None,
             "uv_index": None,
+            "uv_index_estimated": False,
+            "uv_index_source": None,
             "sunrise": None,
             "sunset": None,
             "forecast_days": [],
@@ -366,6 +368,8 @@ class WeatherManager:
                 )
                 day_copy["precipitation_probability_percent"] = day_precip
                 day_copy["precipitation_chance_percent"] = day_precip
+                day_copy.setdefault("uv_index_estimated", False)
+                day_copy.setdefault("uv_index_source", None)
                 adjusted_days.append(day_copy)
             normalized["forecast_days"] = adjusted_days
 
@@ -376,7 +380,12 @@ class WeatherManager:
                 uv_fallback = self.parse_numeric(day.get("uv_index_max"))
                 if uv_fallback is not None:
                     normalized["uv_index"] = round(max(0.0, min(100.0, uv_fallback)), 1)
+                    normalized["uv_index_estimated"] = bool(day.get("uv_index_estimated", False))
+                    normalized["uv_index_source"] = day.get("uv_index_source") or "forecast_uv_index_max"
                     break
+
+        normalized.setdefault("uv_index_estimated", False)
+        normalized.setdefault("uv_index_source", None)
 
         if normalized.get("sunrise") is None or normalized.get("sunset") is None:
             calculated_sunrise, calculated_sunset = self.calculate_sunrise_sunset(weather)

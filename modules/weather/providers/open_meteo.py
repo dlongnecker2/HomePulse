@@ -19,7 +19,7 @@ class OpenMeteoProvider(WeatherProvider):
             "longitude": longitude,
             "current": "temperature_2m,apparent_temperature,relative_humidity_2m,cloud_cover,wind_speed_10m,uv_index",
             "hourly": "temperature_2m,apparent_temperature,relative_humidity_2m,cloud_cover,wind_speed_10m,uv_index",
-            "daily": "sunrise,sunset,uv_index_max,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+            "daily": "sunrise,sunset,uv_index_max,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max",
             "temperature_unit": "fahrenheit",
             "wind_speed_unit": "mph",
             "timezone": "auto",
@@ -41,8 +41,11 @@ class OpenMeteoProvider(WeatherProvider):
         humidity = self.parse_float(current.get("relative_humidity_2m"))
         wind = self.parse_float(current.get("wind_speed_10m"))
         uv = self.parse_float(current.get("uv_index"))
+        uv_source = "open_meteo_current"
         if uv is None:
             uv = self.parse_float(self.item_at(daily.get("uv_index_max"), 0))
+            if uv is not None:
+                uv_source = "open_meteo_daily_uv_max"
         sunshine = round(max(0, min(100, 100 - cloud_cover)), 1) if cloud_cover is not None else None
 
         return {
@@ -62,6 +65,8 @@ class OpenMeteoProvider(WeatherProvider):
             "humidity_percent": humidity,
             "wind_mph": wind,
             "uv_index": uv,
+            "uv_index_estimated": False,
+            "uv_index_source": uv_source if uv is not None else None,
             "sunrise": self.first_value(daily.get("sunrise")),
             "sunset": self.first_value(daily.get("sunset")),
             "forecast_days": self.forecast_days(daily),
@@ -107,7 +112,10 @@ class OpenMeteoProvider(WeatherProvider):
                 "temperature_min_f": self.item_at(daily.get("temperature_2m_min"), index),
                 "precipitation_probability_percent": self.item_at(daily.get("precipitation_probability_max"), index),
                 "precipitation_chance_percent": self.item_at(daily.get("precipitation_probability_max"), index),
+                "wind_mph": self.item_at(daily.get("wind_speed_10m_max"), index),
                 "uv_index_max": self.item_at(daily.get("uv_index_max"), index),
+                "uv_index_estimated": False,
+                "uv_index_source": "open_meteo_daily_uv_max" if self.item_at(daily.get("uv_index_max"), index) is not None else None,
             })
         return rows
 

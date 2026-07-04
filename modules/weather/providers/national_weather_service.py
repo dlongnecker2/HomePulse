@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 
 from modules.weather.providers.base import WeatherProvider
@@ -40,6 +41,7 @@ class NationalWeatherServiceProvider(WeatherProvider):
         return self.payload_to_status(weather, points_props, hourly_payload, daily_payload, grid_payload)
 
     def payload_to_status(self, weather, points_props, hourly_payload, daily_payload, grid_payload):
+        latitude = self.parse_float(weather.get("latitude"))
         hourly_periods = self.periods_from_payload(hourly_payload)
         if not hourly_periods:
             raise ValueError("Malformed response: forecast hourly periods missing")
@@ -63,9 +65,16 @@ class NationalWeatherServiceProvider(WeatherProvider):
         sunshine = round(max(0.0, min(100.0, 100.0 - cloud_cover)), 1) if cloud_cover is not None else None
         sunrise = self.extract_astronomical(points_props, "sunrise")
         sunset = self.extract_astronomical(points_props, "sunset")
+        current_uv = self.estimate_uv_index(
+            date_value=datetime.now().date(),
+            latitude=latitude,
+            cloud_cover_percent=cloud_cover,
+            hour_local=datetime.now().hour,
+        )
+        current_uv_estimated = current_uv is not None
 
         daily_periods = self.periods_from_payload(daily_payload)
-        forecast_days = self.forecast_days(daily_periods)
+        forecast_days = self.forecast_days(daily_periods, latitude, cloud_cover)
 
         return {
             "enabled": True,
@@ -86,7 +95,9 @@ class NationalWeatherServiceProvider(WeatherProvider):
             "precipitation_probability_percent": current_precip,
             "humidity_percent": humidity,
             "wind_mph": wind_mph,
-            "uv_index": None,
+            "uv_index": current_uv,
+            "uv_index_estimated": current_uv_estimated,
+            "uv_index_source": "estimated" if current_uv_estimated else None,
             "sunrise": sunrise,
             "sunset": sunset,
             "forecast_days": forecast_days,
@@ -112,7 +123,7 @@ class NationalWeatherServiceProvider(WeatherProvider):
             value = value.get("value")
         return WeatherProvider.parse_float(value)
 
-    def forecast_days(self, daily_periods):
+    def forecast_days(self, daily_periods, latitude, fallback_cloud_cover):
         if not daily_periods:
             return []
 
@@ -142,7 +153,16 @@ class NationalWeatherServiceProvider(WeatherProvider):
                 "precipitation_probability_percent": self.quantitative_value(period.get("probabilityOfPrecipitation")),
                 "precipitation_chance_percent": self.quantitative_value(period.get("probabilityOfPrecipitation")),
                 "wind_mph": self.parse_wind_mph(period.get("windSpeed")),
-                "uv_index_max": None,
+                "wind_text": period.get("windSpeed"),
+                "uv_index_max": self.estimate_daily_uv_max(
+                    date_text=date_text,
+                    latitude=latitude,
+                    cloud_cover_percent=self.estimate_cloud_cover_from_condition(period.get("shortForecast") or period.get("detailedForecast"))
+                    if self.estimate_cloud_cover_from_condition(period.get("shortForecast") or period.get("detailedForecast")) is not None
+                    else fallback_cloud_cover,
+                ),
+                "uv_index_estimated": True,
+                "uv_index_source": "estimated",
             })
 
         return rows
@@ -243,3 +263,34 @@ class NationalWeatherServiceProvider(WeatherProvider):
             return None
 
         return round(max(0.0, min(100.0, best_value)), 1)
+
+    @staticmethod
+    def estimate_uv_index(date_value, latitude, cloud_cover_percent, hour_local):
+        if latitude is None or date_value is None or hour_local is None:
+            return None
+        try:
+            day_of_year = int(date_value.timetuple().tm_yday)
+            lat = abs(float(latitude))
+            hour = float(hour_local)
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+        seasonal = 0.65 + 0.35 * math.cos((2.0 * math.pi / 365.0) * (day_of_year - 172))
+        lat_factor = max(0.35, min(1.0, 1.0 - (lat / 120.0)))
+        hour_distance = abs(hour - 13.0)
+        time_factor = max(0.0, 1.0 - (hour_distance / 6.5))
+        cloud_factor = 1.0
+        if cloud_cover_percent is not None:
+            cloud_factor = max(0.15, min(1.0, 1.0 - (float(cloud_cover_percent) / 120.0)))
+
+        uv_value = 11.0 * seasonal * lat_factor * time_factor * cloud_factor
+        return round(max(0.0, min(11.0, uv_value)), 1)
+
+    def estimate_daily_uv_max(self, date_text, latitude, cloud_cover_percent):
+        if not date_text:
+            return None
+        try:
+            target_date = datetime.fromisoformat(str(date_text)[:10]).date()
+        except ValueError:
+            return None
+        return self.estimate_uv_index(target_date, latitude, cloud_cover_percent, 13)
