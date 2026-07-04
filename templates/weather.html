@@ -11,8 +11,16 @@
 <section class="insight-grid">
   <article class="dashboard-panel compact-panel" id="weather-status-card">
     <h2>Current Weather</h2>
-    <div class="insight-value text-value" id="weather-condition">Loading...</div>
+    <div class="weather-hero">
+      <div class="weather-icon-large" id="weather-icon-large" aria-hidden="true">❔</div>
+      <div>
+        <div class="insight-value text-value" id="weather-condition">Loading...</div>
+        <div class="weather-hero-temp" id="weather-temp-hero">--</div>
+        <div class="weather-feels-like" id="weather-feels-like">Feels like --</div>
+      </div>
+    </div>
     <p id="weather-source">Source: --</p>
+    <p id="weather-availability">--</p>
   </article>
   <article class="dashboard-panel compact-panel">
     <h2>Configuration</h2>
@@ -23,8 +31,8 @@
     </table>
   </article>
   <article class="dashboard-panel compact-panel">
-    <h2>Data Availability</h2>
-    <p id="weather-availability">--</p>
+    <h2>Today's Outlook</h2>
+    <p class="outlook-message" id="weather-outlook">Gathering weather outlook...</p>
   </article>
 </section>
 
@@ -53,9 +61,16 @@
     <h2>Forecast</h2>
     <p id="weather-forecast-message">Forecast data will appear when configured and connected.</p>
     <div id="weather-forecast-table" hidden>
-      <table>
+      <table class="forecast-table">
         <thead>
-          <tr><th>Date</th><th>High</th><th>Low</th><th>UV Index</th></tr>
+          <tr>
+            <th>Date</th>
+            <th>Condition</th>
+            <th>High</th>
+            <th>Low</th>
+            <th>Precip</th>
+            <th>UV Index</th>
+          </tr>
         </thead>
         <tbody id="weather-forecast-body">
         </tbody>
@@ -64,7 +79,20 @@
   </article>
 
   <article class="dashboard-panel">
-    <h2>Information</h2>
+    <h2>Provider Status</h2>
+    <div class="provider-status" id="provider-status">
+      <div><span>Active Provider</span><strong id="provider-active">--</strong></div>
+      <div><span>Strategy</span><strong id="provider-strategy">--</strong></div>
+      <div><span>Enabled Providers</span><strong id="provider-enabled">--</strong></div>
+      <div><span>Attempted Providers</span><strong id="provider-attempted">--</strong></div>
+      <div><span>Fallback Used</span><strong id="provider-fallback">--</strong></div>
+    </div>
+    <div id="provider-errors-wrapper" hidden>
+      <p class="provider-errors-title">Provider Errors</p>
+      <ul id="provider-errors"></ul>
+    </div>
+
+    <h2 style="margin-top: 1.2rem;">Information</h2>
     <p>
       This Weather Center displays current weather conditions and forecast for your home location.
       Configure weather data source in <a href="{{ url_for('settings') }}">Settings</a> to enable live weather tracking.
@@ -101,6 +129,106 @@ function formatValue(value, unit = "") {
   return "--";
 }
 
+function toNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function formatProviderList(values) {
+  if (!Array.isArray(values) || values.length === 0) return "--";
+  return values.join(", ");
+}
+
+function conditionInfo(condition) {
+  const text = String(condition || "Unknown").toLowerCase();
+
+  if (text.includes("thunder")) return { icon: "⛈️", label: "Thunderstorms" };
+  if (text.includes("snow")) return { icon: "❄️", label: "Snow" };
+  if (text.includes("fog") || text.includes("mist") || text.includes("haze")) return { icon: "🌫️", label: "Fog" };
+  if (text.includes("shower")) return { icon: "🌦️", label: "Showers" };
+  if (text.includes("rain")) return { icon: "🌧️", label: "Rain" };
+  if (text.includes("mostly sunny")) return { icon: "🌤️", label: "Mostly sunny" };
+  if (text.includes("partly cloudy") || text.includes("partly sunny")) return { icon: "⛅", label: "Partly cloudy" };
+  if (text.includes("mostly cloudy")) return { icon: "🌥️", label: "Mostly cloudy" };
+  if (text.includes("cloudy") || text.includes("overcast")) return { icon: "☁️", label: "Cloudy" };
+  if (text.includes("sunny") || text.includes("clear")) return { icon: "☀️", label: "Sunny" };
+  return { icon: "❔", label: condition || "Unknown" };
+}
+
+function conditionCell(condition) {
+  const info = conditionInfo(condition);
+  return `<span class="weather-icon-small" aria-hidden="true">${info.icon}</span><span>${info.label}</span>`;
+}
+
+function forecastCondition(day, fallbackCondition) {
+  return day.condition || day.short_forecast || day.shortForecast || day.detailed_forecast || day.detailedForecast || fallbackCondition || "Unknown";
+}
+
+function forecastPrecip(day) {
+  const candidates = [
+    day.precipitation_chance_percent,
+    day.precipitation_probability,
+    day.precipitation_percent,
+    day.precipitation_probability_percent,
+  ];
+  for (const value of candidates) {
+    const num = toNumber(value);
+    if (num !== null) return `${Math.round(num)}%`;
+  }
+  return "--";
+}
+
+function firstForecastDay(data) {
+  return Array.isArray(data.forecast_days) && data.forecast_days.length > 0 ? data.forecast_days[0] : null;
+}
+
+function outlookMessage(data) {
+  const firstDay = firstForecastDay(data);
+  const conditionText = data.condition || (firstDay ? forecastCondition(firstDay) : "Weather");
+  const high = firstDay ? formatValue(firstDay.temperature_max_f, "°F") : formatValue(data.temperature_f, "°F");
+  const wind = toNumber(data.wind_mph);
+  const precip = firstDay ? toNumber(firstDay.precipitation_chance_percent ?? firstDay.precipitation_probability_percent) : null;
+
+  let summary = `${conditionText} today with a high near ${high}.`;
+  if (precip !== null && precip >= 50) {
+    summary += " Rain is possible today. Outdoor plans may be affected.";
+  } else if (wind !== null && wind >= 20) {
+    summary += " Expect breezy conditions today.";
+  } else if (data.live_data === false) {
+    summary += " Live provider data is unavailable; displaying the best available weather data.";
+  } else {
+    summary += " Weather conditions are generally stable today.";
+  }
+  return summary;
+}
+
+function updateProviderStatus(data) {
+  const activeProvider = data.selected_provider || data.provider || "--";
+  document.getElementById("provider-active").textContent = activeProvider;
+  document.getElementById("provider-strategy").textContent = data.provider_strategy || "--";
+  document.getElementById("provider-enabled").textContent = formatProviderList(data.enabled_providers);
+  document.getElementById("provider-attempted").textContent = formatProviderList(data.attempted_providers);
+  document.getElementById("provider-fallback").textContent = data.fallback_used ? "Yes" : "No";
+
+  const errorWrapper = document.getElementById("provider-errors-wrapper");
+  const errorList = document.getElementById("provider-errors");
+  errorList.innerHTML = "";
+  const errors = data.provider_errors || {};
+  const entries = Object.entries(errors);
+  if (entries.length === 0) {
+    errorWrapper.setAttribute("hidden", "");
+    return;
+  }
+
+  entries.forEach(([provider, text]) => {
+    const item = document.createElement("li");
+    item.textContent = `${provider}: ${text}`;
+    errorList.appendChild(item);
+  });
+  errorWrapper.removeAttribute("hidden");
+}
+
 function formatTime(isoString) {
   if (!isoString) return "--";
   try {
@@ -123,12 +251,20 @@ function updateWeatherCenter(data) {
   document.getElementById("weather-provider").textContent = providerDisplay;
 
   // Current status
-  document.getElementById("weather-condition").textContent = data.condition || "Unknown";
+  const condition = data.condition || "Unknown";
+  const weatherInfo = conditionInfo(condition);
+  document.getElementById("weather-icon-large").textContent = weatherInfo.icon;
+  document.getElementById("weather-condition").textContent = weatherInfo.label;
+  document.getElementById("weather-temp-hero").textContent = formatValue(data.temperature_f, "°F");
+
+  const feelsLike = toNumber(data.feels_like_f ?? data.apparent_temperature_f);
+  document.getElementById("weather-feels-like").textContent = feelsLike !== null ? `Feels like ${Math.round(feelsLike * 10) / 10}°F` : "Feels like --";
   document.getElementById("weather-source").textContent = `Source: ${data.source || "None"}`;
 
   // Live data indicator
-  const liveIndicator = data.live_data ? "Live Data" : "Cached Data";
+  const liveIndicator = data.live_data ? "Live Data" : (data.stale ? "Stale Cached Data" : "Fallback Data");
   document.getElementById("weather-availability").textContent = liveIndicator;
+  document.getElementById("weather-outlook").textContent = outlookMessage(data);
 
   // Current conditions - match the actual API response structure
   document.getElementById("weather-temp").textContent = formatValue(data.temperature_f, "°F");
@@ -158,10 +294,19 @@ function updateWeatherCenter(data) {
     data.forecast_days.forEach(day => {
       const row = document.createElement("tr");
       const dateStr = new Date(day.date).toLocaleDateString();
+      const forecastCond = forecastCondition(day, condition);
       const highTemp = formatValue(day.temperature_max_f, "°F");
       const lowTemp = formatValue(day.temperature_min_f, "°F");
+      const precip = forecastPrecip(day);
       const uvMax = formatValue(day.uv_index_max);
-      row.innerHTML = `<td>${dateStr}</td><td>${highTemp}</td><td>${lowTemp}</td><td>${uvMax}</td>`;
+      row.innerHTML = `
+        <td>${dateStr}</td>
+        <td><div class="weather-condition-cell">${conditionCell(forecastCond)}</div></td>
+        <td>${highTemp}</td>
+        <td>${lowTemp}</td>
+        <td>${precip}</td>
+        <td>${uvMax}</td>
+      `;
       tbody.appendChild(row);
     });
   } else {
@@ -177,6 +322,8 @@ function updateWeatherCenter(data) {
   } else {
     document.getElementById("weather-error").style.display = "none";
   }
+
+  updateProviderStatus(data);
 }
 </script>
 {% endblock %}
