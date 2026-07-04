@@ -25,6 +25,8 @@
   {% set solar_entities = solar.get("entities", {}) %}
   {% set history_config = config.get("history", default={}) %}
   {% set weather_config = weather %}
+  {% set lighting_config = lighting %}
+  {% set garden_config = garden %}
 
   <form method="post" action="{{ url_for('settings') }}" class="settings-form">
     <section class="settings-section safety-summary">
@@ -371,6 +373,55 @@
       <p class="settings-help">Strategy: Automatic Failover</p>
       <p class="settings-help">Priority: 1) National Weather Service, 2) Open-Meteo</p>
       <p class="settings-help">Both providers require latitude and longitude and do not require an API key.</p>
+    </section>
+
+    <section class="settings-section">
+      <h3>Lighting Center (Govee)</h3>
+      <label class="option-row">
+        <input type="checkbox" name="lighting_enabled" {% if lighting_config.get("enabled", false) %}checked{% endif %}>
+        <span>Enable Lighting Center</span>
+      </label>
+
+      {% set lighting_providers = lighting_config.get("providers", {}) %}
+      {% set govee_config = lighting_providers.get("govee", {}) %}
+
+      <label class="option-row">
+        <input type="checkbox" name="lighting_provider_govee_enabled" {% if govee_config.get("enabled", false) %}checked{% endif %}>
+        <span>Enable Govee provider</span>
+      </label>
+
+      <label class="field-label" for="govee-api-key">Govee API Key</label>
+      <input id="govee-api-key" name="govee_api_key" type="password" value="" placeholder="Leave blank to keep existing key">
+      <p class="settings-help">API keys are never displayed and are only updated when a new value is entered.</p>
+
+      <label class="field-label" for="govee-device-name-filter">Optional device name filter</label>
+      <input id="govee-device-name-filter" name="govee_device_name_filter" type="text" value="{{ govee_config.get("device_name_filter", "") }}" placeholder="Porch or Patio">
+    </section>
+
+    <section class="settings-section">
+      <h3>Garden Center (B-hyve)</h3>
+      <label class="option-row">
+        <input type="checkbox" name="garden_enabled" {% if garden_config.get("enabled", false) %}checked{% endif %}>
+        <span>Enable Garden Center</span>
+      </label>
+
+      {% set garden_providers = garden_config.get("providers", {}) %}
+      {% set bhyve_config = garden_providers.get("bhyve", {}) %}
+
+      <label class="option-row">
+        <input type="checkbox" name="garden_provider_bhyve_enabled" {% if bhyve_config.get("enabled", false) %}checked{% endif %}>
+        <span>Enable B-hyve provider</span>
+      </label>
+
+      <label class="field-label" for="bhyve-username">B-hyve username / email</label>
+      <input id="bhyve-username" name="bhyve_username" type="text" value="{{ bhyve_config.get("username", "") }}" placeholder="you@example.com">
+
+      <label class="field-label" for="bhyve-password">B-hyve password</label>
+      <input id="bhyve-password" name="bhyve_password" type="password" value="" placeholder="Leave blank to keep existing password">
+
+      <label class="field-label" for="bhyve-access-token">B-hyve access token (optional)</label>
+      <input id="bhyve-access-token" name="bhyve_access_token" type="password" value="" placeholder="Leave blank to keep existing token">
+      <p class="settings-help">Garden Center currently provides provider foundations and safe read-only status placeholders while live B-hyve API support is finalized.</p>
     </section>
 
     <section class="settings-section">

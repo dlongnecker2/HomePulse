@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Garden{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Garden Center</h2>
+    <p>Irrigation status foundation with B-hyve as the first provider.</p>
+  </div>
+</section>
+
+<section class="insight-grid">
+  <article class="dashboard-panel compact-panel">
+    <h2>Summary</h2>
+    <table>
+      <tr><td>Status</td><td id="garden-status">--</td></tr>
+      <tr><td>Provider</td><td id="garden-provider">--</td></tr>
+      <tr><td>Controllers</td><td id="garden-controller-count">--</td></tr>
+      <tr><td>Active Zone</td><td id="garden-active-zone">--</td></tr>
+      <tr><td>Next Schedule</td><td id="garden-next-schedule">--</td></tr>
+      <tr><td>Rain Delay</td><td id="garden-rain-delay">--</td></tr>
+    </table>
+    <p id="garden-message" style="color: var(--text-secondary); margin-top: 1em;">Loading...</p>
+    <p id="garden-error" style="color: var(--warning-text); display: none;"></p>
+  </article>
+
+  <article class="dashboard-panel compact-panel">
+    <h2>Provider Status</h2>
+    <table>
+      <tr><td>Strategy</td><td id="garden-strategy">--</td></tr>
+      <tr><td>Enabled Providers</td><td id="garden-enabled-providers">--</td></tr>
+      <tr><td>Attempted Providers</td><td id="garden-attempted-providers">--</td></tr>
+      <tr><td>Fallback Used</td><td id="garden-fallback-used">--</td></tr>
+      <tr><td>Last Updated</td><td id="garden-last-updated">--</td></tr>
+    </table>
+  </article>
+</section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>Controllers</h2>
+    <p id="garden-controllers-empty">No controllers available.</p>
+    <div id="garden-controllers-table" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Online</th>
+            <th>Active Zone</th>
+            <th>Next Schedule</th>
+            <th>Rain Delay</th>
+          </tr>
+        </thead>
+        <tbody id="garden-controllers-body"></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  refreshGardenCenter();
+  setInterval(refreshGardenCenter, 60000);
+});
+
+function textOrDash(value) {
+  if (value === null || value === undefined || value === "") return "--";
+  return String(value);
+}
+
+function formatList(values) {
+  if (!Array.isArray(values) || values.length === 0) return "--";
+  return values.join(", ");
+}
+
+function formatTime(value) {
+  if (!value) return "--";
+  try {
+    return new Date(String(value).replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "--";
+  }
+}
+
+async function refreshGardenCenter() {
+  try {
+    const response = await fetch("/api/garden/status", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Status ${response.status}`);
+    const data = await response.json();
+    updateGardenCenter(data);
+  } catch (error) {
+    const errorEl = document.getElementById("garden-error");
+    errorEl.textContent = `Unable to load Garden Center: ${error}`;
+    errorEl.style.display = "block";
+  }
+}
+
+function updateGardenCenter(data) {
+  document.getElementById("garden-status").textContent = textOrDash(data.status);
+  document.getElementById("garden-provider").textContent = textOrDash(data.selected_provider || data.provider);
+  document.getElementById("garden-controller-count").textContent = textOrDash(data.controller_count);
+  document.getElementById("garden-active-zone").textContent = textOrDash(data.active_watering_zone);
+  document.getElementById("garden-next-schedule").textContent = textOrDash(data.next_watering_schedule);
+
+  if (data.rain_delay_active === true) {
+    document.getElementById("garden-rain-delay").textContent = data.rain_delay_until ? `Active until ${data.rain_delay_until}` : "Active";
+  } else if (data.rain_delay_active === false) {
+    document.getElementById("garden-rain-delay").textContent = "Inactive";
+  } else {
+    document.getElementById("garden-rain-delay").textContent = "--";
+  }
+
+  document.getElementById("garden-message").textContent = textOrDash(data.message);
+  document.getElementById("garden-strategy").textContent = textOrDash(data.provider_strategy);
+  document.getElementById("garden-enabled-providers").textContent = formatList(data.enabled_providers);
+  document.getElementById("garden-attempted-providers").textContent = formatList(data.attempted_providers);
+  document.getElementById("garden-fallback-used").textContent = data.fallback_used ? "Yes" : "No";
+  document.getElementById("garden-last-updated").textContent = formatTime(data.last_updated);
+
+  const errorEl = document.getElementById("garden-error");
+  if (data.error) {
+    errorEl.textContent = `Provider error: ${data.error}`;
+    errorEl.style.display = "block";
+  } else {
+    errorEl.style.display = "none";
+  }
+
+  const controllers = Array.isArray(data.controllers) ? data.controllers : [];
+  const table = document.getElementById("garden-controllers-table");
+  const empty = document.getElementById("garden-controllers-empty");
+  const body = document.getElementById("garden-controllers-body");
+
+  body.innerHTML = "";
+  if (controllers.length === 0) {
+    table.setAttribute("hidden", "");
+    empty.textContent = data.configured ? "No controllers available." : "Not configured. Add B-hyve credentials in Settings.";
+    empty.style.display = "block";
+    return;
+  }
+
+  controllers.forEach((controller) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${textOrDash(controller.controller_name)}</td>
+      <td>${controller.online === true ? "Online" : controller.online === false ? "Offline" : "--"}</td>
+      <td>${textOrDash(controller.active_watering_zone)}</td>
+      <td>${textOrDash(controller.next_watering_schedule)}</td>
+      <td>${controller.rain_delay_active === true ? "Active" : controller.rain_delay_active === false ? "Inactive" : "--"}</td>
+    `;
+    body.appendChild(row);
+  });
+
+  empty.style.display = "none";
+  table.removeAttribute("hidden");
+}
+</script>
+{% endblock %}

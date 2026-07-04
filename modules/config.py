@@ -25,6 +25,31 @@ DEFAULT_CONFIG = {
             "open_meteo": {"enabled": True},
         },
     },
+    "lighting": {
+        "enabled": False,
+        "provider_strategy": "automatic_failover",
+        "provider_priority": ["govee"],
+        "providers": {
+            "govee": {
+                "enabled": False,
+                "api_key": "",
+                "device_name_filter": "",
+            }
+        },
+    },
+    "garden": {
+        "enabled": False,
+        "provider_strategy": "automatic_failover",
+        "provider_priority": ["bhyve"],
+        "providers": {
+            "bhyve": {
+                "enabled": False,
+                "username": "",
+                "password": "",
+                "access_token": "",
+            }
+        },
+    },
     "solar": {
         "enabled": False,
         "name": "Solar Center",
@@ -89,6 +114,8 @@ class Config:
         changed = self._merge_defaults(self.data, DEFAULT_CONFIG)
         changed = self._normalize_speedtest_interval(had_speedtest_interval) or changed
         changed = self._normalize_weather_provider_framework() or changed
+        changed = self._normalize_lighting_provider_framework() or changed
+        changed = self._normalize_garden_provider_framework() or changed
         changed = self._fill_blank_energy_entities() or changed
         if changed:
             self.save()
@@ -199,6 +226,104 @@ class Config:
                     normalized.append(key)
             if normalized != priority:
                 weather["provider_priority"] = normalized
+                changed = True
+
+        return changed
+
+    def _normalize_lighting_provider_framework(self):
+        lighting = self.data.setdefault("lighting", {})
+        changed = False
+
+        providers = lighting.get("providers")
+        if not isinstance(providers, dict):
+            providers = {"govee": {"enabled": False, "api_key": "", "device_name_filter": ""}}
+            lighting["providers"] = providers
+            changed = True
+
+        govee = providers.get("govee")
+        if not isinstance(govee, dict):
+            providers["govee"] = {"enabled": False, "api_key": "", "device_name_filter": ""}
+            govee = providers["govee"]
+            changed = True
+
+        if "enabled" not in govee:
+            govee["enabled"] = False
+            changed = True
+        if "api_key" not in govee:
+            govee["api_key"] = ""
+            changed = True
+        if "device_name_filter" not in govee:
+            govee["device_name_filter"] = ""
+            changed = True
+
+        strategy = str(lighting.get("provider_strategy", "") or "").strip().lower()
+        if strategy != "automatic_failover":
+            lighting["provider_strategy"] = "automatic_failover"
+            changed = True
+
+        priority = lighting.get("provider_priority")
+        if not isinstance(priority, list):
+            lighting["provider_priority"] = ["govee"]
+            changed = True
+        else:
+            normalized = []
+            for key in priority:
+                text = str(key or "").strip().lower()
+                if text == "govee" and text not in normalized:
+                    normalized.append(text)
+            if "govee" not in normalized:
+                normalized.append("govee")
+            if normalized != priority:
+                lighting["provider_priority"] = normalized
+                changed = True
+
+        return changed
+
+    def _normalize_garden_provider_framework(self):
+        garden = self.data.setdefault("garden", {})
+        changed = False
+
+        providers = garden.get("providers")
+        if not isinstance(providers, dict):
+            providers = {"bhyve": {"enabled": False, "username": "", "password": "", "access_token": ""}}
+            garden["providers"] = providers
+            changed = True
+
+        bhyve = providers.get("bhyve")
+        if not isinstance(bhyve, dict):
+            providers["bhyve"] = {"enabled": False, "username": "", "password": "", "access_token": ""}
+            bhyve = providers["bhyve"]
+            changed = True
+
+        for key, default_value in (
+            ("enabled", False),
+            ("username", ""),
+            ("password", ""),
+            ("access_token", ""),
+        ):
+            if key not in bhyve:
+                bhyve[key] = default_value
+                changed = True
+
+        strategy = str(garden.get("provider_strategy", "") or "").strip().lower()
+        if strategy != "automatic_failover":
+            garden["provider_strategy"] = "automatic_failover"
+            changed = True
+
+        priority = garden.get("provider_priority")
+        if not isinstance(priority, list):
+            garden["provider_priority"] = ["bhyve"]
+            changed = True
+        else:
+            normalized = []
+            for key in priority:
+                text = str(key or "").strip().lower()
+                if text == "bhyve" and text not in normalized:
+                    normalized.append(text)
+            if "bhyve" not in normalized:
+                normalized.append("bhyve")
+            if normalized != priority:
+                garden["provider_priority"] = normalized
                 changed = True
 
         return changed

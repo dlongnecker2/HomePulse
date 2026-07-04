@@ -122,6 +122,16 @@ class PluginManager:
                 ["placeholder", "home_assistant_ready"],
                 60,
             ),
+            CompatibilityPlugin(
+                self.application,
+                "garden",
+                "Garden",
+                "droplets",
+                "garden",
+                "garden_irrigation",
+                ["irrigation", "bhyve_provider"],
+                70,
+            ),
         )
         for plugin in plugins:
             self.register(plugin)

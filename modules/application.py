@@ -19,6 +19,7 @@ from modules.email_notifier import EmailNotifier
 from modules.energy import EnergyManager
 from modules.history import HistoryService
 from modules.home import TimelineService, HealthScoreEngine, AlertManager
+from modules.lighting import LightingManager
 from modules.logger import get_logger
 from modules.network import NetworkMonitor
 from modules.notifications import NotificationManager
@@ -31,6 +32,7 @@ from modules.status import StatusManager
 from modules.tapo_discovery import TapoDiscovery
 from modules.vehicle import VehicleManager
 from modules.weather import WeatherManager
+from modules.garden import GardenManager
 from version import APP_NAME, APP_VERSION
 
 
@@ -49,6 +51,8 @@ class Application:
         self.vehicle = VehicleManager(self.config, self.log)
         self.solar = SolarManager(self.config, self.log)
         self.weather = WeatherManager(self.config, self.log)
+        self.lighting = LightingManager(self.config, self.log)
+        self.garden = GardenManager(self.config, self.log)
         self.history = HistoryService(self.config, self.log)
         self.timeline = TimelineService()
         self.health_score = HealthScoreEngine()
@@ -73,6 +77,9 @@ class Application:
         self._last_solar_producing = None
         self._last_energy_charger_available = None
         self._last_home_assistant_available = None
+        self._last_lighting_device_state = {}
+        self._last_garden_watering_state = None
+        self._last_garden_rain_delay_state = None
         
         # Record startup event
         self.timeline.record_event(
@@ -382,6 +389,8 @@ class Application:
         self.vehicle.config = self.config
         self.solar.config = self.config
         self.weather.config = self.config
+        self.lighting.config = self.config
+        self.garden.config = self.config
         self.history.refresh_config(self.config)
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.scheduler.remove_jobs_by_prefix("History Snapshot")
@@ -456,6 +465,50 @@ class Application:
             weather["provider_strategy"] = "automatic_failover"
             weather["provider_priority"] = ["national_weather_service", "open_meteo"]
             self.weather.config = self.config
+
+        lighting_form_keys = (
+            "lighting_enabled",
+            "lighting_provider_govee_enabled",
+            "govee_api_key",
+            "govee_device_name_filter",
+        )
+        if any(key in form for key in lighting_form_keys):
+            lighting = self.config.data.setdefault("lighting", {})
+            lighting["enabled"] = form.get("lighting_enabled") == "on"
+            providers = lighting.setdefault("providers", {})
+            govee = providers.setdefault("govee", {})
+            govee["enabled"] = form.get("lighting_provider_govee_enabled") == "on"
+            govee["device_name_filter"] = form.get("govee_device_name_filter", "").strip()
+            new_govee_key = form.get("govee_api_key", "")
+            if new_govee_key:
+                govee["api_key"] = new_govee_key.strip()
+            lighting["provider_strategy"] = "automatic_failover"
+            lighting["provider_priority"] = ["govee"]
+            self.lighting.config = self.config
+
+        garden_form_keys = (
+            "garden_enabled",
+            "garden_provider_bhyve_enabled",
+            "bhyve_username",
+            "bhyve_password",
+            "bhyve_access_token",
+        )
+        if any(key in form for key in garden_form_keys):
+            garden = self.config.data.setdefault("garden", {})
+            garden["enabled"] = form.get("garden_enabled") == "on"
+            providers = garden.setdefault("providers", {})
+            bhyve = providers.setdefault("bhyve", {})
+            bhyve["enabled"] = form.get("garden_provider_bhyve_enabled") == "on"
+            bhyve["username"] = form.get("bhyve_username", "").strip()
+            new_bhyve_password = form.get("bhyve_password", "")
+            if new_bhyve_password:
+                bhyve["password"] = new_bhyve_password
+            new_bhyve_token = form.get("bhyve_access_token", "")
+            if new_bhyve_token:
+                bhyve["access_token"] = new_bhyve_token
+            garden["provider_strategy"] = "automatic_failover"
+            garden["provider_priority"] = ["bhyve"]
+            self.garden.config = self.config
 
         router_reboot = self.config.data.setdefault("router_reboot", {})
         device_type = form.get(
@@ -835,6 +888,106 @@ class Application:
             is_producing=is_producing,
             raw_status=status_text,
         )
+
+    def observe_lighting_status(self, lighting_status):
+        """Record lighting device online/power transitions for Home timeline."""
+        if not isinstance(lighting_status, dict):
+            return
+
+        devices = lighting_status.get("devices")
+        if not isinstance(devices, list):
+            return
+
+        current = {}
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            device_key = str(device.get("device_id") or device.get("device_id_masked") or device.get("device_name") or "").strip()
+            if not device_key:
+                continue
+            current[device_key] = {
+                "name": str(device.get("device_name") or "Govee device"),
+                "online": device.get("online"),
+                "power_state": str(device.get("power_state") or "").strip().lower(),
+            }
+
+        for device_key, state in current.items():
+            previous = self._last_lighting_device_state.get(device_key)
+            if previous is None:
+                continue
+
+            if state.get("online") in (True, False) and previous.get("online") in (True, False) and state.get("online") != previous.get("online"):
+                is_online = bool(state.get("online"))
+                self.record_timeline_event(
+                    category=self.timeline.CAT_LIGHTING,
+                    title="Lighting Device Connectivity Changed",
+                    description=f"{state.get('name')} is now {'online' if is_online else 'offline'}.",
+                    severity=self.timeline.SEV_SUCCESS if is_online else self.timeline.SEV_WARNING,
+                    source="lighting",
+                    metadata={"device": state.get("name"), "online": is_online},
+                )
+
+            previous_power = str(previous.get("power_state") or "")
+            current_power = str(state.get("power_state") or "")
+            if previous_power and current_power and previous_power != current_power:
+                self.record_timeline_event(
+                    category=self.timeline.CAT_LIGHTING,
+                    title="Lighting Power State Changed",
+                    description=f"{state.get('name')} changed power state to {current_power}.",
+                    severity=self.timeline.SEV_INFO,
+                    source="lighting",
+                    metadata={"device": state.get("name"), "power_state": current_power},
+                )
+
+        self._last_lighting_device_state = current
+
+    def observe_garden_status(self, garden_status):
+        """Record garden watering/rain-delay transitions for Home timeline."""
+        if not isinstance(garden_status, dict):
+            return
+
+        current_zone = str(garden_status.get("active_watering_zone") or "").strip()
+        if not current_zone:
+            current_zone = None
+        rain_delay_active = garden_status.get("rain_delay_active")
+        if rain_delay_active not in (True, False):
+            rain_delay_active = None
+
+        if self._last_garden_watering_state is None:
+            self._last_garden_watering_state = current_zone
+        elif current_zone != self._last_garden_watering_state:
+            if current_zone:
+                self.record_timeline_event(
+                    category=self.timeline.CAT_GARDEN,
+                    title="Irrigation Watering Started",
+                    description=f"Active watering zone: {current_zone}",
+                    severity=self.timeline.SEV_INFO,
+                    source="garden",
+                    metadata={"active_watering_zone": current_zone},
+                )
+            elif self._last_garden_watering_state:
+                self.record_timeline_event(
+                    category=self.timeline.CAT_GARDEN,
+                    title="Irrigation Watering Stopped",
+                    description="No active watering zones.",
+                    severity=self.timeline.SEV_SUCCESS,
+                    source="garden",
+                    metadata={"active_watering_zone": None},
+                )
+            self._last_garden_watering_state = current_zone
+
+        if self._last_garden_rain_delay_state is None:
+            self._last_garden_rain_delay_state = rain_delay_active
+        elif rain_delay_active in (True, False) and rain_delay_active != self._last_garden_rain_delay_state:
+            self.record_timeline_event(
+                category=self.timeline.CAT_GARDEN,
+                title="Irrigation Rain Delay Changed",
+                description=("Rain delay enabled." if rain_delay_active else "Rain delay cleared."),
+                severity=self.timeline.SEV_INFO,
+                source="garden",
+                metadata={"rain_delay_active": rain_delay_active, "rain_delay_until": garden_status.get("rain_delay_until")},
+            )
+            self._last_garden_rain_delay_state = rain_delay_active
 
     def normalize_custom_speedtest_times(self, raw_times):
         pieces = raw_times.replace(",", "\n").splitlines()

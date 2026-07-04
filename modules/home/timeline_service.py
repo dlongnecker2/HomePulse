@@ -35,6 +35,7 @@ class TimelineService:
     CAT_RECOVERY = "recovery"
     CAT_HOME_ASSISTANT = "home_assistant"
     CAT_LIGHTING = "lighting"
+    CAT_GARDEN = "garden"
     CAT_NOTIFICATION = "notification"
 
     # Severity levels (lower value = more severe)

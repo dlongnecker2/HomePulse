@@ -105,6 +105,14 @@ class Dashboard:
         def weather():
             return render_template("weather.html", now=datetime.now())
 
+        @self.app.route("/lighting")
+        def lighting():
+            return render_template("lighting.html", now=datetime.now())
+
+        @self.app.route("/garden")
+        def garden():
+            return render_template("garden.html", now=datetime.now())
+
         @self.app.route("/speed-test")
         def speed_test_center():
             status = self._dashboard_payload()
@@ -176,6 +184,8 @@ class Dashboard:
                 vehicle=self.application.vehicle.vehicle_config(),
                 solar=self.application.solar.solar_config(),
                 weather=self.application.weather.weather_config(),
+                lighting=self.application.lighting.lighting_config(),
+                garden=self.application.garden.garden_config(),
                 diagnostic_result=self.application.diagnostics.latest_result(),
                 error=error,
                 saved=request.args.get("saved") == "1",
@@ -380,6 +390,7 @@ class Dashboard:
                     "vehicle": {},
                     "weather": {},
                     "lighting": self._lighting_placeholder(),
+                    "garden": self._garden_placeholder(),
                     "home": self._home_placeholder(alerts=["Home Center status unavailable."]),
                 }), 500
 
@@ -610,6 +621,52 @@ class Dashboard:
                     "error": str(exc),
                 })
 
+        @self.app.route("/api/lighting/status")
+        def api_lighting_status():
+            try:
+                return jsonify(self.application.lighting.get_status())
+            except Exception as exc:
+                self.application.log.exception(f"Lighting API failed: {exc}")
+                return jsonify({
+                    "enabled": False,
+                    "configured": False,
+                    "status": "Unavailable",
+                    "provider": "govee",
+                    "source": "Unavailable",
+                    "live_data": False,
+                    "device_count": 0,
+                    "online_count": 0,
+                    "power_on_count": 0,
+                    "devices": [],
+                    "last_updated": None,
+                    "error": str(exc),
+                    "message": f"Lighting Center status unavailable: {exc}",
+                })
+
+        @self.app.route("/api/garden/status")
+        def api_garden_status():
+            try:
+                return jsonify(self.application.garden.get_status())
+            except Exception as exc:
+                self.application.log.exception(f"Garden API failed: {exc}")
+                return jsonify({
+                    "enabled": False,
+                    "configured": False,
+                    "status": "Unavailable",
+                    "provider": "bhyve",
+                    "source": "Unavailable",
+                    "live_data": False,
+                    "controller_count": 0,
+                    "controllers": [],
+                    "active_watering_zone": None,
+                    "next_watering_schedule": None,
+                    "rain_delay_active": None,
+                    "rain_delay_until": None,
+                    "last_updated": None,
+                    "error": str(exc),
+                    "message": f"Garden Center status unavailable: {exc}",
+                })
+
         @self.app.route("/api/insights/status")
         def api_insights_status():
             import time
@@ -818,7 +875,10 @@ class Dashboard:
             vehicle = vehicle_dict
         self.application.observe_vehicle_status(vehicle)
         weather = self._safe_center_status("weather", self.application.weather.get_status)
-        lighting = self._lighting_placeholder()
+        lighting = self._safe_center_status("lighting", self.application.lighting.get_status)
+        self.application.observe_lighting_status(lighting)
+        garden = self._safe_center_status("garden", self.application.garden.get_status)
+        self.application.observe_garden_status(garden)
         home = self._home_placeholder()
         
         # Compute health score and alerts
@@ -828,6 +888,8 @@ class Dashboard:
             "vehicle": vehicle,
             "energy": energy,
             "weather": weather,
+            "lighting": lighting,
+            "garden": garden,
             "home_assistant": self._home_assistant_status(),
             "system": self._system_status(),
         }
@@ -843,6 +905,7 @@ class Dashboard:
             "vehicle": vehicle,
             "weather": weather,
             "lighting": lighting,
+            "garden": garden,
             "home": home,
             "overall_status": overall_status,
             "health_score": health_result.get("score"),
@@ -913,9 +976,22 @@ class Dashboard:
             "status": "Not configured",
             "name": "Exterior Lights",
             "type": "lighting",
-            "source": "Home Assistant / Govee placeholder",
-            "message": "Exterior lighting is registry-ready but no Govee/Home Assistant entities are configured yet.",
-            "capabilities": ["future_govee", "future_home_assistant_entities"],
+            "source": "Govee provider framework",
+            "message": "Lighting Center is enabled for provider-based discovery but no provider credentials are configured.",
+            "capabilities": ["govee_provider", "provider_failover_foundation"],
+        }
+
+    @staticmethod
+    def _garden_placeholder():
+        return {
+            "enabled": False,
+            "configured": False,
+            "status": "Not configured",
+            "name": "Garden Center",
+            "type": "garden",
+            "source": "B-hyve provider framework",
+            "message": "Garden Center is ready for B-hyve provider configuration.",
+            "capabilities": ["bhyve_provider", "irrigation_summary"],
         }
 
     @staticmethod

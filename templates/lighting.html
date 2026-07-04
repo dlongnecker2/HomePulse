@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Lighting{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h2>Lighting Center</h2>
+    <p>Provider-based exterior lighting status with Govee discovery.</p>
+  </div>
+</section>
+
+<section class="insight-grid">
+  <article class="dashboard-panel compact-panel">
+    <h2>Summary</h2>
+    <table>
+      <tr><td>Status</td><td id="lighting-status">--</td></tr>
+      <tr><td>Provider</td><td id="lighting-provider">--</td></tr>
+      <tr><td>Devices</td><td id="lighting-device-count">--</td></tr>
+      <tr><td>Online</td><td id="lighting-online-count">--</td></tr>
+      <tr><td>Powered On</td><td id="lighting-power-on-count">--</td></tr>
+    </table>
+    <p id="lighting-message" style="color: var(--text-secondary); margin-top: 1em;">Loading...</p>
+    <p id="lighting-error" style="color: var(--warning-text); display: none;"></p>
+  </article>
+
+  <article class="dashboard-panel compact-panel">
+    <h2>Provider Status</h2>
+    <table>
+      <tr><td>Strategy</td><td id="lighting-strategy">--</td></tr>
+      <tr><td>Enabled Providers</td><td id="lighting-enabled-providers">--</td></tr>
+      <tr><td>Attempted Providers</td><td id="lighting-attempted-providers">--</td></tr>
+      <tr><td>Fallback Used</td><td id="lighting-fallback-used">--</td></tr>
+      <tr><td>Last Updated</td><td id="lighting-last-updated">--</td></tr>
+    </table>
+    <p id="lighting-scene-note" style="color: var(--text-secondary); margin-top: 1em;"></p>
+  </article>
+</section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>Discovered Devices</h2>
+    <p id="lighting-devices-empty">No devices available.</p>
+    <div id="lighting-devices-table" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Online</th>
+            <th>Power</th>
+            <th>Brightness</th>
+            <th>Color</th>
+            <th>Mode/Effect</th>
+            <th>Model</th>
+            <th>Device ID</th>
+          </tr>
+        </thead>
+        <tbody id="lighting-devices-body"></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  refreshLightingCenter();
+  setInterval(refreshLightingCenter, 60000);
+});
+
+function formatList(values) {
+  if (!Array.isArray(values) || values.length === 0) return "--";
+  return values.join(", ");
+}
+
+function formatTime(value) {
+  if (!value) return "--";
+  try {
+    return new Date(String(value).replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "--";
+  }
+}
+
+function textOrDash(value) {
+  if (value === null || value === undefined || value === "") return "--";
+  return String(value);
+}
+
+async function refreshLightingCenter() {
+  try {
+    const response = await fetch("/api/lighting/status", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Status ${response.status}`);
+    const data = await response.json();
+    updateLightingCenter(data);
+  } catch (error) {
+    const errorEl = document.getElementById("lighting-error");
+    errorEl.textContent = `Unable to load Lighting Center: ${error}`;
+    errorEl.style.display = "block";
+  }
+}
+
+function updateLightingCenter(data) {
+  document.getElementById("lighting-status").textContent = textOrDash(data.status);
+  document.getElementById("lighting-provider").textContent = textOrDash(data.selected_provider || data.provider);
+  document.getElementById("lighting-device-count").textContent = textOrDash(data.device_count);
+  document.getElementById("lighting-online-count").textContent = textOrDash(data.online_count);
+  document.getElementById("lighting-power-on-count").textContent = textOrDash(data.power_on_count);
+  document.getElementById("lighting-message").textContent = textOrDash(data.message);
+
+  document.getElementById("lighting-strategy").textContent = textOrDash(data.provider_strategy);
+  document.getElementById("lighting-enabled-providers").textContent = formatList(data.enabled_providers);
+  document.getElementById("lighting-attempted-providers").textContent = formatList(data.attempted_providers);
+  document.getElementById("lighting-fallback-used").textContent = data.fallback_used ? "Yes" : "No";
+  document.getElementById("lighting-last-updated").textContent = formatTime(data.last_updated);
+  document.getElementById("lighting-scene-note").textContent = data.scene_note ? `Note: ${data.scene_note}` : "";
+
+  const errorEl = document.getElementById("lighting-error");
+  if (data.error) {
+    errorEl.textContent = `Provider error: ${data.error}`;
+    errorEl.style.display = "block";
+  } else {
+    errorEl.style.display = "none";
+  }
+
+  const devices = Array.isArray(data.devices) ? data.devices : [];
+  const table = document.getElementById("lighting-devices-table");
+  const empty = document.getElementById("lighting-devices-empty");
+  const body = document.getElementById("lighting-devices-body");
+
+  body.innerHTML = "";
+  if (devices.length === 0) {
+    table.setAttribute("hidden", "");
+    empty.textContent = data.configured ? "No devices available." : "Not configured. Add a Govee API key in Settings.";
+    empty.style.display = "block";
+    return;
+  }
+
+  devices.forEach((device) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${textOrDash(device.device_name)}</td>
+      <td>${device.online === true ? "Online" : device.online === false ? "Offline" : "--"}</td>
+      <td>${textOrDash(device.power_state)}</td>
+      <td>${device.brightness_percent === null || device.brightness_percent === undefined ? "--" : `${Math.round(Number(device.brightness_percent))}%`}</td>
+      <td>${textOrDash(device.color)}</td>
+      <td>${textOrDash(device.scene_or_effect || device.mode || "scene name unavailable from provider")}</td>
+      <td>${textOrDash(device.model)}</td>
+      <td>${textOrDash(device.device_id_masked || device.device_id)}</td>
+    `;
+    body.appendChild(row);
+  });
+
+  empty.style.display = "none";
+  table.removeAttribute("hidden");
+}
+</script>
+{% endblock %}

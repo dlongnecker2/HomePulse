@@ -159,6 +159,8 @@ function updateStatusRibbon(data) {
     { name: "Vehicle", status: data.vehicle?.enabled ? data.vehicle?.availability : "Disabled" },
     { name: "Energy", status: data.energy?.enabled ? data.energy?.status : "Disabled" },
     { name: "Weather", status: data.weather?.enabled ? data.weather?.condition : "Disabled" },
+    { name: "Lighting", status: data.lighting?.enabled ? (data.lighting?.status || (data.lighting?.live_data ? "Live" : "Unavailable")) : "Disabled" },
+    { name: "Garden", status: data.garden?.enabled ? (data.garden?.status || (data.garden?.live_data ? "Live" : "Unavailable")) : "Disabled" },
     { name: "Home Assistant", status: data.home_assistant?.status || "Connected" },
   ];
 
@@ -217,6 +219,8 @@ function updateSystemsGrid(data) {
   updateSystemCard("vehicle", data.vehicle);
   updateSystemCard("energy", data.energy);
   updateSystemCard("weather", data.weather);
+  updateSystemCard("lighting", data.lighting);
+  updateSystemCard("garden", data.garden);
   updateSystemCard("ha", data.home_assistant);
 }
 
@@ -230,7 +234,7 @@ function updateSystemCard(system, status) {
   // Determine status dot color
   let dotClass = "disabled";
   if (status.enabled === false) dotClass = "disabled";
-  else if (status.availability === "live" || status.status === "Healthy" || status.status === "Connected")
+  else if (status.availability === "live" || status.status === "Healthy" || status.status === "Connected" || status.status === "Live")
     dotClass = "healthy";
   else if (status.availability === "partial" || status.status === "Degraded" || status.status === "Partial")
     dotClass = "degraded";
@@ -283,6 +287,22 @@ function updateSystemCard(system, status) {
       setText("noc-weather-clouds", formatMetric(status.cloud_cover_percent, "%", 0));
       setText("noc-weather-wind", formatMetric(status.wind_mph, "mph", 1));
       setText("noc-weather-updated", formatTimestamp(status.last_updated));
+      break;
+    case "lighting":
+      setText("noc-lighting-metric", status.configured ? `${status.device_count ?? 0} devices` : "Not configured");
+      setText("noc-lighting-status", status.status || "—");
+      setText("noc-lighting-online", status.online_count ?? "—");
+      setText("noc-lighting-powered", status.power_on_count ?? "—");
+      setText("noc-lighting-updated", formatTimestamp(status.last_updated));
+      break;
+    case "garden":
+      setText("noc-garden-metric", status.configured ? `${status.controller_count ?? 0} controllers` : "Not configured");
+      setText("noc-garden-status", status.status || "—");
+      setText("noc-garden-zone", status.active_watering_zone || "—");
+      if (status.rain_delay_active === true) setText("noc-garden-rain-delay", "Active");
+      else if (status.rain_delay_active === false) setText("noc-garden-rain-delay", "Inactive");
+      else setText("noc-garden-rain-delay", "—");
+      setText("noc-garden-updated", formatTimestamp(status.last_updated));
       break;
     case "ha":
       setText("noc-ha-detail", status.status || "Connected");
