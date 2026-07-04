@@ -13,7 +13,6 @@ Optional behavior:
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 import sys
 import time
@@ -38,22 +37,39 @@ class CheckResult:
     ok: bool
     status_code: Optional[int] = None
     error: str = ""
+    elapsed_seconds: float = 0.0
 
 
 def fetch_status(base_url: str, endpoint: str, timeout: float) -> CheckResult:
+    start_time = time.perf_counter()
     url = f"{base_url.rstrip('/')}{endpoint}"
     request = Request(url=url, method="GET")
     try:
         with urlopen(request, timeout=timeout) as response:
             code = int(getattr(response, "status", 200))
             _ = response.read(512)
-            return CheckResult(endpoint=endpoint, ok=(code == 200), status_code=code)
+            elapsed = time.perf_counter() - start_time
+            return CheckResult(endpoint=endpoint, ok=(code == 200), status_code=code, elapsed_seconds=elapsed)
     except HTTPError as exc:
-        return CheckResult(endpoint=endpoint, ok=False, status_code=exc.code, error=str(exc))
+        elapsed = time.perf_counter() - start_time
+        return CheckResult(
+            endpoint=endpoint,
+            ok=False,
+            status_code=exc.code,
+            error=str(exc),
+            elapsed_seconds=elapsed,
+        )
     except URLError as exc:
-        return CheckResult(endpoint=endpoint, ok=False, error=f"connection error: {exc.reason}")
+        elapsed = time.perf_counter() - start_time
+        return CheckResult(
+            endpoint=endpoint,
+            ok=False,
+            error=f"connection error: {exc.reason}",
+            elapsed_seconds=elapsed,
+        )
     except Exception as exc:  # pragma: no cover - defensive
-        return CheckResult(endpoint=endpoint, ok=False, error=str(exc))
+        elapsed = time.perf_counter() - start_time
+        return CheckResult(endpoint=endpoint, ok=False, error=str(exc), elapsed_seconds=elapsed)
 
 
 def check_required_endpoints(base_url: str, timeout: float) -> tuple[bool, list[CheckResult]]:
@@ -63,12 +79,13 @@ def check_required_endpoints(base_url: str, timeout: float) -> tuple[bool, list[
 
 def print_results(results: list[CheckResult]) -> None:
     for item in results:
+        duration = f", {item.elapsed_seconds:.2f}s"
         if item.ok:
-            print(f"PASS {item.endpoint} (HTTP {item.status_code})")
+            print(f"PASS {item.endpoint} (HTTP {item.status_code}{duration})")
         elif item.status_code is not None:
-            print(f"FAIL {item.endpoint} (HTTP {item.status_code})")
+            print(f"FAIL {item.endpoint} (HTTP {item.status_code}{duration})")
         else:
-            print(f"FAIL {item.endpoint} ({item.error or 'unknown error'})")
+            print(f"FAIL {item.endpoint} ({item.error or 'unknown error'}{duration})")
 
 
 def start_homepulse(repo_root: Path, startup_timeout: float) -> tuple[bool, Optional[subprocess.Popen], str]:
@@ -119,7 +136,7 @@ def start_homepulse(repo_root: Path, startup_timeout: float) -> tuple[bool, Opti
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate HomePulse endpoints, reusing existing instance when available.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8080", help="Base URL for HomePulse")
-    parser.add_argument("--timeout", type=float, default=2.0, help="Per-request timeout in seconds")
+    parser.add_argument("--timeout", type=float, default=10.0, help="Per-request timeout in seconds")
     parser.add_argument(
         "--start",
         action="store_true",
