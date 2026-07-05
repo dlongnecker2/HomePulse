@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 
 @dataclass
@@ -22,6 +22,13 @@ class SolarStatus:
     electricity_rate: float = 0.13
     last_updated: str | None = None
     source: str = "Enphase Envoy"
+    panel_count: int | None = None
+    inverter_count: int | None = None
+    microinverters_installed: int | None = None
+    microinverters_online: int | None = None
+    inverters: list[dict] = field(default_factory=list)
+    inverter_data_available: bool = False
+    inverter_data_message: str = "Not reported by Envoy"
     error: str | None = None
     message: str = "Solar Center is disabled"
 

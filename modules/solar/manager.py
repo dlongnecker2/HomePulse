@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -28,8 +29,10 @@ class SolarManager:
         self.config = config
         self.log = log
         self._last_warning_at = {}
+        self._inverter_cache = None
+        self._inverter_cache_at = None
 
-    def get_status(self):
+    def get_status(self, include_inverter_details=False):
         solar = self.solar_config()
         base = {
             "name": solar.get("name") or SOLAR_DEFAULTS["name"],
@@ -63,6 +66,15 @@ class SolarManager:
         status = self.production_status(current_kw)
         message = self.status_message(status)
         lifetime_kwh = round(lifetime_mwh * 1000, 3) if lifetime_mwh is not None else None
+        inverter_details = self.read_envoy_inverter_details() if include_inverter_details else {
+            "panel_count": None,
+            "inverter_count": None,
+            "microinverters_installed": None,
+            "microinverters_online": None,
+            "inverters": [],
+            "inverter_data_available": False,
+            "inverter_data_message": "Not reported by Envoy",
+        }
 
         return SolarStatus(
             enabled=True,
@@ -81,6 +93,13 @@ class SolarManager:
             estimated_lifetime_value=self.estimated_value(lifetime_kwh, rate),
             estimated_value_per_hour=self.estimated_value(current_kw, rate),
             last_updated=str(datetime.now()),
+            panel_count=inverter_details["panel_count"],
+            inverter_count=inverter_details["inverter_count"],
+            microinverters_installed=inverter_details["microinverters_installed"],
+            microinverters_online=inverter_details["microinverters_online"],
+            inverters=inverter_details["inverters"],
+            inverter_data_available=inverter_details["inverter_data_available"],
+            inverter_data_message=inverter_details["inverter_data_message"],
             error=error,
             message=message,
             **base,
@@ -225,6 +244,116 @@ class SolarManager:
             return float(str(value).strip().replace("$", "").replace(",", ""))
         except (TypeError, ValueError):
             return None
+
+    def read_envoy_inverter_details(self):
+        cache_ttl_seconds = 60
+        now = datetime.now()
+        if self._inverter_cache and self._inverter_cache_at:
+            age = (now - self._inverter_cache_at).total_seconds()
+            if age < cache_ttl_seconds:
+                return dict(self._inverter_cache)
+
+        unavailable = {
+            "panel_count": None,
+            "inverter_count": None,
+            "microinverters_installed": None,
+            "microinverters_online": None,
+            "inverters": [],
+            "inverter_data_available": False,
+            "inverter_data_message": "Not reported by Envoy",
+        }
+
+        recovery = self.config.get("router_reboot", default={})
+        base_url = str(recovery.get("home_assistant_url", "")).rstrip("/")
+        token = recovery.get("home_assistant_token", "")
+        if not base_url or not token:
+            unavailable["inverter_data_message"] = "Not reported by Envoy (Home Assistant connection is not configured)."
+            self._inverter_cache = dict(unavailable)
+            self._inverter_cache_at = now
+            return unavailable
+
+        request = Request(
+            f"{base_url}/api/states",
+            method="GET",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urlopen(request, timeout=3) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        except Exception as exc:
+            self.log_refresh_warning(
+                "envoy:states",
+                f"Solar Center could not read Envoy inverter details: {exc}",
+            )
+            unavailable["inverter_data_message"] = "Not reported by Envoy (inverter endpoint data unavailable)."
+            self._inverter_cache = dict(unavailable)
+            self._inverter_cache_at = now
+            return unavailable
+
+        inverters_by_id = {}
+        active_microinverters = None
+
+        for entity in payload if isinstance(payload, list) else []:
+            entity_id = str(entity.get("entity_id") or "").lower()
+            state = entity.get("state")
+
+            if entity_id.startswith("sensor.inverter_"):
+                inverter_id = entity_id.removeprefix("sensor.inverter_")
+                if not inverter_id:
+                    continue
+                power_w = self.parse_float(state)
+                status = "Unknown"
+                if power_w is not None:
+                    status = "Online" if power_w > 0 else "Offline"
+
+                record = inverters_by_id.setdefault(inverter_id, {"id": inverter_id})
+                record["status"] = status
+
+            elif entity_id.startswith("sensor.iq_microinverters_") and entity_id.endswith("_lifetime_energy"):
+                match = re.match(r"sensor\.iq_microinverters_(.+)_lifetime_energy$", entity_id)
+                if not match:
+                    continue
+                inverter_id = match.group(1)
+                lifetime_kwh = self.parse_float(state)
+                record = inverters_by_id.setdefault(inverter_id, {"id": inverter_id})
+                record["lifetime_kwh"] = lifetime_kwh
+
+            elif entity_id.startswith("sensor.site_") and "active_microinverters" in entity_id:
+                active_value = self.parse_float(state)
+                if active_value is not None:
+                    active_microinverters = int(round(active_value))
+
+        inverters = sorted(inverters_by_id.values(), key=lambda item: item.get("id") or "")
+        online_count = sum(1 for inverter in inverters if inverter.get("status") == "Online") if inverters else None
+        installed_count = len(inverters) if inverters else None
+
+        if installed_count is None and active_microinverters is not None:
+            installed_count = active_microinverters
+
+        if online_count is None and active_microinverters is not None:
+            online_count = active_microinverters
+
+        if installed_count is None:
+            unavailable["inverter_data_message"] = "Not reported by Envoy"
+            self._inverter_cache = dict(unavailable)
+            self._inverter_cache_at = now
+            return unavailable
+
+        result = {
+            "panel_count": installed_count,
+            "inverter_count": installed_count,
+            "microinverters_installed": installed_count,
+            "microinverters_online": online_count,
+            "inverters": inverters,
+            "inverter_data_available": True,
+            "inverter_data_message": "",
+        }
+        self._inverter_cache = dict(result)
+        self._inverter_cache_at = now
+        return result
 
     @staticmethod
     def estimated_value(kwh, rate):

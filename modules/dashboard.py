@@ -537,7 +537,7 @@ class Dashboard:
         @self.app.route("/api/solar/status")
         def api_solar_status():
             try:
-                return jsonify(self.application.solar.get_status())
+                return jsonify(self.application.solar.get_status(include_inverter_details=True))
             except Exception as exc:
                 self.application.log.exception(f"Solar API failed: {exc}")
                 return jsonify({
@@ -560,6 +560,13 @@ class Dashboard:
                     "electricity_rate": 0.13,
                     "last_updated": None,
                     "source": "Enphase Envoy",
+                    "panel_count": None,
+                    "inverter_count": None,
+                    "microinverters_installed": None,
+                    "microinverters_online": None,
+                    "inverters": [],
+                    "inverter_data_available": False,
+                    "inverter_data_message": "Not reported by Envoy",
                     "error": f"Solar Center status unavailable: {exc}",
                     "message": f"Solar Center status unavailable: {exc}",
                 })
@@ -567,7 +574,7 @@ class Dashboard:
         @self.app.route("/api/solar/overview")
         def api_solar_overview():
             try:
-                status = self.application.solar.get_status()
+                status = self.application.solar.get_status(include_inverter_details=True)
                 return jsonify({
                     "status": status,
                     "production_chart": self._solar_history_production_chart(),
@@ -590,6 +597,13 @@ class Dashboard:
                         "configured": False,
                         "name": "Solar Center",
                         "status": "Unknown",
+                        "panel_count": None,
+                        "inverter_count": None,
+                        "microinverters_installed": None,
+                        "microinverters_online": None,
+                        "inverters": [],
+                        "inverter_data_available": False,
+                        "inverter_data_message": "Not reported by Envoy",
                         "error": f"Solar Center overview unavailable: {exc}",
                     },
                     "production_chart": [],
@@ -964,9 +978,30 @@ class Dashboard:
         }
 
     def _safe_center_status(self, name, function):
-        try:
-            return function() or {"enabled": False, "status": "Unavailable"}
-        except Exception as exc:
+        result_holder = {"value": None, "error": None}
+
+        def _runner():
+            try:
+                result_holder["value"] = function() or {"enabled": False, "status": "Unavailable"}
+            except Exception as exc:
+                result_holder["error"] = exc
+
+        worker = threading.Thread(target=_runner, daemon=True)
+        worker.start()
+        worker.join(timeout=1.25)
+
+        if worker.is_alive():
+            self.application.log.warning(f"Home Center {name} status timed out after 1.25s")
+            return {
+                "enabled": False,
+                "configured": False,
+                "status": "Unavailable",
+                "error": "timeout",
+                "message": f"{name.title()} status timed out.",
+            }
+
+        if result_holder["error"] is not None:
+            exc = result_holder["error"]
             self.application.log.debug(f"Home Center {name} status unavailable: {exc}", exc_info=True)
             return {
                 "enabled": False,
@@ -975,6 +1010,8 @@ class Dashboard:
                 "error": str(exc),
                 "message": f"{name.title()} status unavailable.",
             }
+
+        return result_holder["value"]
 
     @staticmethod
     def _lighting_placeholder():
