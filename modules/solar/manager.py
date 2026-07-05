@@ -422,14 +422,55 @@ class SolarManager:
 
         summary = self.build_inverter_summary(inverters, normalized_metric)
         insights = self.build_inverter_insights(inverters, summary)
+        line_series = self.build_inverter_line_series(inverters, normalized_metric)
+        if line_series:
+            message = "Envoy is reporting timestamped per-inverter telemetry for this selection."
+            return {
+                "data_available": True,
+                "chart_type": "line",
+                "chart_title": "Inverter Performance Over Time",
+                "chart_message": message,
+                "message": message,
+                "reason": "",
+                "timestamp": timestamp,
+                "range": normalized_range,
+                "metric": normalized_metric,
+                "inverters": inverter_ids,
+                "series": line_series,
+                "values": [],
+                "summary": summary,
+                "insights": insights,
+            }
 
-        reason = (
-            "Historical per-inverter telemetry is not currently exposed by this Envoy endpoint. "
-            "Only current and lifetime inverter telemetry is available."
-        )
+        snapshot_values = self.build_inverter_snapshot_values(inverters, normalized_metric)
+        if snapshot_values:
+            message = (
+                "Envoy is reporting current inverter telemetry, but not historical per-inverter series. "
+                "Showing current inverter comparison instead."
+            )
+            return {
+                "data_available": True,
+                "chart_type": "bar",
+                "chart_title": "Current Inverter Performance",
+                "chart_message": message,
+                "message": message,
+                "reason": "Historical per-inverter telemetry is not currently exposed by this Envoy endpoint.",
+                "timestamp": timestamp,
+                "range": normalized_range,
+                "metric": normalized_metric,
+                "inverters": inverter_ids,
+                "series": [],
+                "values": snapshot_values,
+                "summary": summary,
+                "insights": insights,
+            }
 
+        reason = "No inverter values are currently available from Envoy telemetry."
         return {
             "data_available": False,
+            "chart_type": "none",
+            "chart_title": "Current Inverter Performance",
+            "chart_message": reason,
             "message": reason,
             "reason": reason,
             "timestamp": timestamp,
@@ -437,6 +478,7 @@ class SolarManager:
             "metric": normalized_metric,
             "inverters": inverter_ids,
             "series": [],
+            "values": [],
             "summary": summary,
             "insights": insights,
         }
@@ -483,6 +525,58 @@ class SolarManager:
             })
 
         return sorted(rows, key=lambda row: row.get("inverter_id") or "")
+
+    def build_inverter_snapshot_values(self, inverters, metric):
+        values = []
+        for item in inverters:
+            inverter_id = item.get("id")
+            if not inverter_id:
+                continue
+
+            if metric == "power":
+                value = self.parse_float(item.get("reported_state"))
+                unit = "W"
+            else:
+                value = self.parse_float(item.get("lifetime_kwh"))
+                unit = "kWh"
+
+            if value is None:
+                continue
+
+            values.append({
+                "inverter_id": inverter_id,
+                "label": inverter_id,
+                "value": value,
+                "unit": unit,
+            })
+        return sorted(values, key=lambda row: row.get("inverter_id") or "")
+
+    @staticmethod
+    def build_inverter_line_series(inverters, metric):
+        series = []
+        for item in inverters:
+            inverter_id = item.get("id")
+            points = item.get("history_points")
+            if not inverter_id or not isinstance(points, list):
+                continue
+
+            normalized_points = []
+            for point in points:
+                if not isinstance(point, dict):
+                    continue
+                timestamp = point.get("timestamp")
+                value = point.get("value")
+                if timestamp is None or value is None:
+                    continue
+                normalized_points.append({"timestamp": timestamp, "value": value})
+
+            if normalized_points:
+                series.append({
+                    "inverter_id": inverter_id,
+                    "metric": metric,
+                    "points": normalized_points,
+                })
+        return series
 
     @staticmethod
     def build_inverter_insights(inverters, summary):

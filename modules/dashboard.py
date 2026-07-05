@@ -621,6 +621,9 @@ class Dashboard:
                 self.application.log.exception(f"Solar inverter performance API failed: {exc}")
                 return jsonify({
                     "data_available": False,
+                    "chart_type": "none",
+                    "chart_title": "Current Inverter Performance",
+                    "chart_message": "Inverter performance endpoint failed.",
                     "message": f"Inverter performance unavailable: {exc}",
                     "reason": "Inverter performance endpoint failed.",
                     "timestamp": str(datetime.now()),
@@ -628,6 +631,7 @@ class Dashboard:
                     "metric": "power",
                     "inverters": [],
                     "series": [],
+                    "values": [],
                     "summary": [],
                     "insights": [],
                 })

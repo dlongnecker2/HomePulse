@@ -83,9 +83,12 @@ function renderSolarChart(targetId, points) {
 }
 
 function renderPerformancePayload(payload) {
-  const message = payload.message || payload.reason || "Inverter performance data loaded.";
+  const message = payload.chart_message || payload.message || payload.reason || "Inverter performance data loaded.";
+  setElementText("solar-inverter-performance-title", payload.chart_title || "Current Inverter Performance");
   setElementText("solar-inverter-performance-message", message);
-  updatePerformanceLegend(payload.inverters || []);
+  updatePerformanceModeControls(payload.chart_type || "none");
+  updateSnapshotNote(payload.chart_type || "none");
+  updatePerformanceLegend(payload);
   updatePerformanceSummary(payload.summary || []);
   updatePerformanceInsights(payload.insights || []);
   renderPerformanceChart(payload);
@@ -95,8 +98,8 @@ function renderPerformanceChart(payload) {
   const canvas = document.getElementById("solar-inverter-performance-canvas");
   if (!canvas || !window.Chart) return;
 
-  const hasSeries = payload.data_available && Array.isArray(payload.series) && payload.series.length > 0;
-  if (!hasSeries) {
+  const chartType = payload.chart_type || "none";
+  if (chartType === "none") {
     if (SOLAR_STATE.chart) {
       SOLAR_STATE.chart.destroy();
       SOLAR_STATE.chart = null;
@@ -106,44 +109,85 @@ function renderPerformanceChart(payload) {
     return;
   }
 
-  const visibleSeries = payload.series.slice(0, 6);
-  const labels = (visibleSeries[0].points || []).map((point) => point.timestamp || point.label || "");
-  const datasets = visibleSeries.map((series, idx) => ({
-    label: series.inverter_id,
-    data: (series.points || []).map((point) => point.value),
-    borderColor: paletteColor(idx),
-    backgroundColor: `${paletteColor(idx)}55`,
-    borderWidth: 2,
-    tension: 0.2,
-    fill: SOLAR_STATE.perfView === "stacked",
-    stack: SOLAR_STATE.perfView === "stacked" ? "inverters" : undefined,
-  }));
-
   const ctx = canvas.getContext("2d");
   if (SOLAR_STATE.chart) SOLAR_STATE.chart.destroy();
+
+  if (chartType === "line") {
+    const visibleSeries = (payload.series || []).slice(0, 6);
+    const labels = (visibleSeries[0]?.points || []).map((point) => point.timestamp || point.label || "");
+    const datasets = visibleSeries.map((series, idx) => ({
+      label: series.inverter_id,
+      data: (series.points || []).map((point) => point.value),
+      borderColor: paletteColor(idx),
+      backgroundColor: `${paletteColor(idx)}55`,
+      borderWidth: 2,
+      tension: 0.2,
+      fill: SOLAR_STATE.perfView === "stacked",
+      stack: SOLAR_STATE.perfView === "stacked" ? "inverters" : undefined,
+    }));
+
+    SOLAR_STATE.chart = new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: "#c7d4e5" } },
+          y: {
+            stacked: SOLAR_STATE.perfView === "stacked",
+            ticks: { color: "#c7d4e5" },
+          },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+    return;
+  }
+
+  const values = (payload.values || []).slice(0, 12);
+  const labels = values.map((item) => item.label || item.inverter_id || "Unknown");
+  const data = values.map((item) => item.value ?? null);
+  const colors = values.map((_, idx) => `${paletteColor(idx)}aa`);
+
   SOLAR_STATE.chart = new Chart(ctx, {
-    type: "line",
-    data: { labels, datasets },
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: payload.metric || "value",
+        data,
+        backgroundColor: colors,
+        borderColor: colors.map((color) => color.replace("aa", "ff")),
+        borderWidth: 1,
+        borderRadius: 6,
+      }],
+    },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
         x: { ticks: { color: "#c7d4e5" } },
-        y: {
-          stacked: SOLAR_STATE.perfView === "stacked",
-          ticks: { color: "#c7d4e5" },
-        },
+        y: { ticks: { color: "#c7d4e5" } },
       },
-      plugins: {
-        legend: { display: false },
-      },
+      plugins: { legend: { display: false } },
     },
   });
 }
 
-function updatePerformanceLegend(inverters) {
+function updatePerformanceLegend(payload) {
   const element = document.getElementById("solar-inverter-legend");
   if (!element) return;
+  const chartType = payload.chart_type || "none";
+  let ids = [];
+
+  if (chartType === "line") {
+    ids = (payload.series || []).map((item) => item.inverter_id).filter(Boolean);
+  } else if (chartType === "bar") {
+    ids = (payload.values || []).map((item) => item.inverter_id || item.label).filter(Boolean);
+  }
+
+  const inverters = ids.length > 0 ? ids : (payload.inverters || []);
   if (!inverters || inverters.length === 0) {
     element.textContent = "Legend: No inverter IDs reported.";
     return;
@@ -154,6 +198,35 @@ function updatePerformanceLegend(inverters) {
   let text = `Legend: ${visible.join(", ")}`;
   if (more > 0) text += ` + ${more} more`;
   element.textContent = text;
+}
+
+function updateSnapshotNote(chartType) {
+  const note = document.getElementById("solar-inverter-snapshot-note");
+  if (!note) return;
+  if (chartType === "bar") {
+    note.hidden = false;
+    note.textContent = "Envoy is reporting current inverter telemetry, but not historical per-inverter series. Showing current inverter comparison instead.";
+  } else {
+    note.hidden = true;
+    note.textContent = "";
+  }
+}
+
+function updatePerformanceModeControls(chartType) {
+  const overlay = document.getElementById("perf-view-overlay");
+  const stacked = document.getElementById("perf-view-stacked");
+  const lineMode = chartType === "line";
+  if (overlay) {
+    overlay.disabled = !lineMode;
+    overlay.classList.toggle("active", lineMode && SOLAR_STATE.perfView === "overlay");
+  }
+  if (stacked) {
+    stacked.disabled = !lineMode;
+    stacked.classList.toggle("active", lineMode && SOLAR_STATE.perfView === "stacked");
+  }
+  if (!lineMode) {
+    SOLAR_STATE.perfView = "overlay";
+  }
 }
 
 function updatePerformanceSummary(rows) {
