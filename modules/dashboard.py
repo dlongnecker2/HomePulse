@@ -129,8 +129,35 @@ class Dashboard:
                 "email.html",
                 email=self.application.config.get("email", default={}),
                 email_status=self._email_center_status(),
+                solar_alerts=self.application.solar_alert_settings(),
                 now=datetime.now(),
             )
+
+        @self.app.route("/api/email/notification-settings", methods=["GET", "POST"])
+        def api_email_notification_settings():
+            try:
+                if request.method == "POST":
+                    payload = request.get_json(silent=True) or request.form.to_dict()
+                    settings = self.application.update_solar_alert_settings(payload)
+                    return jsonify({
+                        "ok": True,
+                        "solar_alerts": settings,
+                        "timestamp": str(datetime.now()),
+                    })
+
+                return jsonify({
+                    "ok": True,
+                    "solar_alerts": self.application.solar_alert_settings(),
+                    "email_notifications_enabled": self.application.config.get("email", "email_notifications_enabled", default=False),
+                    "timestamp": str(datetime.now()),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"Email notification settings API failed: {exc}")
+                return jsonify({
+                    "ok": False,
+                    "error": str(exc),
+                    "timestamp": str(datetime.now()),
+                }), 500
 
         @self.app.route("/about")
         def about():
@@ -616,7 +643,7 @@ class Dashboard:
             try:
                 range_key = request.args.get("range", "today")
                 metric = request.args.get("metric", "power")
-                return jsonify(self.application.solar.get_inverter_performance(range_key=range_key, metric=metric))
+                return jsonify(self.application.solar.get_inverter_performance(self.application.db, range_key=range_key, metric=metric))
             except Exception as exc:
                 self.application.log.exception(f"Solar inverter performance API failed: {exc}")
                 return jsonify({

@@ -88,6 +88,14 @@ function renderPerformancePayload(payload) {
   setElementText("solar-inverter-performance-message", message);
   updatePerformanceModeControls(payload.chart_type || "none");
   updateSnapshotNote(payload.chart_type || "none");
+  const waiting = Boolean(payload.waiting_for_more_samples);
+  if (waiting) {
+    const note = document.getElementById("solar-inverter-snapshot-note");
+    if (note) {
+      note.hidden = false;
+      note.textContent = "Waiting for more samples.";
+    }
+  }
   updatePerformanceLegend(payload);
   updatePerformanceSummary(payload.summary || []);
   updatePerformanceInsights(payload.insights || []);
@@ -203,7 +211,10 @@ function updatePerformanceLegend(payload) {
 function updateSnapshotNote(chartType) {
   const note = document.getElementById("solar-inverter-snapshot-note");
   if (!note) return;
-  if (chartType === "bar") {
+  if (chartType === "none") {
+    note.hidden = false;
+    note.textContent = "HomePulse is now building inverter history. The graph will become more useful as samples are collected.";
+  } else if (chartType === "bar") {
     note.hidden = false;
     note.textContent = "Envoy is reporting current inverter telemetry, but not historical per-inverter series. Showing current inverter comparison instead.";
   } else {

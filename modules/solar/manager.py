@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -33,6 +33,47 @@ class SolarManager:
         self._inverter_cache_at = None
         self._envoy_alert_cache = None
         self._envoy_alert_cache_at = None
+
+    def record_inverter_history(self, db, inverters, timestamp=None):
+        if not db or not isinstance(inverters, list):
+            return 0
+
+        now = timestamp or datetime.now()
+        inserted = 0
+        for row in inverters:
+            if not isinstance(row, dict):
+                continue
+
+            inverter_id = str(row.get("id") or "").strip()
+            if not inverter_id:
+                continue
+
+            status = str(row.get("status") or "Unknown").strip()
+            current_power_w = self.parse_float(row.get("reported_state"))
+            lifetime_kwh = self.parse_float(row.get("lifetime_kwh"))
+            delta_kwh = None
+
+            previous = db.latest_inverter_sample(inverter_id)
+            if previous:
+                previous_lifetime = self.parse_float(previous.get("lifetime_kwh"))
+                if previous_lifetime is not None and lifetime_kwh is not None and lifetime_kwh >= previous_lifetime:
+                    delta = lifetime_kwh - previous_lifetime
+                    if delta >= 0:
+                        delta_kwh = round(delta, 6)
+            elif lifetime_kwh is not None:
+                delta_kwh = 0.0
+
+            db.add_inverter_sample(
+                timestamp=str(now),
+                inverter_id=inverter_id,
+                status=status,
+                current_power_w=current_power_w,
+                lifetime_kwh=lifetime_kwh,
+                delta_kwh=delta_kwh,
+            )
+            inserted += 1
+
+        return inserted
 
     def get_status(self, include_inverter_details=False):
         solar = self.solar_config()
@@ -484,7 +525,7 @@ class SolarManager:
             return "Online"
         return "Reported"
 
-    def get_inverter_performance(self, range_key="today", metric="power"):
+    def get_inverter_performance(self, db, range_key="today", metric="power"):
         normalized_range = self.normalize_performance_range(range_key)
         normalized_metric = self.normalize_performance_metric(metric)
         timestamp = str(datetime.now())
@@ -494,10 +535,16 @@ class SolarManager:
         inverter_ids = [item.get("id") for item in inverters if item.get("id")]
 
         summary = self.build_inverter_summary(inverters, normalized_metric)
-        insights = self.build_inverter_insights(inverters, summary)
-        line_series = self.build_inverter_line_series(inverters, normalized_metric)
+        line_series = self.build_history_line_series(db, normalized_range, normalized_metric)
+        insights = self.build_inverter_insights(inverters, summary, has_history=bool(line_series))
         if line_series:
-            message = "Envoy is reporting timestamped per-inverter telemetry for this selection."
+            sample_count = sum(len(series.get("points", [])) for series in line_series)
+            waiting = sample_count < 2
+            message = (
+                "Waiting for more samples. HomePulse is now building inverter history. The graph will become more useful as samples are collected."
+                if waiting
+                else f"HomePulse inverter history loaded ({sample_count} samples)."
+            )
             return {
                 "data_available": True,
                 "chart_type": "line",
@@ -513,36 +560,15 @@ class SolarManager:
                 "values": [],
                 "summary": summary,
                 "insights": insights,
+                "sample_count": sample_count,
+                "waiting_for_more_samples": waiting,
             }
 
-        snapshot_values = self.build_inverter_snapshot_values(inverters, normalized_metric)
-        if snapshot_values:
-            message = (
-                "Envoy is reporting current inverter telemetry, but not historical per-inverter series. "
-                "Showing current inverter comparison instead."
-            )
-            return {
-                "data_available": True,
-                "chart_type": "bar",
-                "chart_title": "Current Inverter Performance",
-                "chart_message": message,
-                "message": message,
-                "reason": "Historical per-inverter telemetry is not currently exposed by this Envoy endpoint.",
-                "timestamp": timestamp,
-                "range": normalized_range,
-                "metric": normalized_metric,
-                "inverters": inverter_ids,
-                "series": [],
-                "values": snapshot_values,
-                "summary": summary,
-                "insights": insights,
-            }
-
-        reason = "No inverter values are currently available from Envoy telemetry."
+        reason = "HomePulse is now building inverter history. The graph will become more useful as samples are collected."
         return {
             "data_available": False,
             "chart_type": "none",
-            "chart_title": "Current Inverter Performance",
+            "chart_title": "Inverter Performance Over Time",
             "chart_message": reason,
             "message": reason,
             "reason": reason,
@@ -551,10 +577,105 @@ class SolarManager:
             "metric": normalized_metric,
             "inverters": inverter_ids,
             "series": [],
-            "values": [],
+            "values": self.build_inverter_snapshot_values(inverters, normalized_metric),
             "summary": summary,
             "insights": insights,
+            "sample_count": 0,
+            "waiting_for_more_samples": True,
         }
+
+    @staticmethod
+    def range_start_time(range_key):
+        now = datetime.now()
+        if range_key == "today":
+            return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if range_key == "this_week":
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            return start - timedelta(days=start.weekday())
+        if range_key == "this_month":
+            return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if range_key == "this_year":
+            return now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def build_history_line_series(self, db, range_key, metric):
+        if db is None:
+            return []
+
+        start_time = self.range_start_time(range_key)
+        samples = db.inverter_samples_since(str(start_time))
+        if not samples:
+            return []
+
+        grouped = {}
+        for sample in samples:
+            inverter_id = str(sample.get("inverter_id") or "").strip()
+            if not inverter_id:
+                continue
+            grouped.setdefault(inverter_id, []).append(sample)
+
+        series = []
+        for inverter_id, rows in grouped.items():
+            points = self._history_points_for_inverter(rows, metric)
+            if not points:
+                continue
+            series.append(
+                {
+                    "inverter_id": inverter_id,
+                    "metric": metric,
+                    "points": points,
+                }
+            )
+
+        return sorted(series, key=lambda row: row.get("inverter_id") or "")
+
+    def _history_points_for_inverter(self, rows, metric):
+        points = []
+        previous = None
+        for row in rows:
+            ts = row.get("timestamp")
+            current_power_w = self.parse_float(row.get("current_power_w"))
+            lifetime_kwh = self.parse_float(row.get("lifetime_kwh"))
+            delta_kwh = self.parse_float(row.get("delta_kwh"))
+
+            value = None
+            if metric == "lifetime_kwh":
+                value = lifetime_kwh
+            elif metric == "energy":
+                value = delta_kwh
+            else:
+                if current_power_w is not None:
+                    value = round(current_power_w / 1000.0, 4)
+                elif delta_kwh is not None:
+                    if previous is not None:
+                        prev_ts = self._parse_dt(previous.get("timestamp"))
+                        cur_ts = self._parse_dt(ts)
+                        if prev_ts and cur_ts and cur_ts > prev_ts:
+                            hours = (cur_ts - prev_ts).total_seconds() / 3600.0
+                            if hours > 0:
+                                value = round(delta_kwh / hours, 4)
+                    if value is None:
+                        value = round(delta_kwh, 6)
+
+            if value is not None:
+                points.append({
+                    "timestamp": ts,
+                    "value": value,
+                })
+            previous = row
+
+        return points
+
+    @staticmethod
+    def _parse_dt(value):
+        text = str(value or "").strip()
+        if not text:
+            return None
+        normalized = text.replace(" ", "T")
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
 
     @staticmethod
     def normalize_performance_range(range_key):
@@ -652,7 +773,7 @@ class SolarManager:
         return series
 
     @staticmethod
-    def build_inverter_insights(inverters, summary):
+    def build_inverter_insights(inverters, summary, has_history=False):
         insights = []
         if not inverters:
             return [{"level": "info", "title": "Unknown", "message": "No inverter telemetry rows were reported by Envoy."}]
@@ -687,11 +808,18 @@ class SolarManager:
                     "message": "Lifetime production spread is wider; panel orientation, shading, and age can cause this.",
                 })
 
-        insights.append({
-            "level": "info",
-            "title": "Midday Dip",
-            "message": "Historical per-inverter curve data is unavailable from this Envoy endpoint, so midday dip analysis is limited.",
-        })
+        if has_history:
+            insights.append({
+                "level": "info",
+                "title": "History",
+                "message": "HomePulse is using sampled inverter telemetry history for trend lines.",
+            })
+        else:
+            insights.append({
+                "level": "info",
+                "title": "History",
+                "message": "HomePulse is now building inverter history. The graph will become more useful as samples are collected.",
+            })
         return insights
 
     @staticmethod

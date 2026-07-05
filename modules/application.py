@@ -723,26 +723,74 @@ class Application:
 
             observation = self.solar.read_envoy_alert_observation()
             status = self.solar.get_status(include_inverter_details=True)
+            inverters = status.get("inverters") if isinstance(status, dict) else []
+            self.solar.record_inverter_history(self.db, inverters, timestamp=datetime.now())
             self._evaluate_solar_alerts(status, observation)
         except Exception as exc:
             self.log.exception(f"Solar health alert check failed: {exc}")
 
+    def solar_alert_settings(self):
+        solar_cfg = self.config.get("solar", default={})
+        alerts = dict(solar_cfg.get("alerts") or {})
+        return {
+            "enabled": bool(alerts.get("enabled", True)),
+            "system_down_enabled": bool(alerts.get("system_down_enabled", True)),
+            "envoy_unreachable_enabled": bool(alerts.get("envoy_unreachable_enabled", True)),
+            "inverter_fault_enabled": bool(alerts.get("inverter_fault_enabled", True)),
+            "cooldown_hours": float(alerts.get("cooldown_hours", 6) or 6),
+            "min_consecutive_checks": int(alerts.get("min_consecutive_checks", 2) or 2),
+        }
+
+    def update_solar_alert_settings(self, payload):
+        def _bool(key, default):
+            value = payload.get(key, default)
+            if isinstance(value, bool):
+                return value
+            text = str(value).strip().lower()
+            if text in {"1", "true", "yes", "on"}:
+                return True
+            if text in {"0", "false", "no", "off"}:
+                return False
+            return bool(default)
+
+        def _int(key, default, minimum, maximum):
+            try:
+                value = int(payload.get(key, default))
+            except (TypeError, ValueError):
+                value = default
+            return max(minimum, min(maximum, value))
+
+        solar = self.config.data.setdefault("solar", {})
+        alerts = solar.setdefault("alerts", {})
+        alerts["enabled"] = _bool("enabled", True)
+        alerts["system_down_enabled"] = _bool("system_down_enabled", True)
+        alerts["envoy_unreachable_enabled"] = _bool("envoy_unreachable_enabled", True)
+        alerts["inverter_fault_enabled"] = _bool("inverter_fault_enabled", True)
+        alerts["cooldown_hours"] = _int("cooldown_hours", 6, 1, 168)
+        alerts["min_consecutive_checks"] = _int("min_consecutive_checks", 2, 1, 10)
+        self.config.save()
+        return self.solar_alert_settings()
+
     def _evaluate_solar_alerts(self, solar_status, observation):
         now = datetime.now()
         state = self._load_solar_alert_state()
-        solar_cfg = self.config.get("solar", default={})
-        alert_cfg = solar_cfg.get("alerts", {}) if isinstance(solar_cfg, dict) else {}
+        alert_cfg = self.solar_alert_settings()
         if not alert_cfg.get("enabled", True):
             return
 
         min_hits = int(alert_cfg.get("min_consecutive_checks", 2) or 2)
         cooldown_hours = float(alert_cfg.get("cooldown_hours", 6) or 6)
 
-        system_problem, system_reason = self._solar_system_problem(solar_status, observation)
+        system_problem, system_reason, system_kind = self._solar_system_problem(solar_status, observation)
+        system_enabled = (
+            alert_cfg.get("system_down_enabled", True)
+            if system_kind == "system_down"
+            else alert_cfg.get("envoy_unreachable_enabled", True)
+        )
         self._evaluate_solar_alert_slot(
             slots=state.setdefault("slots", {}),
             key="system",
-            is_problem=system_problem,
+            is_problem=bool(system_problem and system_enabled),
             reason=system_reason,
             now=now,
             min_hits=min_hits,
@@ -770,7 +818,7 @@ class Application:
             self._evaluate_solar_alert_slot(
                 slots=slots,
                 key=slot_key,
-                is_problem=is_problem,
+                is_problem=bool(is_problem and alert_cfg.get("inverter_fault_enabled", True)),
                 reason=reason,
                 now=now,
                 min_hits=min_hits,
@@ -803,17 +851,17 @@ class Application:
     def _solar_system_problem(self, solar_status, observation):
         if isinstance(observation, dict) and observation.get("explicit_system_problem"):
             summary = observation.get("problem_summary") or "Envoy system explicitly reports unavailable/down/faulted status."
-            return True, str(summary)
+            return True, str(summary), "system_down"
 
         if isinstance(observation, dict) and observation.get("reachable") is False:
             error_text = observation.get("error") or "Envoy could not be reached."
-            return True, f"Envoy reachability failure: {error_text}"
+            return True, f"Envoy reachability failure: {error_text}", "envoy_unreachable"
 
         if isinstance(solar_status, dict):
             error_text = str(solar_status.get("error") or "").strip().lower()
             if "home assistant unreachable" in error_text:
-                return True, "Envoy reachability failure: Home Assistant is unreachable."
-        return False, ""
+                return True, "Envoy reachability failure: Home Assistant is unreachable.", "envoy_unreachable"
+        return False, "", ""
 
     def _evaluate_solar_alert_slot(self, slots, key, is_problem, reason, now, min_hits, cooldown_hours, send_func):
         slot = slots.setdefault(

@@ -56,6 +56,9 @@ BUILTIN_DEFAULT_CONFIG = {
         "cost_per_kwh_override": "",
         "alerts": {
             "enabled": True,
+            "system_down_enabled": True,
+            "envoy_unreachable_enabled": True,
+            "inverter_fault_enabled": True,
             "min_consecutive_checks": 2,
             "cooldown_hours": 6,
         },

@@ -3388,6 +3388,50 @@ button:focus-visible {
   font-size: 11px;
 }
 
+.settings-form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-soft);
+}
+
+.settings-check-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.settings-field-row {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-field-row label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-field-row input[type="number"] {
+  width: 100%;
+  max-width: 220px;
+  height: 36px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: rgba(5, 11, 20, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+}
+
+.settings-action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* Status Indicators */
 .status-ok {
   color: #16c784;

@@ -62,6 +62,21 @@ class Database:
                 message TEXT
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS inverter_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                inverter_id TEXT NOT NULL,
+                status TEXT,
+                current_power_w REAL,
+                lifetime_kwh REAL,
+                delta_kwh REAL
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_inverter_samples_lookup
+            ON inverter_samples (inverter_id, timestamp)
+        """)
         self.conn.commit()
 
     def add_health_check(self, timestamp, latency, packet_loss, dns_ok, score, rebooted=0):
@@ -91,6 +106,77 @@ class Database:
             (timestamp, event_type, message),
         )
         self.conn.commit()
+
+    def add_inverter_sample(self, timestamp, inverter_id, status=None, current_power_w=None, lifetime_kwh=None, delta_kwh=None):
+        normalized_ts = self._normalize_timestamp(timestamp)
+        self.conn.execute(
+            """
+            INSERT INTO inverter_samples
+            (timestamp, inverter_id, status, current_power_w, lifetime_kwh, delta_kwh)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                normalized_ts,
+                str(inverter_id),
+                status,
+                current_power_w,
+                lifetime_kwh,
+                delta_kwh,
+            ),
+        )
+        self.conn.commit()
+
+    def latest_inverter_sample(self, inverter_id):
+        row = self.conn.execute(
+            """
+            SELECT timestamp, inverter_id, status, current_power_w, lifetime_kwh, delta_kwh
+            FROM inverter_samples
+            WHERE inverter_id = ?
+            ORDER BY timestamp DESC, id DESC
+            LIMIT 1
+            """,
+            (str(inverter_id),),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "timestamp": row["timestamp"],
+            "inverter_id": row["inverter_id"],
+            "status": row["status"],
+            "current_power_w": row["current_power_w"],
+            "lifetime_kwh": row["lifetime_kwh"],
+            "delta_kwh": row["delta_kwh"],
+        }
+
+    def inverter_samples_since(self, timestamp, inverter_id=None, limit=None):
+        ts = self._normalize_timestamp(timestamp)
+        query = [
+            """
+            SELECT timestamp, inverter_id, status, current_power_w, lifetime_kwh, delta_kwh
+            FROM inverter_samples
+            WHERE timestamp >= ?
+            """
+        ]
+        params = [ts]
+        if inverter_id:
+            query.append("AND inverter_id = ?")
+            params.append(str(inverter_id))
+        query.append("ORDER BY timestamp ASC, id ASC")
+        if limit:
+            query.append("LIMIT ?")
+            params.append(int(limit))
+        rows = self.conn.execute(" ".join(query), params).fetchall()
+        return [
+            {
+                "timestamp": row["timestamp"],
+                "inverter_id": row["inverter_id"],
+                "status": row["status"],
+                "current_power_w": row["current_power_w"],
+                "lifetime_kwh": row["lifetime_kwh"],
+                "delta_kwh": row["delta_kwh"],
+            }
+            for row in rows
+        ]
 
     def latest_health_check(self):
         row = self.conn.execute(

@@ -36,4 +36,50 @@
     {% endif %}
   </article>
 </section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>Solar Alert Settings</h2>
+    <p class="module-copy">HomePulse will not alert just because production is zero, low, cloudy, or nighttime. Alerts are sent only for explicit system/inverter problems or repeated Envoy reachability failures.</p>
+
+    <form id="solar-alert-settings-form" class="settings-form-grid">
+      <label class="settings-check-row">
+        <input type="checkbox" id="solar-alert-enabled" name="enabled" {% if solar_alerts.enabled %}checked{% endif %}>
+        <span>Enable Solar Health Email Alerts</span>
+      </label>
+
+      <label class="settings-check-row">
+        <input type="checkbox" id="solar-alert-system" name="system_down_enabled" {% if solar_alerts.system_down_enabled %}checked{% endif %}>
+        <span>Alert if solar system is down</span>
+      </label>
+
+      <label class="settings-check-row">
+        <input type="checkbox" id="solar-alert-envoy" name="envoy_unreachable_enabled" {% if solar_alerts.envoy_unreachable_enabled %}checked{% endif %}>
+        <span>Alert if Envoy is unreachable after repeated checks</span>
+      </label>
+
+      <label class="settings-check-row">
+        <input type="checkbox" id="solar-alert-inverter" name="inverter_fault_enabled" {% if solar_alerts.inverter_fault_enabled %}checked{% endif %}>
+        <span>Alert if inverter is explicitly faulted/offline/disabled</span>
+      </label>
+
+      <div class="settings-field-row">
+        <label for="solar-alert-cooldown">Cooldown hours</label>
+        <input type="number" id="solar-alert-cooldown" name="cooldown_hours" min="1" max="168" value="{{ solar_alerts.cooldown_hours|int }}">
+      </div>
+
+      <div class="settings-field-row">
+        <label for="solar-alert-min-checks">Consecutive checks required</label>
+        <input type="number" id="solar-alert-min-checks" name="min_consecutive_checks" min="1" max="10" value="{{ solar_alerts.min_consecutive_checks|int }}">
+      </div>
+
+      <div class="settings-action-row">
+        <button type="submit" class="diagnostic-test-button">Save Solar Alert Settings</button>
+        <span id="solar-alert-settings-status" class="module-copy">Ready</span>
+      </div>
+    </form>
+  </article>
+</section>
+
+<script src="{{ url_for('static', filename='js/email_center.js') }}"></script>
 {% endblock %}

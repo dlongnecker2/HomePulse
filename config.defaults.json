@@ -161,6 +161,9 @@
     "cost_per_kwh_override": "",
     "alerts": {
       "enabled": true,
+      "system_down_enabled": true,
+      "envoy_unreachable_enabled": true,
+      "inverter_fault_enabled": true,
       "min_consecutive_checks": 2,
       "cooldown_hours": 6
     },
