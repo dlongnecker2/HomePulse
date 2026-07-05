@@ -611,6 +611,27 @@ class Dashboard:
                     "weather": {"message": "Weather integration is not configured yet."},
                 })
 
+        @self.app.route("/api/solar/inverters/performance")
+        def api_solar_inverter_performance():
+            try:
+                range_key = request.args.get("range", "today")
+                metric = request.args.get("metric", "power")
+                return jsonify(self.application.solar.get_inverter_performance(range_key=range_key, metric=metric))
+            except Exception as exc:
+                self.application.log.exception(f"Solar inverter performance API failed: {exc}")
+                return jsonify({
+                    "data_available": False,
+                    "message": f"Inverter performance unavailable: {exc}",
+                    "reason": "Inverter performance endpoint failed.",
+                    "timestamp": str(datetime.now()),
+                    "range": "today",
+                    "metric": "power",
+                    "inverters": [],
+                    "series": [],
+                    "summary": [],
+                    "insights": [],
+                })
+
         @self.app.route("/api/weather/status")
         def api_weather_status():
             try:

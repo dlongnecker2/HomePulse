@@ -6,12 +6,21 @@
     <div>
       <div class="eyebrow">Local Enphase Envoy</div>
       <h2>☀️ Solar Center</h2>
-      <p>Live production, Envoy connectivity, and inverter visibility from real site telemetry.</p>
+      <p>Production, inverter telemetry, and system health from live Envoy data.</p>
     </div>
     <span id="solar-module-status-badge" class="energy-status-badge disabled">Loading</span>
   </header>
 
-  <section class="secondary-panel active" data-center-panel="overview">
+  <nav class="secondary-nav" aria-label="Solar Center sections">
+    <button type="button" class="secondary-tab active" data-center-tab="overview">Overview</button>
+    <button type="button" class="secondary-tab" data-center-tab="production">Production</button>
+    <button type="button" class="secondary-tab" data-center-tab="inverters">Inverters</button>
+    <button type="button" class="secondary-tab" data-center-tab="weather">Weather</button>
+    <button type="button" class="secondary-tab" data-center-tab="analytics">Analytics</button>
+    <button type="button" class="secondary-tab" data-center-tab="system_health">System Health</button>
+  </nav>
+
+  <section id="solar-tab-overview" class="secondary-panel active" data-center-panel="overview">
     <div class="center-dashboard-grid">
       <article class="center-glass-card center-kpi-card">
         <div class="center-kpi-label">Current Solar Power</div>
@@ -20,7 +29,7 @@
       </article>
 
       <article class="center-glass-card center-kpi-card">
-        <div class="center-kpi-label">Today&apos;s Production</div>
+        <div class="center-kpi-label">Today's Production</div>
         <div class="center-kpi-value" id="solar-kpi-today">-</div>
         <div class="center-kpi-sublabel" id="solar-kpi-value">-</div>
       </article>
@@ -44,6 +53,20 @@
             <h3>Solar Production Timeline</h3>
           </div>
         </div>
+        <div id="solar-overview-chart" class="center-history-chart" data-default-range="1d"></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="solar-tab-production" class="secondary-panel" data-center-panel="production" hidden>
+    <div class="center-dashboard-grid">
+      <article class="center-glass-card center-chart-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Production</span>
+            <h3>Production Over Time</h3>
+          </div>
+        </div>
         <div id="solar-production-chart" class="center-history-chart" data-default-range="1d"></div>
       </article>
 
@@ -63,7 +86,217 @@
           <div><span>Electricity Rate</span><strong id="solar-summary-rate">-</strong></div>
         </div>
       </article>
+    </div>
+  </section>
 
+  <section id="solar-tab-inverters" class="secondary-panel" data-center-panel="inverters" hidden>
+    <nav class="secondary-nav" aria-label="Inverter views">
+      <button type="button" class="secondary-tab active" data-inverter-subtab="list">Inverter List</button>
+      <button type="button" class="secondary-tab" data-inverter-subtab="performance">Inverter Performance</button>
+      <button type="button" class="secondary-tab" data-inverter-subtab="comparison">Inverter Comparison</button>
+    </nav>
+
+    <section class="secondary-panel active" data-inverter-panel="list">
+      <div class="center-dashboard-grid">
+        <article class="center-glass-card">
+          <div class="center-card-heading">
+            <div>
+              <span class="center-kicker">Inverter Summary</span>
+              <h3>Panels and Inverters</h3>
+            </div>
+          </div>
+          <div class="center-detail-list">
+            <div><span>Panel Count</span><strong id="solar-inverter-panels">-</strong></div>
+            <div><span>Inverter Count</span><strong id="solar-inverter-count">-</strong></div>
+            <div><span>Inverters Installed</span><strong id="solar-inverter-installed">-</strong></div>
+            <div><span>Inverters Online</span><strong id="solar-inverter-online">-</strong></div>
+            <div><span>Inverters Offline</span><strong id="solar-inverter-offline">-</strong></div>
+          </div>
+        </article>
+
+        <article class="center-glass-card center-chart-card">
+          <div class="center-card-heading">
+            <div>
+              <span class="center-kicker">Inverter Details</span>
+              <h3>Per-Inverter Reporting</h3>
+            </div>
+          </div>
+          <p id="solar-inverter-note" class="module-copy">Loading inverter data...</p>
+          <div class="center-table-container">
+            <table class="center-data-table">
+              <thead>
+                <tr>
+                  <th>Inverter ID</th>
+                  <th>Status</th>
+                  <th>Lifetime kWh</th>
+                </tr>
+              </thead>
+              <tbody id="solar-inverter-tbody">
+                <tr><td colspan="3" class="table-empty">Loading inverter data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="secondary-panel" data-inverter-panel="performance" hidden>
+      <div class="center-dashboard-grid">
+        <article class="center-glass-card center-chart-card">
+          <div class="center-card-heading">
+            <div>
+              <span class="center-kicker">Performance</span>
+              <h3>Inverter Performance Over Time</h3>
+            </div>
+          </div>
+          <div class="center-stat-row">
+            <div>
+              <span>View</span>
+              <strong>
+                <button type="button" class="secondary-tab active" id="perf-view-overlay">Overlay</button>
+                <button type="button" class="secondary-tab" id="perf-view-stacked">Stacked</button>
+              </strong>
+            </div>
+            <div>
+              <span>Time Range</span>
+              <strong>
+                <button type="button" class="secondary-tab active" data-perf-range="today">Today</button>
+                <button type="button" class="secondary-tab" data-perf-range="this_week">This Week</button>
+                <button type="button" class="secondary-tab" data-perf-range="this_month">This Month</button>
+                <button type="button" class="secondary-tab" data-perf-range="this_year">This Year</button>
+              </strong>
+            </div>
+            <div>
+              <span>Metric</span>
+              <strong>
+                <button type="button" class="secondary-tab active" data-perf-metric="power">Power</button>
+                <button type="button" class="secondary-tab" data-perf-metric="energy">Energy</button>
+                <button type="button" class="secondary-tab" data-perf-metric="lifetime_kwh">Lifetime kWh</button>
+              </strong>
+            </div>
+            <div>
+              <span>Controls</span>
+              <strong><button type="button" class="secondary-tab" id="perf-refresh">Refresh</button></strong>
+            </div>
+          </div>
+          <p id="solar-inverter-performance-message" class="module-copy">Loading inverter performance...</p>
+          <div id="solar-inverter-performance-chart" class="center-history-chart">
+            <canvas id="solar-inverter-performance-canvas" aria-label="Inverter performance chart"></canvas>
+          </div>
+          <p id="solar-inverter-legend" class="module-copy">Legend: -</p>
+        </article>
+
+        <article class="center-glass-card center-chart-card">
+          <div class="center-card-heading">
+            <div>
+              <span class="center-kicker">Summary</span>
+              <h3>Inverter Summary (Selected Period)</h3>
+            </div>
+          </div>
+          <div class="center-table-container">
+            <table class="center-data-table">
+              <thead>
+                <tr>
+                  <th>Inverter ID</th>
+                  <th>Status</th>
+                  <th>Peak Power</th>
+                  <th>Energy</th>
+                  <th>Performance %</th>
+                </tr>
+              </thead>
+              <tbody id="solar-inverter-performance-summary">
+                <tr><td colspan="5" class="table-empty">Loading performance summary...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="center-glass-card">
+          <div class="center-card-heading">
+            <div>
+              <span class="center-kicker">Insights</span>
+              <h3>Performance Insights</h3>
+            </div>
+          </div>
+          <div id="solar-inverter-insights" class="center-detail-list">
+            <div><span>Loading</span><strong>Waiting for inverter analysis...</strong></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="secondary-panel" data-inverter-panel="comparison" hidden>
+      <div class="center-dashboard-grid">
+        <article class="center-glass-card center-chart-card">
+          <div class="center-card-heading">
+            <div>
+              <span class="center-kicker">Comparison</span>
+              <h3>Inverter Comparison</h3>
+            </div>
+          </div>
+          <p id="solar-inverter-comparison-note" class="module-copy">Comparing available inverter telemetry.</p>
+          <div class="center-table-container">
+            <table class="center-data-table">
+              <thead>
+                <tr>
+                  <th>Inverter ID</th>
+                  <th>Status</th>
+                  <th>Current Telemetry</th>
+                  <th>Lifetime kWh</th>
+                </tr>
+              </thead>
+              <tbody id="solar-inverter-comparison-table">
+                <tr><td colspan="4" class="table-empty">Loading inverter comparison...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+  </section>
+
+  <section id="solar-tab-weather" class="secondary-panel" data-center-panel="weather" hidden>
+    <div class="center-dashboard-grid">
+      <article class="center-glass-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Weather</span>
+            <h3>Weather Conditions</h3>
+          </div>
+        </div>
+        <div class="center-detail-list">
+          <div><span>Condition</span><strong id="solar-weather-condition">-</strong></div>
+          <div><span>Temperature</span><strong id="solar-weather-temp">-</strong></div>
+          <div><span>Cloud Cover</span><strong id="solar-weather-clouds">-</strong></div>
+          <div><span>Wind</span><strong id="solar-weather-wind">-</strong></div>
+          <div><span>Sunrise</span><strong id="solar-weather-sunrise">-</strong></div>
+          <div><span>Sunset</span><strong id="solar-weather-sunset">-</strong></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section id="solar-tab-analytics" class="secondary-panel" data-center-panel="analytics" hidden>
+    <div class="center-dashboard-grid">
+      <article class="center-glass-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Analytics</span>
+            <h3>Production Analytics</h3>
+          </div>
+        </div>
+        <div class="center-detail-list">
+          <div><span>Today Value</span><strong id="solar-analytics-value">-</strong></div>
+          <div><span>Weekly Value</span><strong id="solar-analytics-week-value">-</strong></div>
+          <div><span>Lifetime Value</span><strong id="solar-analytics-lifetime-value">-</strong></div>
+          <div><span>Average Daily (7d)</span><strong id="solar-analytics-avg">-</strong></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section id="solar-tab-system-health" class="secondary-panel" data-center-panel="system_health" hidden>
+    <div class="center-dashboard-grid">
       <article class="center-glass-card">
         <div class="center-card-heading">
           <div>
@@ -78,46 +311,6 @@
           <div><span>Data Source</span><strong id="solar-system-source">-</strong></div>
           <div><span>Last Updated</span><strong id="solar-system-updated">-</strong></div>
           <div><span>Message</span><strong id="solar-system-message">-</strong></div>
-        </div>
-      </article>
-
-      <article class="center-glass-card">
-        <div class="center-card-heading">
-          <div>
-            <span class="center-kicker">Inverter Summary</span>
-            <h3>Panels and Inverters</h3>
-          </div>
-        </div>
-        <div class="center-detail-list">
-          <div><span>Panel Count</span><strong id="solar-inverter-panels">-</strong></div>
-          <div><span>Inverter Count</span><strong id="solar-inverter-count">-</strong></div>
-          <div><span>Inverters Installed</span><strong id="solar-inverter-installed">-</strong></div>
-          <div><span>Inverters Online</span><strong id="solar-inverter-online">-</strong></div>
-          <div><span>Inverters Offline</span><strong id="solar-inverter-offline">-</strong></div>
-        </div>
-      </article>
-
-      <article class="center-glass-card center-chart-card">
-        <div class="center-card-heading">
-          <div>
-            <span class="center-kicker">Inverter Details</span>
-            <h3>Per-Inverter Reporting</h3>
-          </div>
-        </div>
-        <p id="solar-inverter-note" class="module-copy">Loading inverter data...</p>
-        <div class="center-table-container">
-          <table class="center-data-table">
-            <thead>
-              <tr>
-                <th>Inverter ID</th>
-                <th>Status</th>
-                <th>Lifetime kWh</th>
-              </tr>
-            </thead>
-            <tbody id="solar-inverter-tbody">
-              <tr><td colspan="3" class="table-empty">Loading inverter data...</td></tr>
-            </tbody>
-          </table>
         </div>
       </article>
     </div>

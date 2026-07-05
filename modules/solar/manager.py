@@ -411,6 +411,122 @@ class SolarManager:
             return "Online"
         return "Reported"
 
+    def get_inverter_performance(self, range_key="today", metric="power"):
+        normalized_range = self.normalize_performance_range(range_key)
+        normalized_metric = self.normalize_performance_metric(metric)
+        timestamp = str(datetime.now())
+
+        details = self.read_envoy_inverter_details()
+        inverters = details.get("inverters") or []
+        inverter_ids = [item.get("id") for item in inverters if item.get("id")]
+
+        summary = self.build_inverter_summary(inverters, normalized_metric)
+        insights = self.build_inverter_insights(inverters, summary)
+
+        reason = (
+            "Historical per-inverter telemetry is not currently exposed by this Envoy endpoint. "
+            "Only current and lifetime inverter telemetry is available."
+        )
+
+        return {
+            "data_available": False,
+            "message": reason,
+            "reason": reason,
+            "timestamp": timestamp,
+            "range": normalized_range,
+            "metric": normalized_metric,
+            "inverters": inverter_ids,
+            "series": [],
+            "summary": summary,
+            "insights": insights,
+        }
+
+    @staticmethod
+    def normalize_performance_range(range_key):
+        value = str(range_key or "today").strip().lower()
+        valid = {"today", "this_week", "this_month", "this_year"}
+        return value if value in valid else "today"
+
+    @staticmethod
+    def normalize_performance_metric(metric):
+        value = str(metric or "power").strip().lower()
+        valid = {"power", "energy", "lifetime_kwh"}
+        return value if value in valid else "power"
+
+    def build_inverter_summary(self, inverters, metric):
+        if not inverters:
+            return []
+
+        lifetimes = [self.parse_float(item.get("lifetime_kwh")) for item in inverters]
+        lifetimes = [value for value in lifetimes if value is not None]
+        max_lifetime = max(lifetimes) if lifetimes else None
+
+        rows = []
+        for item in inverters:
+            inverter_id = item.get("id")
+            status = item.get("status") or "Unknown"
+            lifetime_kwh = self.parse_float(item.get("lifetime_kwh"))
+            current_power = self.parse_float(item.get("reported_state"))
+
+            performance_percent = None
+            if max_lifetime and lifetime_kwh is not None and max_lifetime > 0:
+                performance_percent = round((lifetime_kwh / max_lifetime) * 100, 1)
+
+            rows.append({
+                "inverter_id": inverter_id,
+                "status": status,
+                "peak_power": None,
+                "energy": lifetime_kwh if metric in ("energy", "lifetime_kwh") else None,
+                "lifetime_kwh": lifetime_kwh,
+                "current_power": current_power if metric == "power" else None,
+                "performance_percent": performance_percent,
+            })
+
+        return sorted(rows, key=lambda row: row.get("inverter_id") or "")
+
+    @staticmethod
+    def build_inverter_insights(inverters, summary):
+        insights = []
+        if not inverters:
+            return [{"level": "info", "title": "Unknown", "message": "No inverter telemetry rows were reported by Envoy."}]
+
+        offline = [item for item in inverters if (item.get("status") or "") == "Offline"]
+        if offline:
+            insights.append({
+                "level": "warning",
+                "title": "Needs Attention",
+                "message": f"Envoy explicitly reports {len(offline)} inverter(s) as offline/faulted/disabled.",
+            })
+        else:
+            insights.append({
+                "level": "ok",
+                "title": "All Good",
+                "message": "Envoy does not explicitly report offline/faulted/disabled inverters.",
+            })
+
+        percentages = [row.get("performance_percent") for row in summary if row.get("performance_percent") is not None]
+        if len(percentages) >= 2:
+            spread = max(percentages) - min(percentages)
+            if spread <= 15:
+                insights.append({
+                    "level": "ok",
+                    "title": "System Balance",
+                    "message": "Lifetime production is reasonably balanced across reported inverters.",
+                })
+            else:
+                insights.append({
+                    "level": "info",
+                    "title": "System Balance",
+                    "message": "Lifetime production spread is wider; panel orientation, shading, and age can cause this.",
+                })
+
+        insights.append({
+            "level": "info",
+            "title": "Midday Dip",
+            "message": "Historical per-inverter curve data is unavailable from this Envoy endpoint, so midday dip analysis is limited.",
+        })
+        return insights
+
     @staticmethod
     def estimated_value(kwh, rate):
         if kwh is None:
