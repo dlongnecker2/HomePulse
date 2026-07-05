@@ -33,6 +33,7 @@ from modules.tapo_discovery import TapoDiscovery
 from modules.vehicle import VehicleManager
 from modules.weather import WeatherManager
 from modules.garden import GardenManager
+from modules.network_mesh import NetworkMeshManager
 from version import APP_NAME, APP_VERSION
 
 
@@ -53,6 +54,7 @@ class Application:
         self.weather = WeatherManager(self.config, self.log)
         self.lighting = LightingManager(self.config, self.log)
         self.garden = GardenManager(self.config, self.log)
+        self.network_mesh = NetworkMeshManager(self.config, self.log)
         self.history = HistoryService(self.config, self.log)
         self.timeline = TimelineService()
         self.health_score = HealthScoreEngine()
@@ -68,6 +70,7 @@ class Application:
         self._last_restart_method = None
         self._scheduled_task_name = "HomePulse"
         self._restart_exit_delay_seconds = 4
+        self._solar_alert_state_path = Path("logs/solar_alert_state.json")
         
         # State tracking for event recording (de-duplicated by timeline service)
         self._last_internet_status = None
@@ -189,7 +192,21 @@ class Application:
         )
         self.register_speedtest_jobs()
         self.register_history_job()
+        self.register_solar_alert_job()
         self.register_maintenance_job()
+
+    def register_solar_alert_job(self):
+        interval = self.config.get("monitor_interval_minutes", default=5)
+        try:
+            minutes = max(5, int(interval or 5))
+        except (TypeError, ValueError):
+            minutes = 5
+        self.scheduler.every_minutes(
+            name="Solar Health Alert Check",
+            minutes=minutes,
+            function=self.solar_health_alert_check,
+        )
+        self.log.info(f"Solar health alert checks scheduled every {minutes} minutes")
 
     def register_speedtest_jobs(self):
         if not self.config.get("speedtest_schedule_enabled", default=True):
@@ -391,12 +408,15 @@ class Application:
         self.weather.config = self.config
         self.lighting.config = self.config
         self.garden.config = self.config
+        self.network_mesh.config = self.config
         self.history.refresh_config(self.config)
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.scheduler.remove_jobs_by_prefix("History Snapshot")
+        self.scheduler.remove_jobs_by_prefix("Solar Health Alert Check")
         self.scheduler.remove_jobs_by_prefix("Maintenance Check")
         self.register_speedtest_jobs()
         self.register_history_job()
+        self.register_solar_alert_job()
         self.register_maintenance_job()
         self.log.info("Configuration reloaded from config.json")
 
@@ -695,6 +715,223 @@ class Application:
         except Exception as exc:
             self.log.exception(f"History snapshot failed: {exc}")
             return 0
+
+    def solar_health_alert_check(self):
+        try:
+            if not self.config.get("solar", "enabled", default=False):
+                return
+
+            observation = self.solar.read_envoy_alert_observation()
+            status = self.solar.get_status(include_inverter_details=True)
+            self._evaluate_solar_alerts(status, observation)
+        except Exception as exc:
+            self.log.exception(f"Solar health alert check failed: {exc}")
+
+    def _evaluate_solar_alerts(self, solar_status, observation):
+        now = datetime.now()
+        state = self._load_solar_alert_state()
+        solar_cfg = self.config.get("solar", default={})
+        alert_cfg = solar_cfg.get("alerts", {}) if isinstance(solar_cfg, dict) else {}
+        if not alert_cfg.get("enabled", True):
+            return
+
+        min_hits = int(alert_cfg.get("min_consecutive_checks", 2) or 2)
+        cooldown_hours = float(alert_cfg.get("cooldown_hours", 6) or 6)
+
+        system_problem, system_reason = self._solar_system_problem(solar_status, observation)
+        self._evaluate_solar_alert_slot(
+            slots=state.setdefault("slots", {}),
+            key="system",
+            is_problem=system_problem,
+            reason=system_reason,
+            now=now,
+            min_hits=min_hits,
+            cooldown_hours=cooldown_hours,
+            send_func=lambda: self._send_solar_system_down_email(solar_status, observation, system_reason, now),
+        )
+
+        slots = state.setdefault("slots", {})
+        inverter_rows = solar_status.get("inverters") if isinstance(solar_status, dict) else []
+        if not isinstance(inverter_rows, list):
+            inverter_rows = []
+
+        active_keys = set()
+        for row in inverter_rows:
+            if not isinstance(row, dict):
+                continue
+            inverter_id = str(row.get("id") or "").strip()
+            status_text = str(row.get("status") or "").strip().lower()
+            if not inverter_id:
+                continue
+            slot_key = f"inverter:{inverter_id}"
+            active_keys.add(slot_key)
+            is_problem = status_text == "offline"
+            reason = f"Envoy explicitly reports inverter {inverter_id} as offline/faulted/disabled." if is_problem else ""
+            self._evaluate_solar_alert_slot(
+                slots=slots,
+                key=slot_key,
+                is_problem=is_problem,
+                reason=reason,
+                now=now,
+                min_hits=min_hits,
+                cooldown_hours=cooldown_hours,
+                send_func=lambda iid=inverter_id, irow=row, ireason=reason: self._send_solar_inverter_issue_email(
+                    solar_status,
+                    irow,
+                    ireason,
+                    now,
+                    iid,
+                ),
+            )
+
+        for key in list(slots.keys()):
+            if key.startswith("inverter:") and key not in active_keys:
+                self._evaluate_solar_alert_slot(
+                    slots=slots,
+                    key=key,
+                    is_problem=False,
+                    reason="",
+                    now=now,
+                    min_hits=min_hits,
+                    cooldown_hours=cooldown_hours,
+                    send_func=lambda: False,
+                )
+
+        state["last_check_at"] = str(now)
+        self._save_solar_alert_state(state)
+
+    def _solar_system_problem(self, solar_status, observation):
+        if isinstance(observation, dict) and observation.get("explicit_system_problem"):
+            summary = observation.get("problem_summary") or "Envoy system explicitly reports unavailable/down/faulted status."
+            return True, str(summary)
+
+        if isinstance(observation, dict) and observation.get("reachable") is False:
+            error_text = observation.get("error") or "Envoy could not be reached."
+            return True, f"Envoy reachability failure: {error_text}"
+
+        if isinstance(solar_status, dict):
+            error_text = str(solar_status.get("error") or "").strip().lower()
+            if "home assistant unreachable" in error_text:
+                return True, "Envoy reachability failure: Home Assistant is unreachable."
+        return False, ""
+
+    def _evaluate_solar_alert_slot(self, slots, key, is_problem, reason, now, min_hits, cooldown_hours, send_func):
+        slot = slots.setdefault(
+            key,
+            {
+                "consecutive_hits": 0,
+                "alert_active": False,
+                "last_alert_at": None,
+                "last_reason": "",
+            },
+        )
+
+        if is_problem:
+            slot["consecutive_hits"] = int(slot.get("consecutive_hits", 0) or 0) + 1
+            slot["last_reason"] = reason
+            if slot.get("alert_active"):
+                return
+            if slot["consecutive_hits"] < max(1, int(min_hits)):
+                return
+            if not self._alert_cooldown_elapsed(slot.get("last_alert_at"), cooldown_hours, now):
+                return
+            sent = bool(send_func())
+            if sent:
+                slot["alert_active"] = True
+                slot["last_alert_at"] = str(now)
+            return
+
+        slot["consecutive_hits"] = 0
+        slot["last_reason"] = ""
+        if slot.get("alert_active"):
+            slot["alert_active"] = False
+            slot["last_cleared_at"] = str(now)
+
+    @staticmethod
+    def _alert_cooldown_elapsed(last_alert_at, cooldown_hours, now):
+        if not last_alert_at:
+            return True
+        last = Application.parse_timestamp(last_alert_at)
+        if not last:
+            return True
+        return (now - last) >= timedelta(hours=float(cooldown_hours or 0))
+
+    def _send_solar_system_down_email(self, solar_status, observation, reason, detected_at):
+        subject = "HomePulse Alert: Solar system down"
+        body = (
+            "Solar system health alert\n\n"
+            f"Time detected: {detected_at}\n"
+            "Problem type: Solar system down\n"
+            f"Envoy/system status: {reason or 'Unavailable'}\n"
+            "Inverter ID: N/A\n"
+            f"Current production: {self._metric_text(solar_status.get('current_production_kw') if isinstance(solar_status, dict) else None, 'kW')}\n"
+            f"Lifetime production: {self._metric_text(solar_status.get('lifetime_production_kwh') if isinstance(solar_status, dict) else None, 'kWh')}\n"
+            "Reminder: HomePulse only alerts on explicit Envoy fault/offline states or repeated Envoy reachability failures.\n"
+        )
+        return self.email_notifier.send_email(
+            subject=subject,
+            body=body,
+            event_type="email_solar_system_down",
+            event_label="Solar system down email",
+        )
+
+    def _send_solar_inverter_issue_email(self, solar_status, inverter_row, reason, detected_at, inverter_id):
+        subject = "HomePulse Alert: Solar inverter issue"
+        inverter_status = str((inverter_row or {}).get("status") or "Offline")
+        body = (
+            "Solar inverter health alert\n\n"
+            f"Time detected: {detected_at}\n"
+            "Problem type: Solar inverter issue\n"
+            f"Envoy/system status: {reason or inverter_status}\n"
+            f"Inverter ID: {inverter_id}\n"
+            f"Current production: {self._metric_text(solar_status.get('current_production_kw') if isinstance(solar_status, dict) else None, 'kW')}\n"
+            f"Lifetime production: {self._metric_text(solar_status.get('lifetime_production_kwh') if isinstance(solar_status, dict) else None, 'kWh')}\n"
+            "Reminder: HomePulse only alerts on explicit Envoy fault/offline states or repeated Envoy reachability failures.\n"
+        )
+        safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", inverter_id or "unknown")
+        return self.email_notifier.send_email(
+            subject=subject,
+            body=body,
+            event_type=f"email_solar_inverter_issue_{safe_id}",
+            event_label="Solar inverter issue email",
+        )
+
+    @staticmethod
+    def _metric_text(value, unit):
+        if value is None:
+            return "Unavailable"
+        try:
+            number = float(value)
+            return f"{number:.2f} {unit}"
+        except (TypeError, ValueError):
+            return f"{value} {unit}"
+
+    def _load_solar_alert_state(self):
+        default = {"slots": {}, "last_check_at": None}
+        path = self._solar_alert_state_path
+        try:
+            if not path.exists():
+                return default
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            if not isinstance(payload, dict):
+                return default
+            payload.setdefault("slots", {})
+            payload.setdefault("last_check_at", None)
+            return payload
+        except Exception as exc:
+            self.log.debug(f"Could not read solar alert state: {exc}", exc_info=True)
+            return default
+
+    def _save_solar_alert_state(self, state):
+        path = self._solar_alert_state_path
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(state, handle, indent=2)
+                handle.write("\n")
+        except Exception as exc:
+            self.log.debug(f"Could not persist solar alert state: {exc}", exc_info=True)
 
     def energy_status(self):
         status = self.energy.get_status()

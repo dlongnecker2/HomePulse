@@ -690,6 +690,31 @@ class Dashboard:
                     "message": f"Lighting Center status unavailable: {exc}",
                 })
 
+        @self.app.route("/api/network/mesh")
+        def api_network_mesh():
+            try:
+                internet = self.application.status.get().get("internet", {})
+                return jsonify(self.application.network_mesh.get_status(internet_status=internet))
+            except Exception as exc:
+                self.application.log.exception(f"Network mesh API failed: {exc}")
+                return jsonify({
+                    "data_available": False,
+                    "message": f"Mesh network status unavailable: {exc}",
+                    "timestamp": str(datetime.now()),
+                    "nodes": [],
+                    "clients": [],
+                    "summary": {
+                        "internet_online": None,
+                        "mesh_nodes_online": 0,
+                        "mesh_nodes_total": 0,
+                        "connected_clients": 0,
+                        "current_total_down_kbps": None,
+                        "current_total_up_kbps": None,
+                    },
+                    "insights": [],
+                    "error": str(exc),
+                })
+
         @self.app.route("/api/garden/status")
         def api_garden_status():
             try:

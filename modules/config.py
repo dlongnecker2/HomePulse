@@ -54,6 +54,11 @@ BUILTIN_DEFAULT_CONFIG = {
         "enabled": False,
         "name": "Solar Center",
         "cost_per_kwh_override": "",
+        "alerts": {
+            "enabled": True,
+            "min_consecutive_checks": 2,
+            "cooldown_hours": 6,
+        },
         "entities": {
             "current_power_production": "sensor.envoy_202306120601_current_power_production",
             "energy_production_today": "sensor.envoy_202306120601_energy_production_today",

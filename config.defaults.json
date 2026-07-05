@@ -159,6 +159,11 @@
     "enabled": false,
     "name": "Solar Center",
     "cost_per_kwh_override": "",
+    "alerts": {
+      "enabled": true,
+      "min_consecutive_checks": 2,
+      "cooldown_hours": 6
+    },
     "entities": {
       "current_power_production": "",
       "energy_production_today": "",

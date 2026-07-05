@@ -31,6 +31,8 @@ class SolarManager:
         self._last_warning_at = {}
         self._inverter_cache = None
         self._inverter_cache_at = None
+        self._envoy_alert_cache = None
+        self._envoy_alert_cache_at = None
 
     def get_status(self, include_inverter_details=False):
         solar = self.solar_config()
@@ -263,26 +265,13 @@ class SolarManager:
             "inverter_data_message": "Not reported by Envoy",
         }
 
-        recovery = self.config.get("router_reboot", default={})
-        base_url = str(recovery.get("home_assistant_url", "")).rstrip("/")
-        token = recovery.get("home_assistant_token", "")
-        if not base_url or not token:
+        try:
+            payload = self._read_home_assistant_states(timeout_seconds=3)
+        except ValueError:
             unavailable["inverter_data_message"] = "Not reported by Envoy (Home Assistant connection is not configured)."
             self._inverter_cache = dict(unavailable)
             self._inverter_cache_at = now
             return unavailable
-
-        request = Request(
-            f"{base_url}/api/states",
-            method="GET",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            },
-        )
-        try:
-            with urlopen(request, timeout=3) as response:
-                payload = json.loads(response.read().decode("utf-8", errors="replace"))
         except Exception as exc:
             self.log_refresh_warning(
                 "envoy:states",
@@ -381,6 +370,90 @@ class SolarManager:
         self._inverter_cache = dict(result)
         self._inverter_cache_at = now
         return result
+
+    def read_envoy_alert_observation(self):
+        now = datetime.now()
+        if self._envoy_alert_cache and self._envoy_alert_cache_at:
+            age = (now - self._envoy_alert_cache_at).total_seconds()
+            if age < 45:
+                return dict(self._envoy_alert_cache)
+
+        result = {
+            "reachable": True,
+            "explicit_system_problem": False,
+            "problem_summary": "",
+            "system_entities": [],
+            "error": None,
+            "checked_at": str(now),
+        }
+
+        try:
+            payload = self._read_home_assistant_states(timeout_seconds=3)
+        except Exception as exc:
+            result["reachable"] = False
+            result["error"] = str(exc)
+            result["problem_summary"] = f"Envoy could not be reached: {exc}"
+            self._envoy_alert_cache = dict(result)
+            self._envoy_alert_cache_at = now
+            return result
+
+        problem_tokens = ("offline", "fault", "faulted", "disabled", "down", "unavailable")
+        candidates = []
+        for row in payload if isinstance(payload, list) else []:
+            if not isinstance(row, dict):
+                continue
+            entity_id = str(row.get("entity_id") or "").lower()
+            if "envoy" not in entity_id and "microinverter_connectivity_status" not in entity_id and "gateway" not in entity_id:
+                continue
+            if not any(token in entity_id for token in ("status", "state", "connect", "gateway", "envoy")):
+                continue
+
+            attrs = row.get("attributes") if isinstance(row.get("attributes"), dict) else {}
+            blob_parts = [
+                str(row.get("state") or ""),
+                str(attrs.get("status") or ""),
+                str(attrs.get("status_text") or ""),
+            ]
+            blob = " ".join(blob_parts).strip().lower()
+            if not blob:
+                continue
+            if any(token in blob for token in problem_tokens):
+                candidates.append({
+                    "entity_id": entity_id,
+                    "state": row.get("state"),
+                    "status_text": attrs.get("status_text"),
+                })
+
+        if candidates:
+            result["explicit_system_problem"] = True
+            result["system_entities"] = candidates[:8]
+            entity_ids = ", ".join(item["entity_id"] for item in candidates[:3])
+            result["problem_summary"] = f"Envoy/system entities report unavailable/down/faulted states ({entity_ids})."
+
+        self._envoy_alert_cache = dict(result)
+        self._envoy_alert_cache_at = now
+        return result
+
+    def _read_home_assistant_states(self, timeout_seconds):
+        recovery = self.config.get("router_reboot", default={})
+        base_url = str(recovery.get("home_assistant_url", "")).rstrip("/")
+        token = recovery.get("home_assistant_token", "")
+        if not base_url or not token:
+            raise ValueError("Home Assistant URL or token is not configured.")
+
+        request = Request(
+            f"{base_url}/api/states",
+            method="GET",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urlopen(request, timeout=timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        if not isinstance(payload, list):
+            raise ValueError("Home Assistant states response is not a list.")
+        return payload
 
     @staticmethod
     def map_inverter_status(status_code, status_text):

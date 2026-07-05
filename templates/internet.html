@@ -1,72 +1,222 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} Internet{% endblock %}
+{% block title %}{{ app_name }} Internet Center{% endblock %}
 {% block content %}
-<section class="page-heading">
-  <div>
-    <h2>Internet Intelligence</h2>
-    <p>Calculated from local {{ app_name }} health checks, speed tests, and events.</p>
-  </div>
-</section>
-
-<section class="insight-grid">
-  <article class="dashboard-panel compact-panel">
-    <h2>Internet Quality</h2>
-    <div class="insight-value">{{ intelligence.quality_score if intelligence.quality_score is not none else "--" }}<span>/100</span></div>
-    <p>ISP Grade: <strong>{{ intelligence.isp_grade }}</strong></p>
-  </article>
-  <article class="dashboard-panel compact-panel">
-    <h2>Reliability Trend</h2>
-    <div class="insight-value text-value">{{ intelligence.trend }}</div>
-    <p>{{ intelligence.sample_count }} health samples in the 30-day window.</p>
-  </article>
-  <article class="dashboard-panel compact-panel">
-    <h2>Current Internet</h2>
-    <table>
-      <tr><td>Status</td><td>{{ internet.status }}</td></tr>
-      <tr><td>Latency</td><td>{{ internet.latency if internet.latency is not none else "--" }} ms</td></tr>
-      <tr><td>Packet Loss</td><td>{{ internet.packet_loss if internet.packet_loss is not none else "--" }}%</td></tr>
-      <tr><td>DNS</td><td>{{ internet.dns_ok }}</td></tr>
-    </table>
-  </article>
-</section>
-
-<section class="content-grid">
-  <article class="dashboard-panel">
-    <h2>30-Day Reliability</h2>
-    <table>
-      <tr><td>Uptime</td><td>{{ intelligence.reliability.uptime_percent if intelligence.reliability.uptime_percent is not none else "No data" }}{% if intelligence.reliability.uptime_percent is not none %}%{% endif %}</td></tr>
-      <tr><td>Outages</td><td>{{ intelligence.reliability.outages }}</td></tr>
-      <tr><td>Longest Outage</td><td>{{ intelligence.reliability.longest_outage }}</td></tr>
-      <tr><td>Router Reboots</td><td>{{ intelligence.reliability.router_reboots }}</td></tr>
-    </table>
-  </article>
-
-  <article class="dashboard-panel">
-    <h2>Recommendations</h2>
-    <ul class="recommendation-list">
-      {% for recommendation in intelligence.recommendations %}
-        <li>{{ recommendation }}</li>
-      {% endfor %}
-    </ul>
-  </article>
-</section>
-
-<section class="dashboard-panel center-chart-panel">
-  <div class="panel-heading compact">
+<section class="module-shell" data-module="internet-center">
+  <header class="module-header">
     <div>
-      <h2>Internet History</h2>
-      <p>Latency, health score, packet loss, and speed test trends from the Analytics history service.</p>
+      <div class="eyebrow">Network Operations Center</div>
+      <h2>Internet Center</h2>
+      <p>ISP health, Deco mesh telemetry, connected devices, and live network activity.</p>
     </div>
-  </div>
-  <div class="mini-chart-stack internet-chart-grid">
-    <div><h3>Latency</h3><div id="internet-latency-chart" class="module-history-chart small"></div></div>
-    <div><h3>Health Score</h3><div id="internet-health-chart" class="module-history-chart small"></div></div>
-    <div><h3>Packet Loss</h3><div id="internet-packet-loss-chart" class="module-history-chart small"></div></div>
-    <div><h3>Download</h3><div id="internet-speed-chart" class="module-history-chart small"></div></div>
-    <div><h3>Upload</h3><div id="internet-upload-chart" class="module-history-chart small"></div></div>
-  </div>
+    <span id="internet-module-status-badge" class="energy-status-badge disabled">Loading</span>
+  </header>
+
+  <nav class="secondary-nav" aria-label="Internet Center sections">
+    <button type="button" class="secondary-tab active" data-center-tab="overview">Overview</button>
+    <button type="button" class="secondary-tab" data-center-tab="speed">Speed Tests / ISP Health</button>
+    <button type="button" class="secondary-tab" data-center-tab="mesh">Mesh Network</button>
+    <button type="button" class="secondary-tab" data-center-tab="devices">Connected Devices</button>
+    <button type="button" class="secondary-tab" data-center-tab="activity">Network Activity</button>
+  </nav>
+
+  <section class="secondary-panel active" data-center-panel="overview">
+    <div class="center-dashboard-grid">
+      <article class="center-glass-card center-kpi-card">
+        <div class="center-kpi-label">Internet Quality</div>
+        <div class="center-kpi-value">{{ intelligence.quality_score if intelligence.quality_score is not none else "--" }}/100</div>
+        <div class="center-kpi-sublabel">ISP grade: {{ intelligence.isp_grade }}</div>
+      </article>
+
+      <article class="center-glass-card center-kpi-card">
+        <div class="center-kpi-label">Internet Status</div>
+        <div class="center-kpi-value" id="internet-overview-status">{{ internet.status }}</div>
+        <div class="center-kpi-sublabel" id="internet-overview-latency">Latency {{ internet.latency if internet.latency is not none else "--" }} ms</div>
+      </article>
+
+      <article class="center-glass-card center-kpi-card">
+        <div class="center-kpi-label">Mesh Nodes Online</div>
+        <div class="center-kpi-value" id="mesh-summary-nodes">-</div>
+        <div class="center-kpi-sublabel" id="mesh-summary-clients">Clients -</div>
+      </article>
+
+      <article class="center-glass-card center-kpi-card">
+        <div class="center-kpi-label">Current Traffic</div>
+        <div class="center-kpi-value" id="mesh-summary-traffic">-</div>
+        <div class="center-kpi-sublabel" id="mesh-last-updated">-</div>
+      </article>
+
+      <article class="center-glass-card center-chart-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Internet History</span>
+            <h3>Latency, Health, and Speed Trends</h3>
+          </div>
+        </div>
+        <div class="mini-chart-stack internet-chart-grid">
+          <div><h3>Latency</h3><div id="internet-latency-chart" class="module-history-chart small"></div></div>
+          <div><h3>Health Score</h3><div id="internet-health-chart" class="module-history-chart small"></div></div>
+          <div><h3>Packet Loss</h3><div id="internet-packet-loss-chart" class="module-history-chart small"></div></div>
+          <div><h3>Download</h3><div id="internet-speed-chart" class="module-history-chart small"></div></div>
+          <div><h3>Upload</h3><div id="internet-upload-chart" class="module-history-chart small"></div></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="secondary-panel" data-center-panel="speed" hidden>
+    <div class="center-dashboard-grid">
+      <article class="center-glass-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">ISP Health</span>
+            <h3>Current Internet Details</h3>
+          </div>
+        </div>
+        <div class="center-detail-list">
+          <div><span>Status</span><strong>{{ internet.status }}</strong></div>
+          <div><span>Latency</span><strong>{{ internet.latency if internet.latency is not none else "--" }} ms</strong></div>
+          <div><span>Packet Loss</span><strong>{{ internet.packet_loss if internet.packet_loss is not none else "--" }}%</strong></div>
+          <div><span>DNS</span><strong>{{ internet.dns_ok }}</strong></div>
+          <div><span>Last Check</span><strong>{{ internet.last_check if internet.last_check else "--" }}</strong></div>
+        </div>
+      </article>
+
+      <article class="center-glass-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Reliability</span>
+            <h3>30-Day Reliability</h3>
+          </div>
+        </div>
+        <div class="center-detail-list">
+          <div><span>Uptime</span><strong>{{ intelligence.reliability.uptime_percent if intelligence.reliability.uptime_percent is not none else "No data" }}{% if intelligence.reliability.uptime_percent is not none %}%{% endif %}</strong></div>
+          <div><span>Outages</span><strong>{{ intelligence.reliability.outages }}</strong></div>
+          <div><span>Longest Outage</span><strong>{{ intelligence.reliability.longest_outage }}</strong></div>
+          <div><span>Router Reboots</span><strong>{{ intelligence.reliability.router_reboots }}</strong></div>
+          <div><span>Trend</span><strong>{{ intelligence.trend }}</strong></div>
+        </div>
+      </article>
+
+      <article class="center-glass-card center-chart-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Recommendations</span>
+            <h3>ISP Optimization Suggestions</h3>
+          </div>
+        </div>
+        <ul class="recommendation-list" id="internet-recommendations-list">
+          {% for recommendation in intelligence.recommendations %}
+          <li>{{ recommendation }}</li>
+          {% endfor %}
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section class="secondary-panel" data-center-panel="mesh" hidden>
+    <div class="center-dashboard-grid">
+      <article class="center-glass-card center-chart-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Mesh Network</span>
+            <h3>Deco Nodes</h3>
+          </div>
+        </div>
+        <p id="mesh-status-message" class="module-copy">Loading mesh network data...</p>
+        <div id="mesh-node-cards" class="internet-node-grid"></div>
+      </article>
+
+      <article class="center-glass-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Client Distribution</span>
+            <h3>Clients by Node</h3>
+          </div>
+        </div>
+        <div id="mesh-client-bars" class="internet-bar-list"></div>
+      </article>
+
+      <article class="center-glass-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Traffic Distribution</span>
+            <h3>Current Traffic by Node</h3>
+          </div>
+        </div>
+        <div id="mesh-traffic-bars" class="internet-bar-list"></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="secondary-panel" data-center-panel="devices" hidden>
+    <div class="center-dashboard-grid">
+      <article class="center-glass-card center-chart-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Connected Devices</span>
+            <h3>Client Inventory</h3>
+          </div>
+          <div>
+            <input id="mesh-device-search" class="internet-device-search" type="search" placeholder="Search devices, IP, MAC, node" />
+          </div>
+        </div>
+        <div class="center-table-container">
+          <table class="center-data-table">
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Connected Deco</th>
+                <th>Band / Type</th>
+                <th>IP</th>
+                <th>Down KB/s</th>
+                <th>Up KB/s</th>
+                <th>Last Updated</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody id="mesh-devices-tbody">
+              <tr><td colspan="8" class="table-empty">Loading connected devices...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="secondary-panel" data-center-panel="activity" hidden>
+    <div class="center-dashboard-grid">
+      <article class="center-glass-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Network Activity</span>
+            <h3>Live Insights</h3>
+          </div>
+        </div>
+        <div id="mesh-insights-list" class="center-detail-list">
+          <div><span>Loading</span><strong>Collecting network insights...</strong></div>
+        </div>
+      </article>
+
+      <article class="center-glass-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Band Distribution</span>
+            <h3>Client Radios</h3>
+          </div>
+        </div>
+        <div id="mesh-band-summary" class="center-detail-list">
+          <div><span>2.4 GHz</span><strong id="mesh-band-24">-</strong></div>
+          <div><span>5 GHz</span><strong id="mesh-band-5">-</strong></div>
+          <div><span>6 GHz</span><strong id="mesh-band-6">-</strong></div>
+          <div><span>Unknown</span><strong id="mesh-band-unknown">-</strong></div>
+        </div>
+      </article>
+    </div>
+  </section>
 </section>
 
 <script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/center_framework.js') }}"></script>
 <script src="{{ url_for('static', filename='js/center_pages.js') }}"></script>
+<script src="{{ url_for('static', filename='js/internet_center.js') }}"></script>
 {% endblock %}
