@@ -100,10 +100,13 @@ function updateSystemDetails(solar) {
 
 function updateInverterSummary(solar) {
   const inverterDataAvailable = Boolean(solar.inverter_data_available);
+  const rows = Array.isArray(solar.inverters) ? solar.inverters : [];
 
   const installed = toNumberOrNull(solar.microinverters_installed);
-  const online = toNumberOrNull(solar.microinverters_online);
-  const offline = installed !== null && online !== null ? Math.max(installed - online, 0) : null;
+  const onlineFromRows = rows.filter((row) => row.status === "Online").length;
+  const offlineFromRows = rows.filter((row) => row.status === "Offline").length;
+  const online = onlineFromRows > 0 ? onlineFromRows : toNumberOrNull(solar.microinverters_online);
+  const offline = offlineFromRows > 0 ? offlineFromRows : null;
 
   setElementText("solar-inverter-panels", inverterCountText(solar.panel_count, inverterDataAvailable));
   setElementText("solar-inverter-count", inverterCountText(solar.inverter_count, inverterDataAvailable));
@@ -113,7 +116,7 @@ function updateInverterSummary(solar) {
 
   const onlineText = inverterCountText(online, inverterDataAvailable);
   applyStatusClass("solar-inverter-online", onlineText);
-  applyStatusClass("solar-inverter-offline", offline === 0 ? "ok" : offline > 0 ? "warning" : "unknown");
+  applyStatusClass("solar-inverter-offline", offline > 0 ? "offline" : "unknown");
 
   const note = solar.inverter_data_message || (inverterDataAvailable
     ? "Inverter-level data is available from Envoy telemetry."

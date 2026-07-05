@@ -295,22 +295,22 @@ class SolarManager:
 
         inverters_by_id = {}
         active_microinverters = None
+        site_reporting = None
+        site_not_reporting = None
+        site_unknown = None
 
         for entity in payload if isinstance(payload, list) else []:
             entity_id = str(entity.get("entity_id") or "").lower()
             state = entity.get("state")
+            attributes = entity.get("attributes") or {}
 
             if entity_id.startswith("sensor.inverter_"):
                 inverter_id = entity_id.removeprefix("sensor.inverter_")
                 if not inverter_id:
                     continue
-                power_w = self.parse_float(state)
-                status = "Unknown"
-                if power_w is not None:
-                    status = "Online" if power_w > 0 else "Offline"
-
                 record = inverters_by_id.setdefault(inverter_id, {"id": inverter_id})
-                record["status"] = status
+                record["reported_state"] = state
+                record.setdefault("status", "Reported")
 
             elif entity_id.startswith("sensor.iq_microinverters_") and entity_id.endswith("_lifetime_energy"):
                 match = re.match(r"sensor\.iq_microinverters_(.+)_lifetime_energy$", entity_id)
@@ -320,27 +320,54 @@ class SolarManager:
                 lifetime_kwh = self.parse_float(state)
                 record = inverters_by_id.setdefault(inverter_id, {"id": inverter_id})
                 record["lifetime_kwh"] = lifetime_kwh
+                status_code = str(attributes.get("status_code") or attributes.get("status") or "").strip().lower()
+                status_text = str(attributes.get("status_text") or "").strip()
+                mapped_status = self.map_inverter_status(status_code, status_text)
+                record["status"] = mapped_status
+                if status_text:
+                    record["status_detail"] = status_text
 
             elif entity_id.startswith("sensor.site_") and "active_microinverters" in entity_id:
                 active_value = self.parse_float(state)
                 if active_value is not None:
                     active_microinverters = int(round(active_value))
 
+            elif entity_id.startswith("sensor.site_") and "microinverter_connectivity_status" in entity_id:
+                site_reporting = self.parse_float(attributes.get("reporting_inverters"))
+                site_not_reporting = self.parse_float(attributes.get("not_reporting_inverters"))
+                site_unknown = self.parse_float(attributes.get("unknown_inverters"))
+
         inverters = sorted(inverters_by_id.values(), key=lambda item: item.get("id") or "")
         online_count = sum(1 for inverter in inverters if inverter.get("status") == "Online") if inverters else None
+        offline_count = sum(1 for inverter in inverters if inverter.get("status") == "Offline") if inverters else None
         installed_count = len(inverters) if inverters else None
 
         if installed_count is None and active_microinverters is not None:
             installed_count = active_microinverters
 
-        if online_count is None and active_microinverters is not None:
-            online_count = active_microinverters
+        if online_count is None and site_reporting is not None:
+            online_count = int(round(site_reporting))
+
+        if installed_count is None and site_reporting is not None:
+            candidates = [site_reporting, site_not_reporting, site_unknown]
+            total = sum(int(round(value)) for value in candidates if value is not None)
+            if total > 0:
+                installed_count = total
 
         if installed_count is None:
             unavailable["inverter_data_message"] = "Not reported by Envoy"
             self._inverter_cache = dict(unavailable)
             self._inverter_cache_at = now
             return unavailable
+
+        message = (
+            "Per-inverter availability is reported by Envoy telemetry and may not match panel-level health in the Enphase app."
+        )
+        if offline_count and offline_count > 0:
+            message = (
+                "Per-inverter availability is reported by Envoy telemetry and may not match panel-level health in the Enphase app. "
+                f"Envoy explicitly reports {offline_count} inverter(s) offline/faulted."
+            )
 
         result = {
             "panel_count": installed_count,
@@ -349,11 +376,40 @@ class SolarManager:
             "microinverters_online": online_count,
             "inverters": inverters,
             "inverter_data_available": True,
-            "inverter_data_message": "",
+            "inverter_data_message": message,
         }
         self._inverter_cache = dict(result)
         self._inverter_cache_at = now
         return result
+
+    @staticmethod
+    def map_inverter_status(status_code, status_text):
+        status_blob = " ".join(part for part in (status_code, status_text) if part).strip().lower()
+        if not status_blob:
+            return "Reported"
+
+        offline_tokens = (
+            "offline",
+            "fault",
+            "faulted",
+            "disabled",
+            "disable",
+        )
+        online_tokens = (
+            "online",
+            "normal",
+            "producing",
+            "production",
+            "active",
+            "running",
+            "ok",
+        )
+
+        if any(token in status_blob for token in offline_tokens):
+            return "Offline"
+        if any(token in status_blob for token in online_tokens):
+            return "Online"
+        return "Reported"
 
     @staticmethod
     def estimated_value(kwh, rate):

@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-07-04 12:44:08.044299",
-  "pid": 5752,
-  "started_at": "2026-07-04 12:44:07.952300",
+  "timestamp": "2026-07-04 20:03:24.328483",
+  "pid": 17116,
+  "started_at": "2026-07-04 20:03:24.271857",
   "argv": [
     "router_monitor.py"
   ],
   "executable": "C:\\Users\\Dennis\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
   "working_directory": "C:\\RouterMonitorV2",
   "app_name": "HomePulse",
-  "version": "3.7.0"
+  "version": "3.7.1"
 }
