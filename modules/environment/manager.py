@@ -668,6 +668,8 @@ class EnvironmentManager:
         text = str(value).strip().replace(" ", "T")
         if not text:
             return None
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
         try:
             return datetime.fromisoformat(text)
         except ValueError:
@@ -689,7 +691,8 @@ class EnvironmentManager:
         parsed = self._parse_timestamp(snapshot_time)
         if not parsed:
             return None
-        delta = datetime.now() - parsed
+        now = datetime.now(parsed.tzinfo) if parsed.tzinfo is not None else datetime.now()
+        delta = now - parsed
         return max(0, int(delta.total_seconds()))
 
     def _is_stale(self, age_seconds, existing_stale):

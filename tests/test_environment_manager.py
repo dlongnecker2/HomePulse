@@ -1,5 +1,6 @@
 import sqlite3
 import unittest
+from datetime import datetime, timezone
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -241,6 +242,37 @@ class EnvironmentManagerTests(unittest.TestCase):
         self.assertTrue(snapshot["stale"])
         self.assertIn("404", snapshot["last_refresh_error"])
         self.assertEqual(snapshot["summary"]["supported_entities"], 0)
+
+    def test_snapshot_age_seconds_handles_naive_and_aware_timestamps(self):
+        manager = EnvironmentManager(self.config, self.log, self.store)
+        naive_now = datetime(2026, 7, 12, 10, 0, 0)
+        aware_now = datetime(2026, 7, 12, 10, 0, 0, tzinfo=timezone.utc)
+
+        def fake_now(tz=None):
+            if tz is None:
+                return naive_now
+            return aware_now.astimezone(tz)
+
+        with patch("modules.environment.manager.datetime") as mock_datetime:
+            mock_datetime.now.side_effect = fake_now
+            mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
+
+            self.assertEqual(manager._snapshot_age_seconds("2026-07-12T09:55:00"), 300)
+            self.assertEqual(manager._snapshot_age_seconds("2026-07-12T09:55:00Z"), 300)
+            self.assertEqual(manager._snapshot_age_seconds("2026-07-12T09:55:00+00:00"), 300)
+            self.assertEqual(manager._snapshot_age_seconds("2026-07-12T09:55:00+02:00"), 7500)
+            self.assertEqual(manager._snapshot_age_seconds("2026-07-12T12:15:00+02:00"), 0)
+            self.assertIsNone(manager._snapshot_age_seconds("not-a-timestamp"))
+            self.assertIsNone(manager._snapshot_age_seconds(None))
+
+    def test_stale_calculation_uses_snapshot_age(self):
+        manager = EnvironmentManager(self.config, self.log, self.store)
+
+        with patch.object(manager, "stale_after_minutes", return_value=10):
+            self.assertTrue(manager._is_stale(None, False))
+            self.assertTrue(manager._is_stale(600, False))
+            self.assertFalse(manager._is_stale(599, False))
+            self.assertTrue(manager._is_stale(5, True))
 
 
 if __name__ == "__main__":
