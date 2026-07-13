@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Environment Center{% endblock %}
+{% block content %}
+<section class="module-shell environment-module" data-module="environment-center">
+  <header class="module-header">
+    <div>
+      <div class="eyebrow">Home Assistant environmental discovery</div>
+      <h2>Environment Center</h2>
+      <p>Cached, read-only monitoring for environmental sensors grouped by area and device.</p>
+    </div>
+    <span id="environment-status-badge" class="energy-status-badge {{ 'healthy' if environment.status == 'Connected' else 'disabled' if not environment.enabled else 'offline' }}">
+      {{ environment.status or "Unavailable" }}
+    </span>
+  </header>
+
+  <div class="center-dashboard-grid">
+    <article class="center-glass-card center-kpi-card">
+      <div class="center-kpi-label">Snapshot</div>
+      <div class="center-kpi-value" id="environment-summary-status">{{ environment.status or "Unavailable" }}</div>
+      <div class="center-kpi-sublabel" id="environment-summary-message">{{ environment.message or "Waiting for data" }}</div>
+    </article>
+
+    <article class="center-glass-card center-kpi-card">
+      <div class="center-kpi-label">Freshness</div>
+      <div class="center-kpi-value" id="environment-summary-age">{{ environment.snapshot_age_label or "never" }}</div>
+      <div class="center-kpi-sublabel" id="environment-summary-stale">
+        {% if environment.stale %}Stale snapshot{% else %}Live cache{% endif %}
+      </div>
+    </article>
+
+    <article class="center-glass-card center-kpi-card">
+      <div class="center-kpi-label">Coverage</div>
+      <div class="center-kpi-value" id="environment-summary-entities">{{ environment.summary.supported_entities or 0 }}</div>
+      <div class="center-kpi-sublabel">supported entities</div>
+    </article>
+
+    <article class="center-glass-card center-kpi-card">
+      <div class="center-kpi-label">Storage</div>
+      <div class="center-kpi-value" id="environment-summary-readings">{{ environment.summary.readings_recorded or 0 }}</div>
+      <div class="center-kpi-sublabel">recorded readings</div>
+    </article>
+  </div>
+
+  <section class="center-glass-card">
+    <div class="center-card-heading">
+      <div>
+        <span class="center-kicker">Discovery</span>
+        <h3>Area-first, device-second grouping</h3>
+      </div>
+      <div class="environment-mini-meta">
+        <span id="environment-summary-areas">{{ environment.summary.areas or 0 }} areas</span>
+        <span id="environment-summary-devices">{{ environment.summary.devices or 0 }} devices</span>
+      </div>
+    </div>
+
+    <div id="environment-groups" class="environment-groups">
+      {% for area in environment.areas %}
+      <article class="center-glass-card environment-area-card">
+        <div class="center-card-heading">
+          <div>
+            <span class="center-kicker">Area</span>
+            <h3>{{ area.display_name }}</h3>
+          </div>
+          <span class="energy-status-badge {% if area.fallback_group %}disabled{% else %}healthy{% endif %}">
+            {{ area.entity_count }} entities
+          </span>
+        </div>
+        <div class="center-detail-list">
+          <div><span>Area ID</span><strong>{{ area.area_id }}</strong></div>
+          <div><span>Readings</span><strong>{{ area.reading_count }}</strong></div>
+          <div><span>Devices</span><strong>{{ area.devices|length }}</strong></div>
+        </div>
+        <div class="environment-device-list">
+          {% for device in area.devices %}
+          <div class="environment-device-card">
+            <div class="environment-device-heading">
+              <strong>{{ device.display_name }}</strong>
+              <span class="environment-device-meta">{{ device.entity_count }} entities</span>
+            </div>
+            <div class="environment-device-meta">Device ID: {{ device.device_id }}</div>
+            <ul class="environment-entity-list">
+              {% for entity in device.entities %}
+              <li>
+                <button
+                  type="button"
+                  class="environment-entity-button"
+                  data-entity-id="{{ entity.entity_id }}"
+                  data-entity-name="{{ entity.display_name }}"
+                >
+                  <span class="environment-entity-name">{{ entity.display_name }}</span>
+                  <span class="environment-entity-state">
+                    {% if entity.latest_reading %}
+                      {% if entity.latest_reading.raw_state is not none and entity.latest_reading.raw_state != "" %}
+                        {{ entity.latest_reading.raw_state }}
+                      {% elif entity.latest_reading.parsed_number is not none %}
+                        {{ entity.latest_reading.parsed_number }}
+                      {% elif entity.latest_reading.parsed_boolean is not none %}
+                        {{ "true" if entity.latest_reading.parsed_boolean else "false" }}
+                      {% else %}
+                        Unavailable
+                      {% endif %}
+                    {% else %}
+                      No readings
+                    {% endif %}
+                  </span>
+                </button>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+      {% else %}
+      <div class="center-empty-state">
+        <p><strong>No supported environmental entities are cached yet.</strong><br>
+        Home Assistant discovery will populate this view after the first successful refresh.</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="center-dashboard-grid">
+    <article class="center-glass-card center-chart-card">
+      <div class="center-card-heading">
+        <div>
+          <span class="center-kicker">Readings</span>
+          <h3>Latest reading snapshot</h3>
+        </div>
+        <span class="environment-mini-meta" id="environment-last-refresh">
+          {{ environment.last_successful_refresh or "No successful refresh yet" }}
+        </span>
+      </div>
+      <div class="center-table-container">
+        <table class="center-data-table">
+          <thead>
+            <tr>
+              <th>Entity</th>
+              <th>Area</th>
+              <th>Device</th>
+              <th>Raw</th>
+              <th>Parsed</th>
+              <th>Unit</th>
+              <th>Age</th>
+            </tr>
+          </thead>
+          <tbody id="environment-readings-body">
+            {% for entity in environment.entities[:20] %}
+            <tr data-entity-id="{{ entity.entity_id }}" data-entity-name="{{ entity.display_name }}">
+              <td>
+                <strong>{{ entity.display_name }}</strong><br>
+                <span class="table-muted">{{ entity.entity_id }}</span>
+              </td>
+              <td>{{ entity.area_name }}</td>
+              <td>{{ entity.device_name }}</td>
+              <td>
+                {% if entity.latest_reading %}
+                  {% if entity.latest_reading.raw_state is not none and entity.latest_reading.raw_state != "" %}
+                    {{ entity.latest_reading.raw_state }}
+                  {% elif entity.latest_reading.raw_value is not none and entity.latest_reading.raw_value != "" %}
+                    {{ entity.latest_reading.raw_value }}
+                  {% else %}
+                    Unavailable
+                  {% endif %}
+                {% else %}
+                  No readings
+                {% endif %}
+              </td>
+              <td>
+                {% if entity.latest_reading %}
+                  {% if entity.latest_reading.parsed_number is not none %}
+                    {{ entity.latest_reading.parsed_number }}
+                  {% elif entity.latest_reading.parsed_boolean is not none %}
+                    {{ "true" if entity.latest_reading.parsed_boolean else "false" }}
+                  {% else %}
+                    -
+                  {% endif %}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>{{ entity.unit_of_measurement or "-" }}</td>
+              <td>{{ entity.latest_reading.timestamp if entity.latest_reading else "-" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="7" class="table-empty">No entity readings have been captured yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="center-glass-card">
+      <div class="center-card-heading">
+        <div>
+          <span class="center-kicker">History</span>
+          <h3 id="environment-history-title">Select an entity</h3>
+        </div>
+      </div>
+      <div class="center-detail-list">
+        <div><span>Entity ID</span><strong id="environment-history-entity">-</strong></div>
+        <div><span>Samples</span><strong id="environment-history-count">0</strong></div>
+        <div><span>Last Sample</span><strong id="environment-history-last">-</strong></div>
+      </div>
+      <div id="environment-history-series" class="environment-history-series">
+        <div class="center-empty-state">
+          <p><strong>Choose an entity to inspect its captured history.</strong><br>
+          Newly discovered sensors with no samples remain empty until the next refresh.</p>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<script>
+  window.HomePulseEnvironmentInitial = {{ environment | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/center_framework.js') }}"></script>
+<script src="{{ url_for('static', filename='js/environment_center.js') }}"></script>
+{% endblock %}

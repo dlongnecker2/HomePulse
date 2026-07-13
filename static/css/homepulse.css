@@ -3259,6 +3259,132 @@ button:focus-visible {
   background: rgba(88, 181, 239, 0.04);
 }
 
+.environment-mini-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.environment-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.environment-area-card {
+  background: rgba(16, 24, 39, 0.45);
+}
+
+.environment-device-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.environment-device-card {
+  padding: 14px;
+  background: rgba(5, 11, 20, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+}
+
+.environment-device-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.environment-device-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.environment-entity-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.environment-entity-button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid rgba(88, 181, 239, 0.14);
+  border-radius: 10px;
+  background: rgba(16, 24, 39, 0.5);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.environment-entity-button:hover,
+.environment-entity-button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(88, 181, 239, 0.28);
+  background: rgba(16, 24, 39, 0.72);
+}
+
+.environment-entity-name {
+  font-weight: 600;
+}
+
+.environment-entity-state {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.table-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.environment-history-series {
+  margin-top: 18px;
+}
+
+.environment-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.environment-history-row {
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(5, 11, 20, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.environment-history-time {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.environment-history-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.environment-history-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
 .center-data-table .table-empty,
 .solar-data-table .table-empty {
   text-align: center;

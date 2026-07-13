@@ -71,6 +71,14 @@ class Dashboard:
                 now=datetime.now(),
             )
 
+        @self.app.route("/environment")
+        def environment_center():
+            return render_template(
+                "environment.html",
+                environment=self.application.environment.status_payload(),
+                now=datetime.now(),
+            )
+
         @self.app.route("/internet")
         def internet():
             status = self._dashboard_payload()
@@ -419,6 +427,73 @@ class Dashboard:
                     "lighting": self._lighting_placeholder(),
                     "garden": self._garden_placeholder(),
                     "home": self._home_placeholder(alerts=["Home Center status unavailable."]),
+                }), 500
+
+        @self.app.route("/api/environment/status")
+        def api_environment_status():
+            try:
+                return jsonify(self.application.environment.status_payload())
+            except Exception as exc:
+                self.application.log.exception(f"Environment status API failed: {exc}")
+                return jsonify({
+                    "enabled": False,
+                    "configured": False,
+                    "status": "Unavailable",
+                    "availability": "unavailable",
+                    "message": f"Environment status unavailable: {exc}",
+                    "error": str(exc),
+                    "timestamp": str(datetime.now()),
+                    "last_successful_refresh": None,
+                    "snapshot_age_seconds": None,
+                    "snapshot_age_label": "never",
+                    "stale": True,
+                    "last_refresh_error": str(exc),
+                    "summary": {
+                        "areas": 0,
+                        "devices": 0,
+                        "supported_entities": 0,
+                        "entities_with_readings": 0,
+                        "readings_recorded": 0,
+                        "stale_after_minutes": self.application.environment.stale_after_minutes(),
+                    },
+                    "areas": [],
+                    "entities": [],
+                    "refresh": {},
+                }), 500
+
+        @self.app.route("/api/environment/entities")
+        def api_environment_entities():
+            try:
+                status = self.application.environment.status_payload()
+                return jsonify({
+                    "areas": status.get("areas", []),
+                    "entities": status.get("entities", []),
+                    "summary": status.get("summary", {}),
+                    "last_successful_refresh": status.get("last_successful_refresh"),
+                    "stale": status.get("stale"),
+                    "snapshot_age_label": status.get("snapshot_age_label"),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"Environment entities API failed: {exc}")
+                return jsonify({"areas": [], "entities": [], "summary": {}, "error": str(exc)}), 500
+
+        @self.app.route("/api/environment/history/<path:entity_id>")
+        def api_environment_history(entity_id):
+            try:
+                limit = request.args.get("limit", 200, type=int)
+                history = self.application.environment.entity_history(entity_id, limit=limit)
+                return jsonify({
+                    "entity_id": entity_id,
+                    "count": len(history),
+                    "history": history,
+                })
+            except Exception as exc:
+                self.application.log.exception(f"Environment history API failed for {entity_id}: {exc}")
+                return jsonify({
+                    "entity_id": entity_id,
+                    "count": 0,
+                    "history": [],
+                    "error": str(exc),
                 }), 500
 
         @self.app.route("/api/timeline/recent")
