@@ -8,17 +8,19 @@ class Scheduler:
         self.jobs = []
 
     def every_minutes(self, name, minutes, function):
-        self.jobs.append({
+        job = {
             "type": "interval",
             "name": name,
             "interval": timedelta(minutes=minutes),
             "function": function,
             "last_run": None,
             "last_run_at": None,
-        })
+        }
+        self.jobs.append(job)
+        return job
 
     def daily(self, name, hour, minute, function):
-        self.jobs.append({
+        job = {
             "type": "daily",
             "name": name,
             "hour": hour,
@@ -26,7 +28,9 @@ class Scheduler:
             "function": function,
             "last_run_date": None,
             "last_run_at": None,
-        })
+        }
+        self.jobs.append(job)
+        return job
 
     def remove_jobs_by_prefix(self, prefix):
         self.jobs = [job for job in self.jobs if not job["name"].startswith(prefix)]

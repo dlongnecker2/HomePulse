@@ -16,6 +16,7 @@ from modules.dashboard import Dashboard
 from modules.database import Database
 from modules.diagnostics import Diagnostics
 from modules.email_notifier import EmailNotifier
+from modules.environment import EnvironmentManager
 from modules.energy import EnergyManager
 from modules.history import HistoryService
 from modules.home import TimelineService, HealthScoreEngine, AlertManager
@@ -56,6 +57,7 @@ class Application:
         self.garden = GardenManager(self.config, self.log)
         self.network_mesh = NetworkMeshManager(self.config, self.log)
         self.history = HistoryService(self.config, self.log)
+        self.environment = EnvironmentManager(self.config, self.log, self.db.environment)
         self.timeline = TimelineService()
         self.health_score = HealthScoreEngine()
         self.alert_manager = AlertManager(self.log)
@@ -138,6 +140,7 @@ class Application:
         self.db.initialize()
         self.log.info("Database initialized successfully")
         self.history.initialize()
+        self.environment.initialize()
         self.plugin_manager.initialize_plugins()
         self.load_latest_speedtest()
         self.load_latest_health_check()
@@ -192,8 +195,29 @@ class Application:
         )
         self.register_speedtest_jobs()
         self.register_history_job()
+        self.register_environment_job()
         self.register_solar_alert_job()
         self.register_maintenance_job()
+
+    def register_environment_job(self):
+        if not self.environment.enabled():
+            self.log.info("Environmental monitoring is disabled")
+            return
+        interval = self.environment.refresh_interval_minutes()
+        job = self.scheduler.every_minutes(
+            name="Environmental Snapshot Refresh",
+            minutes=interval,
+            function=self.environment_refresh,
+        )
+        self.log.info(f"Environmental snapshot refresh interval: {interval} minutes")
+        snapshot = self.environment_refresh()
+        if snapshot.get("last_successful_refresh"):
+            now = datetime.now()
+            job["last_run"] = now
+            job["last_run_at"] = now
+            self.log.info("Environmental snapshot refreshed during startup")
+        else:
+            self.log.warning("Environmental startup refresh did not complete successfully")
 
     def register_solar_alert_job(self):
         interval = self.config.get("monitor_interval_minutes", default=5)
@@ -242,6 +266,9 @@ class Application:
             function=self.history_snapshot,
         )
         self.log.info(f"History snapshot interval: {interval} minutes")
+
+    def environment_refresh(self):
+        return self.environment.refresh_snapshot()
 
     def configured_speedtest_times(self):
         default_times = self.default_speedtest_times()
