@@ -1,5 +1,6 @@
 import sqlite3
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from modules.environment.database import EnvironmentStore
@@ -118,10 +119,22 @@ class EnvironmentManagerTests(unittest.TestCase):
         ]
         return states, entity_registry, device_registry, area_registry
 
+    def sample_payload_bundle(self, enrichment_error=None):
+        states, entity_registry, device_registry, area_registry = self.sample_payloads()
+        return states, entity_registry, device_registry, area_registry, enrichment_error
+
+    def states_only_payloads(self):
+        return self.sample_payloads()[0]
+
+    def fake_request_json(self, url, token, timeout_seconds):
+        if url.endswith("/api/states"):
+            return self.states_only_payloads()
+        raise AssertionError(f"Unexpected Home Assistant request: {url}")
+
     def test_refresh_discovers_supported_entities_and_preserves_fallback_groups(self):
         manager = EnvironmentManager(self.config, self.log, self.store)
 
-        with patch.object(manager, "_fetch_home_assistant_payloads", return_value=self.sample_payloads()):
+        with patch.object(manager, "_fetch_home_assistant_payloads", return_value=self.sample_payload_bundle()):
             snapshot = manager.refresh_snapshot()
 
         self.assertEqual(snapshot["status"], "Connected")
@@ -143,7 +156,7 @@ class EnvironmentManagerTests(unittest.TestCase):
         self.assertEqual(temp_entity["label_source"], "registry")
         self.assertEqual(leak_entity["label_source"], "fallback")
 
-        with patch.object(manager, "_fetch_home_assistant_payloads", return_value=self.sample_payloads()):
+        with patch.object(manager, "_fetch_home_assistant_payloads", return_value=self.sample_payload_bundle()):
             second_snapshot = manager.refresh_snapshot()
         self.assertEqual(self.store.count_readings(), 2)
         self.assertEqual(second_snapshot["summary"]["supported_entities"], 2)
@@ -151,7 +164,7 @@ class EnvironmentManagerTests(unittest.TestCase):
     def test_refresh_failure_preserves_last_good_snapshot(self):
         manager = EnvironmentManager(self.config, self.log, self.store)
 
-        with patch.object(manager, "_fetch_home_assistant_payloads", return_value=self.sample_payloads()):
+        with patch.object(manager, "_fetch_home_assistant_payloads", return_value=self.sample_payload_bundle()):
             success_snapshot = manager.refresh_snapshot()
 
         with patch.object(manager, "_fetch_home_assistant_payloads", side_effect=RuntimeError("home assistant offline")):
@@ -162,6 +175,72 @@ class EnvironmentManagerTests(unittest.TestCase):
         self.assertIn("home assistant offline", failed_snapshot["last_refresh_error"])
         self.assertEqual(failed_snapshot["areas"][0]["display_name"], "Living Room")
         self.assertGreaterEqual(self.store.count_readings(), 2)
+
+    def test_home_assistant_payloads_use_websocket_registry_enrichment(self):
+        manager = EnvironmentManager(self.config, self.log, self.store)
+
+        with patch.object(manager, "_request_json", side_effect=self.fake_request_json), patch.object(
+            manager, "_fetch_registry_enrichment_via_websocket", return_value=self.sample_payload_bundle()[1:]
+        ) as websocket_fetch:
+            states, entity_registry, device_registry, area_registry, enrichment_error = manager._fetch_home_assistant_payloads()
+
+        self.assertEqual(len(states), 3)
+        self.assertEqual(len(entity_registry), 2)
+        self.assertEqual(len(device_registry), 1)
+        self.assertEqual(len(area_registry), 1)
+        self.assertIsNone(enrichment_error)
+        websocket_fetch.assert_called_once()
+
+    def test_registry_enrichment_404_does_not_fail_refresh(self):
+        manager = EnvironmentManager(self.config, self.log, self.store)
+
+        def raise_404(*args, **kwargs):
+            raise HTTPError("http://homeassistant.local/api/websocket", 404, "Not Found", hdrs=None, fp=None)
+
+        with patch.object(manager, "_request_json", side_effect=self.fake_request_json), patch.object(
+            manager, "_fetch_registry_enrichment_via_websocket", side_effect=raise_404
+        ):
+            snapshot = manager.refresh_snapshot()
+
+        self.assertEqual(snapshot["status"], "Connected")
+        self.assertEqual(snapshot["summary"]["supported_entities"], 2)
+        self.assertEqual(snapshot["summary"]["areas"], 1)
+        self.assertEqual(snapshot["summary"]["devices"], 1)
+        self.assertEqual(snapshot["entities"][0]["area_name"], "Unassigned Area")
+        self.assertEqual(snapshot["entities"][0]["device_name"], "Unknown Device")
+        self.assertIn("enrichment_error", snapshot)
+        self.assertGreaterEqual(self.store.count_readings(), 2)
+
+    def test_registry_enrichment_websocket_unavailable_does_not_fail_refresh(self):
+        manager = EnvironmentManager(self.config, self.log, self.store)
+
+        with patch.object(manager, "_request_json", side_effect=self.fake_request_json), patch.object(
+            manager, "_fetch_registry_enrichment_via_websocket", side_effect=OSError("websocket unavailable")
+        ):
+            snapshot = manager.refresh_snapshot()
+
+        self.assertEqual(snapshot["status"], "Connected")
+        self.assertEqual(snapshot["summary"]["supported_entities"], 2)
+        self.assertEqual(snapshot["summary"]["areas"], 1)
+        self.assertEqual(snapshot["summary"]["devices"], 1)
+        self.assertTrue(any(area["fallback_group"] for area in snapshot["areas"]))
+        self.assertTrue(any(device["fallback_group"] for area in snapshot["areas"] for device in area["devices"]))
+        self.assertTrue(any(entity["entity_id"] == "sensor.living_room_temperature" for entity in snapshot["entities"]))
+        self.assertIn("enrichment_error", snapshot)
+
+    def test_states_failure_still_fails_refresh(self):
+        manager = EnvironmentManager(self.config, self.log, self.store)
+
+        def raise_states_404(url, token, timeout_seconds):
+            raise HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+
+        with patch.object(manager, "_request_json", side_effect=raise_states_404):
+            snapshot = manager.refresh_snapshot()
+
+        self.assertEqual(snapshot["status"], "No data")
+        self.assertTrue(snapshot["stale"])
+        self.assertIn("404", snapshot["last_refresh_error"])
+        self.assertEqual(snapshot["summary"]["supported_entities"], 0)
 
 
 if __name__ == "__main__":

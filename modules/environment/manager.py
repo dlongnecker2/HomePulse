@@ -2,8 +2,15 @@ import json
 from collections import OrderedDict
 from datetime import datetime
 import threading
+import base64
+import hashlib
+import os
+import socket
+import ssl
+import struct
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 from modules.environment.database import EnvironmentStore
 from modules.environment.models import EnvironmentalEntity, EnvironmentalReading
@@ -148,7 +155,7 @@ class EnvironmentManager:
             return self.get_status()
 
         try:
-            states, entity_registry, device_registry, area_registry = self._fetch_home_assistant_payloads()
+            states, entity_registry, device_registry, area_registry, enrichment_error = self._fetch_home_assistant_payloads()
             records, readings, discovery = self._discover_entities(states, entity_registry, device_registry, area_registry)
             if records:
                 self.store.upsert_entities(records)
@@ -170,6 +177,8 @@ class EnvironmentManager:
                 "excluded_entities": discovery["excluded"],
                 "stored_readings": stored_readings,
             }
+            if enrichment_error:
+                snapshot["enrichment_error"] = enrichment_error
             snapshot["message"] = (
                 f"Loaded {discovery['supported_entities']} supported Home Assistant entity(s) across "
                 f"{discovery['areas']} area(s) and {discovery['devices']} device(s)."
@@ -200,10 +209,8 @@ class EnvironmentManager:
     def _fetch_home_assistant_payloads(self):
         base_url, token = self._home_assistant_credentials()
         states = self._request_json(f"{base_url}/api/states", token, timeout_seconds=10)
-        entity_registry = self._request_json(f"{base_url}/api/config/entity_registry/list", token, timeout_seconds=10)
-        device_registry = self._request_json(f"{base_url}/api/config/device_registry/list", token, timeout_seconds=10)
-        area_registry = self._request_json(f"{base_url}/api/config/area_registry/list", token, timeout_seconds=10)
-        return states, entity_registry, device_registry, area_registry
+        entity_registry, device_registry, area_registry, enrichment_error = self._fetch_registry_enrichment(base_url, token)
+        return states, entity_registry, device_registry, area_registry, enrichment_error
 
     def _request_json(self, url, token, timeout_seconds):
         request = Request(
@@ -218,6 +225,115 @@ class EnvironmentManager:
         with urlopen(request, timeout=timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8", errors="replace"))
         return payload
+
+    def _fetch_registry_enrichment(self, base_url, token):
+        try:
+            return self._fetch_registry_enrichment_via_websocket(base_url, token)
+        except HTTPError as exc:
+            if exc.code == 404:
+                message = f"Home Assistant registry enrichment endpoint unavailable (HTTP 404)."
+            else:
+                message = f"Home Assistant registry enrichment failed (HTTP {exc.code})."
+            self.log.warning(message)
+            return [], [], [], message
+        except (URLError, TimeoutError, ConnectionError, OSError, ValueError, ssl.SSLError, socket.timeout) as exc:
+            message = f"Home Assistant registry enrichment unavailable: {exc}"
+            self.log.warning(message)
+            return [], [], [], message
+        except Exception as exc:
+            message = f"Home Assistant registry enrichment unavailable: {exc}"
+            self.log.warning(message)
+            return [], [], [], message
+
+    def _fetch_registry_enrichment_via_websocket(self, base_url, token):
+        ws_url = self._websocket_url(base_url)
+        client = self._open_websocket(ws_url)
+        try:
+            self._websocket_authenticate(client, token)
+            area_registry = self._websocket_call(client, "config/area_registry/list")
+            device_registry = self._websocket_call(client, "config/device_registry/list")
+            entity_registry = self._websocket_call(client, "config/entity_registry/list")
+            return entity_registry, device_registry, area_registry, None
+        finally:
+            client.close()
+
+    @staticmethod
+    def _websocket_url(base_url):
+        parsed = urlsplit(base_url)
+        scheme = "wss" if parsed.scheme == "https" else "ws"
+        netloc = parsed.netloc or parsed.path
+        if not netloc:
+            raise ValueError("Invalid Home Assistant URL")
+        return f"{scheme}://{netloc}/api/websocket"
+
+    def _open_websocket(self, ws_url, timeout_seconds=10):
+        parsed = urlsplit(ws_url)
+        host = parsed.hostname
+        if not host:
+            raise ValueError("Invalid WebSocket URL")
+        port = parsed.port or (443 if parsed.scheme == "wss" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+
+        raw_socket = socket.create_connection((host, port), timeout=timeout_seconds)
+        if parsed.scheme == "wss":
+            context = ssl.create_default_context()
+            raw_socket = context.wrap_socket(raw_socket, server_hostname=host)
+
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        request = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        ).encode("ascii")
+        raw_socket.sendall(request)
+        response = self._read_http_headers(raw_socket)
+        if "101" not in response.split("\r\n", 1)[0]:
+            raise ConnectionError(f"WebSocket handshake failed: {response.splitlines()[0] if response else 'no response'}")
+
+        accept_key = self._websocket_accept_key(key)
+        headers = response.lower()
+        if accept_key.lower() not in headers:
+            raise ConnectionError("WebSocket handshake missing accept key")
+        return HomeAssistantWebSocket(raw_socket)
+
+    @staticmethod
+    def _read_http_headers(sock):
+        buffer = b""
+        while b"\r\n\r\n" not in buffer:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            buffer += chunk
+        return buffer.decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _websocket_accept_key(key):
+        magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        digest = hashlib.sha1(f"{key}{magic}".encode("ascii")).digest()
+        return base64.b64encode(digest).decode("ascii")
+
+    def _websocket_authenticate(self, client, token):
+        client.send_json({"type": "auth", "access_token": token})
+        message = client.recv_json()
+        if message.get("type") != "auth_ok":
+            raise PermissionError(message.get("message") or "Home Assistant WebSocket authentication failed")
+
+    def _websocket_call(self, client, command):
+        message_id = client.next_id()
+        client.send_json({"id": message_id, "type": command})
+        message = client.recv_json(expected_id=message_id)
+        if not message.get("success", False):
+            raise RuntimeError(message.get("error", {}).get("message") or f"WebSocket command failed: {command}")
+        result = message.get("result")
+        if isinstance(result, dict):
+            return result.get("data") or result.get("items") or result
+        return result or []
 
     def _home_assistant_credentials(self):
         recovery = self.config.get("router_reboot", default={})
@@ -312,6 +428,8 @@ class EnvironmentManager:
         if domain == "binary_sensor" and parsed_boolean is None:
             parsed_boolean = self._parse_boolean(attributes.get("state"))
 
+        enrichment_error = self._enrichment_error(area_meta, device_meta, entity_meta)
+
         reading = EnvironmentalReading(
             entity_id=entity_id,
             domain=domain,
@@ -335,6 +453,7 @@ class EnvironmentManager:
                 "state_class": state_class,
                 "integration": integration,
                 "raw_attributes": self._trim_attributes(attributes),
+                "enrichment_error": enrichment_error,
             },
         )
 
@@ -363,6 +482,7 @@ class EnvironmentManager:
                 "device_class": device_class,
                 "state_class": state_class,
                 "raw_attributes": self._trim_attributes(attributes),
+                "enrichment_error": enrichment_error,
             },
         )
         return entity, reading
@@ -632,6 +752,17 @@ class EnvironmentManager:
         return {}
 
     @staticmethod
+    def _enrichment_error(area_meta, device_meta, entity_meta):
+        missing = []
+        if not area_meta and not (isinstance(entity_meta, dict) and entity_meta.get("area_id")):
+            missing.append("area")
+        if not device_meta and not (isinstance(entity_meta, dict) and entity_meta.get("device_id")):
+            missing.append("device")
+        if missing:
+            return f"Missing registry metadata: {', '.join(missing)}"
+        return None
+
+    @staticmethod
     def _pick_friendly_name(entity_meta, attributes, entity_id):
         for source in (
             entity_meta.get("name") if isinstance(entity_meta, dict) else None,
@@ -687,10 +818,12 @@ class EnvironmentManager:
             return str(device_meta["id"])
         if isinstance(device_meta, dict) and device_meta.get("device_id"):
             return str(device_meta["device_id"])
-        return f"{area_id}::{entity_id}"
+        return f"{area_id}::__unassigned_device__"
 
     @staticmethod
     def _stable_device_name(device_meta, entity_meta, device_id, fallback_name):
+        if not isinstance(device_meta, dict) or not device_meta:
+            return "Unknown Device"
         for source in (device_meta, entity_meta):
             if isinstance(source, dict):
                 for key in ("name", "name_by_user", "original_name"):
@@ -779,7 +912,7 @@ class EnvironmentManager:
     def _sensor_unit_supported(unit):
         normalized = str(unit or "").strip().lower()
         return normalized in {
-            "%", "c", "°c", "f", "°f", "k",
+            "%", "c", "f", "k",
             "pa", "hpa", "mbar", "inhg", "psi",
             "lx", "lm",
             "ppm", "ppb",
@@ -788,8 +921,115 @@ class EnvironmentManager:
             "hz",
             "mm", "cm", "m", "in",
             "mph", "km/h", "kmh", "m/s", "ms", "kn", "kt",
-            "deg", "°", "degrees",
+            "deg", "degrees",
             "db", "dbm", "rssi",
             "mah", "ah",
             "g", "mg",
         }
+
+
+class HomeAssistantWebSocket:
+    def __init__(self, sock):
+        self.sock = sock
+        self._next_message_id = 1
+        self._buffer = b""
+
+    def next_id(self):
+        message_id = self._next_message_id
+        self._next_message_id += 1
+        return message_id
+
+    def send_json(self, payload):
+        data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        self._send_frame(data, opcode=0x1)
+
+    def recv_json(self, expected_id=None):
+        while True:
+            frame = self._read_frame()
+            if frame is None:
+                raise ConnectionError("WebSocket closed")
+            opcode, payload = frame
+            if opcode == 0x8:
+                raise ConnectionError("WebSocket closed by remote host")
+            if opcode == 0x9:
+                self._send_frame(payload, opcode=0xA)
+                continue
+            if opcode != 0x1:
+                continue
+            message = json.loads(payload.decode("utf-8", errors="replace"))
+            if expected_id is not None and message.get("id") != expected_id:
+                continue
+            return message
+
+    def close(self):
+        try:
+            self._send_frame(b"", opcode=0x8)
+        except Exception:
+            pass
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+
+    def _send_frame(self, payload, opcode=0x1):
+        mask = os.urandom(4)
+        header = bytearray()
+        header.append(0x80 | (opcode & 0x0F))
+        length = len(payload)
+        if length < 126:
+            header.append(0x80 | length)
+        elif length < 65536:
+            header.append(0x80 | 126)
+            header.extend(struct.pack("!H", length))
+        else:
+            header.append(0x80 | 127)
+            header.extend(struct.pack("!Q", length))
+        header.extend(mask)
+        masked = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+        self.sock.sendall(bytes(header) + masked)
+
+    def _read_frame(self):
+        while len(self._buffer) < 2:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                return None
+            self._buffer += chunk
+        first, second = self._buffer[0], self._buffer[1]
+        opcode = first & 0x0F
+        masked = bool(second & 0x80)
+        length = second & 0x7F
+        index = 2
+        if length == 126:
+            while len(self._buffer) < index + 2:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    return None
+                self._buffer += chunk
+            length = struct.unpack("!H", self._buffer[index:index + 2])[0]
+            index += 2
+        elif length == 127:
+            while len(self._buffer) < index + 8:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    return None
+                self._buffer += chunk
+            length = struct.unpack("!Q", self._buffer[index:index + 8])[0]
+            index += 8
+        if masked:
+            while len(self._buffer) < index + 4:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    return None
+                self._buffer += chunk
+            mask = self._buffer[index:index + 4]
+            index += 4
+        while len(self._buffer) < index + length:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                return None
+            self._buffer += chunk
+        payload = self._buffer[index:index + length]
+        self._buffer = self._buffer[index + length:]
+        if masked:
+            payload = bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload))
+        return opcode, payload

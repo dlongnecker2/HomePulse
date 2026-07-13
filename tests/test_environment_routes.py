@@ -17,6 +17,8 @@ class DummyPluginManager:
 
 class DummyEnvironment:
     def __init__(self):
+        self.status_payload_calls = 0
+        self.entity_history_calls = 0
         self.snapshot = {
             "enabled": True,
             "configured": True,
@@ -44,9 +46,11 @@ class DummyEnvironment:
         }
 
     def status_payload(self):
+        self.status_payload_calls += 1
         return dict(self.snapshot)
 
     def entity_history(self, entity_id, limit=200):
+        self.entity_history_calls += 1
         if entity_id == "sensor.living_room_temperature":
             return [
                 {
@@ -70,6 +74,9 @@ class DummyEnvironment:
                 }
             ]
         return []
+
+    def refresh_snapshot(self):
+        raise AssertionError("Routes must remain cache-only and must not trigger refreshes")
 
 
 class DummyLog:
@@ -109,6 +116,7 @@ class EnvironmentRouteTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Environment Center", body)
         self.assertIn("Area-first, device-second grouping", body)
+        self.assertEqual(self.application.environment.status_payload_calls, 1)
 
     def test_environment_api_returns_cached_snapshot_and_history(self):
         status_response = self.client.get("/api/environment/status")
@@ -116,6 +124,7 @@ class EnvironmentRouteTests(unittest.TestCase):
         status = status_response.get_json()
         self.assertEqual(status["status"], "Connected")
         self.assertEqual(status["summary"]["supported_entities"], 1)
+        self.assertEqual(self.application.environment.status_payload_calls, 1)
 
         history_response = self.client.get("/api/environment/history/sensor.living_room_temperature?limit=1")
         self.assertEqual(history_response.status_code, 200)
@@ -123,6 +132,7 @@ class EnvironmentRouteTests(unittest.TestCase):
         self.assertEqual(history["entity_id"], "sensor.living_room_temperature")
         self.assertEqual(history["count"], 1)
         self.assertEqual(len(history["history"]), 1)
+        self.assertEqual(self.application.environment.entity_history_calls, 1)
 
 
 if __name__ == "__main__":
