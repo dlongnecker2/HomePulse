@@ -5,6 +5,7 @@ import subprocess
 import sys
 import threading
 import time
+from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 from statistics import mean
@@ -351,15 +352,17 @@ class Application:
     def speedtest_interval_label(self):
         return self.speedtest_schedule_label()
 
-    def update_speedtest_interval(self, interval_minutes):
+    def update_speedtest_interval(self, interval_minutes, save=True, refresh_jobs=True):
         interval = self.valid_speedtest_interval(interval_minutes)
         self.config.data["speedtest_interval_minutes"] = interval
         self.config.data["speedtest_schedule_enabled"] = True
         self.config.data["speedtest_schedule_mode"] = self.speedtest_mode_for_interval(interval)
         self.config.data["speedtest_times"] = self.speedtest_times_for_minutes(interval)
-        self.config.save()
-        self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
-        self.register_speedtest_jobs()
+        if save:
+            self.config.save()
+        if refresh_jobs:
+            self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
+            self.register_speedtest_jobs()
 
     @staticmethod
     def speedtest_mode_for_interval(interval):
@@ -390,7 +393,7 @@ class Application:
         }
         return labels.get(self.speedtest_schedule_mode(), "Custom scheduled times")
 
-    def update_speedtest_schedule(self, mode, custom_times=None):
+    def update_speedtest_schedule(self, mode, custom_times=None, save=True, refresh_jobs=True):
         mode_times = {
             "every_30_minutes": self.default_speedtest_times,
             "every_1_hour": lambda: self.speedtest_times_for_interval(1),
@@ -421,9 +424,11 @@ class Application:
         else:
             raise ValueError("Unknown speed test schedule mode")
 
-        self.config.save()
-        self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
-        self.register_speedtest_jobs()
+        if save:
+            self.config.save()
+        if refresh_jobs:
+            self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
+            self.register_speedtest_jobs()
 
     def reload_configuration(self):
         self.config = Config()
@@ -450,13 +455,20 @@ class Application:
         self.log.info("Configuration reloaded from config.json")
 
     def update_settings(self, form):
+        original_config = deepcopy(self.config.data)
+        speedtest_changed = False
+        history_changed = False
         if "speedtest_interval_minutes" in form:
-            self.update_speedtest_interval(form.get("speedtest_interval_minutes"))
+            self.update_speedtest_interval(form.get("speedtest_interval_minutes"), save=False, refresh_jobs=False)
+            speedtest_changed = True
         if "speedtest_schedule_mode" in form:
             self.update_speedtest_schedule(
                 form.get("speedtest_schedule_mode", "every_30_minutes"),
                 form.get("custom_speedtest_times", ""),
+                save=False,
+                refresh_jobs=False,
             )
+            speedtest_changed = True
         history_form_keys = (
             "history_enabled",
             "history_snapshot_interval_minutes",
@@ -477,9 +489,7 @@ class Application:
                 minimum=1,
                 maximum=3650,
             )
-            self.history.refresh_config(self.config)
-            self.scheduler.remove_jobs_by_prefix("History Snapshot")
-            self.register_history_job()
+            history_changed = True
 
         weather_form_keys = (
             "weather_enabled",
@@ -736,8 +746,21 @@ class Application:
             entities["production_ct_energy_delivered"] = form.get(
                 "solar_entity_production_ct_energy_delivered", ""
             ).strip()
-        self.router_rebooter.config = self.config
-        self.config.save()
+        try:
+            self.router_rebooter.config = self.config
+            self.config.save()
+        except Exception as exc:
+            self.config.data = original_config
+            self.router_rebooter.config = self.config
+            raise ValueError("Settings could not be saved. Your existing configuration was preserved.") from exc
+
+        if history_changed:
+            self.history.refresh_config(self.config)
+            self.scheduler.remove_jobs_by_prefix("History Snapshot")
+            self.register_history_job()
+        if speedtest_changed:
+            self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
+            self.register_speedtest_jobs()
 
     def history_snapshot(self):
         try:

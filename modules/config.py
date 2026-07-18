@@ -2,6 +2,8 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+from modules.config_backup import ConfigBackupService
+
 CONFIG_FILE = Path("config.json")
 CONFIG_DEFAULTS_FILE = Path("config.defaults.json")
 
@@ -109,6 +111,11 @@ BUILTIN_DEFAULT_CONFIG = {
             "lifetime_energy": "sensor.2025_chevrolet_equinox_ev_2025_chevrolet_equinox_ev_lifetime_energy_used",
         },
     },
+    "environment": {
+        "enabled": True,
+        "refresh_interval_minutes": 5,
+        "stale_after_minutes": 10,
+    },
 }
 
 def _load_default_config():
@@ -130,6 +137,7 @@ ENERGY_ENTITY_DEFAULTS = DEFAULT_CONFIG.get("energy", {}).get("home_assistant_en
 
 class Config:
     def __init__(self):
+        self.backup_service = ConfigBackupService(CONFIG_FILE)
         if not CONFIG_FILE.exists():
             defaults = deepcopy(DEFAULT_CONFIG)
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -159,10 +167,23 @@ class Config:
                 return default
             raise
 
-    def save(self):
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=2)
-            f.write("\n")
+    def save(self, data=None):
+        payload = self.data if data is None else data
+        if not isinstance(payload, dict):
+            raise ValueError("Configuration root must be a JSON object.")
+
+        current = {}
+        if CONFIG_FILE.exists():
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                current = json.load(f)
+            if not isinstance(current, dict):
+                raise ValueError("Existing configuration root must be a JSON object.")
+
+        merged = self.backup_service.merge_config(current, payload)
+        self.backup_service.validate_config_payload(merged)
+        self.backup_service.write_config(merged)
+        self.data = merged
+        return merged
 
     def _merge_defaults(self, target, defaults):
         changed = False
