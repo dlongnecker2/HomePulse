@@ -23,7 +23,7 @@ class RouterRebooter:
 
     def execute(self, reason):
         adapter = self.adapter()
-        if self.config.get("dry_run", default=True) or not self.real_reboot_enabled():
+        if not self.live_recovery_enabled():
             adapter = DryRunAdapter(self.config, self.log)
 
         power_result = adapter.cycle()
@@ -58,15 +58,21 @@ class RouterRebooter:
         return "dry_run"
 
     def real_reboot_enabled(self):
+        return self.live_recovery_enabled()
+
+    def live_recovery_enabled(self):
         recovery = self.config.get("router_reboot", default={})
-        return bool(recovery.get("real_reboot_enabled", False))
+        return bool(
+            recovery.get("router_recovery_live_enabled", recovery.get("real_reboot_enabled", False))
+        )
 
     def status(self):
         adapter = self.adapter()
-        dry_run = self.config.get("dry_run", default=True) or adapter.adapter_type == "dry_run"
+        dry_run = not self.live_recovery_enabled() or adapter.adapter_type == "dry_run"
         return {
             "device_type": adapter.adapter_type,
             "label": adapter.label,
-            "real_reboot_enabled": self.real_reboot_enabled() and not dry_run,
+            "real_reboot_enabled": self.live_recovery_enabled() and not dry_run,
+            "router_recovery_live_enabled": self.live_recovery_enabled(),
             "dry_run_active": dry_run,
         }

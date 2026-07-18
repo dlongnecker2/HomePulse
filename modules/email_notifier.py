@@ -35,6 +35,7 @@ class EmailNotifier:
         "recovery_started": True,
         "recovery_success": True,
         "recovery_failed": True,
+        "recovery_skipped": True,
         "diagnostics_failed": True,
         "daily_summary": False,
     }
@@ -66,9 +67,10 @@ class EmailNotifier:
     def send_recovery_started(self, context):
         if not self.notification_enabled("recovery_started"):
             return False
-        subject = f"{APP_NAME} Recovery Started"
+        mode_label = self._recovery_mode_label(context)
+        subject = f"{APP_NAME} Recovery Started - {mode_label}"
         body = self._recovery_body(
-            title="Recovery started",
+            title=f"{mode_label} recovery started",
             context=context,
             result=None,
             end_time=None,
@@ -80,9 +82,10 @@ class EmailNotifier:
         if not self.notification_enabled(notification_type):
             return False
         status = "Succeeded" if result.internet_restored else "Failed"
-        subject = f"{APP_NAME} Recovery {status}"
+        mode_label = self._result_mode_label(result)
+        subject = f"{APP_NAME} {mode_label} Recovery {status}"
         body = self._recovery_body(
-            title=f"Recovery {status.lower()}",
+            title=f"{mode_label} recovery {status.lower()}",
             context=context,
             result=result,
             end_time=context.get("end_time"),
@@ -93,6 +96,19 @@ class EmailNotifier:
             event_type=f"email_{notification_type}",
             event_label=f"Recovery {status.lower()} email",
         )
+
+    def send_recovery_skipped(self, context, reason):
+        if not self.notification_enabled("recovery_skipped"):
+            return False
+        subject = f"{APP_NAME} Recovery Skipped"
+        body = self._recovery_body(
+            title="Recovery skipped",
+            context=context,
+            result=None,
+            end_time=context.get("end_time"),
+            skip_reason=reason,
+        )
+        return self.send_email(subject, body, "email_recovery_skipped", "Recovery skipped email")
 
     def send_diagnostics_failed(self, diagnostic_result):
         if not self.notification_enabled("diagnostics_failed"):
@@ -256,7 +272,7 @@ class EmailNotifier:
             and bool(settings.get("notifications", {}).get(notification_type, False))
         )
 
-    def _recovery_body(self, title, context, result, end_time):
+    def _recovery_body(self, title, context, result, end_time, skip_reason=None):
         recovery = self.config.get("router_reboot", default={})
         fallback_method = result.method if result else "Unavailable"
         device = (
@@ -268,13 +284,17 @@ class EmailNotifier:
         )
         start_time = context.get("start_time") or context.get("timestamp", "Unavailable")
         end_time = end_time or "In progress"
+        recovery_mode = self._context_mode_label({"recovery_mode": context.get("recovery_mode")})
         result_text = result.result if result else "Recovery command has started."
+        if skip_reason:
+            result_text = skip_reason
         duration = result.elapsed_recovery_time if result else "In progress"
         verification = self._verification_text(result)
 
         return (
             f"{title}\n\n"
             f"Reason: {context.get('reason', 'Unavailable')}\n"
+            f"Recovery mode: {recovery_mode}\n"
             f"Recovery device/entity: {device}\n"
             f"Start time: {start_time}\n"
             f"End time: {end_time}\n"
@@ -295,6 +315,8 @@ class EmailNotifier:
     def _verification_text(result):
         if not result:
             return "Pending"
+        if result.dry_run:
+            return "Dry Run only; no power command was sent."
         if result.internet_restored:
             return "Internet restored after recovery."
         if result.router_responded:
@@ -302,6 +324,26 @@ class EmailNotifier:
         if result.command_sent:
             return "Recovery command was sent, but device response was not confirmed."
         return "Recovery command was not sent."
+
+    @staticmethod
+    def _context_mode_label(context):
+        mode = str(context.get("recovery_mode") or "").strip().lower()
+        if mode == "live":
+            return "Live automatic recovery"
+        if mode == "dry_run":
+            return "Dry Run"
+        if mode == "skipped":
+            return "Recovery skipped"
+        return "Recovery"
+
+    def _recovery_mode_label(self, context):
+        return self._context_mode_label(context)
+
+    @staticmethod
+    def _result_mode_label(result):
+        if getattr(result, "dry_run", False):
+            return "Dry Run"
+        return "Live"
 
     def _record_email_event(self, event_type, message, success, status=None):
         status = status or ("SUCCESS" if success else "FAIL")

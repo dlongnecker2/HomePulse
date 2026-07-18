@@ -39,6 +39,7 @@
     "method": "home_assistant",
     "recovery_device_type": "home_assistant",
     "recovery_control_mode": "home_assistant",
+    "router_recovery_live_enabled": false,
     "recovery_device_ip": "",
     "recovery_device_name": "",
     "recovery_power_off_seconds": 10,
@@ -88,6 +89,7 @@
       "recovery_started": true,
       "recovery_success": true,
       "recovery_failed": true,
+      "recovery_skipped": true,
       "diagnostics_failed": true,
       "daily_summary": false
     }
@@ -213,6 +215,11 @@
       "charge_cost": "",
       "network": ""
     }
+  },
+  "environment": {
+    "enabled": true,
+    "refresh_interval_minutes": 5,
+    "stale_after_minutes": 10
   },
   "speedtest_interval_minutes": 60
 }

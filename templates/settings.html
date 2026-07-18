@@ -18,6 +18,8 @@
 
   {% set entity_id = router_reboot.get("recovery_entity_id", router_reboot.get("matter_entity_id", "")) %}
   {% set method = router_reboot.get("recovery_device_type", router_reboot.get("method", "home_assistant")) %}
+  {% set live_recovery_enabled = router_reboot.get("router_recovery_live_enabled", false) %}
+  {% set recovery_mode_label = router_recovery_status.get("mode_label", "DRY RUN") %}
   {% set notifications = email.get("notifications", {}) %}
   {% set energy_entities = energy.get("home_assistant_entities", {}) %}
   {% set energy_alerts = energy.get("alerts", {}) %}
@@ -31,13 +33,23 @@
   <form method="post" action="{{ url_for('settings') }}" class="settings-form">
     <section class="settings-section safety-summary">
       <h3>Recovery</h3>
+      <div class="recovery-mode-banner {% if live_recovery_enabled %}live{% else %}dry-run{% endif %}">
+        <span class="recovery-mode-label">Current mode</span>
+        <strong id="recovery-mode-state">{{ recovery_mode_label }}</strong>
+      </div>
+
+      <label class="option-row recovery-live-toggle" for="router-recovery-live-enabled">
+        <input id="router-recovery-live-enabled" type="checkbox" name="router_recovery_live_enabled" {% if live_recovery_enabled %}checked{% endif %}>
+        <span>Enable Automatic Router Recovery</span>
+      </label>
+      <p class="settings-help recovery-warning">I understand that HomePulse may automatically power-cycle the configured recovery switch when outage conditions are met.</p>
 
       <label class="field-label" for="recovery-device-type">Recovery Method</label>
       <select id="recovery-device-type" name="recovery_device_type">
         <option value="home_assistant" {% if method in ("home_assistant", "tapo_p125m_matter", "matter", "matter_bridge") %}selected{% endif %}>Home Assistant (Recommended)</option>
         <option value="dry_run" {% if method == "dry_run" %}selected{% endif %}>Dry Run</option>
       </select>
-      <p class="settings-help">Home Assistant is the recommended recovery controller. Automatic router recovery remains in Dry Run until real reboot is explicitly enabled later.</p>
+      <p class="settings-help">Home Assistant is the recommended recovery controller.</p>
 
       <label class="field-label" for="home-assistant-url">Home Assistant URL</label>
       <input id="home-assistant-url" name="home_assistant_url" type="text" value="{{ router_reboot.get("home_assistant_url", "") }}" placeholder="http://192.168.0.92:8123">
@@ -54,6 +66,16 @@
         <div><span>Current State</span><strong id="recovery-summary-state">Unknown</strong></div>
         <div><span>Last Test Result</span><strong id="recovery-summary-result">{{ diagnostic_result.status if diagnostic_result else "None" }}</strong></div>
       </div>
+
+      {% if live_recovery_enabled %}
+        <div class="recovery-live-summary">
+          <div><span>Recovery Method</span><strong>{{ router_recovery_status.get("recovery_method", "Not configured") }}</strong></div>
+          <div><span>Recovery Entity</span><strong>{{ router_recovery_status.get("recovery_entity", "Not configured") }}</strong></div>
+          <div><span>Cooldown Status</span><strong>{{ router_recovery_status.get("cooldown_status", "READY") }}</strong></div>
+          <div><span>Last Automatic Attempt</span><strong>{{ router_recovery_status.get("last_attempt", "None") }}</strong></div>
+          <div><span>Last Automatic Result</span><strong>{{ router_recovery_status.get("last_result", "None") }}</strong></div>
+        </div>
+      {% endif %}
 
       <div class="diagnostics-actions inline-diagnostics">
         <div class="diagnostic-action">
@@ -182,6 +204,10 @@
       <label class="option-row">
         <input type="checkbox" name="notify_recovery_failed" {% if notifications.get("recovery_failed", true) %}checked{% endif %}>
         <span>Recovery failed</span>
+      </label>
+      <label class="option-row">
+        <input type="checkbox" name="notify_recovery_skipped" {% if notifications.get("recovery_skipped", true) %}checked{% endif %}>
+        <span>Recovery skipped</span>
       </label>
       <label class="option-row">
         <input type="checkbox" name="notify_diagnostics_failed" {% if notifications.get("diagnostics_failed", true) %}checked{% endif %}>
@@ -499,6 +525,7 @@
       router_reboot: {
         recovery_device_type: fieldValue("recovery-device-type"),
         recovery_control_mode: "home_assistant",
+        router_recovery_live_enabled: document.getElementById("router-recovery-live-enabled")?.checked || false,
         home_assistant_url: fieldValue("home-assistant-url"),
         home_assistant_token: fieldValue("home-assistant-token"),
         recovery_entity_id: fieldValue("recovery-entity-id"),

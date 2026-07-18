@@ -82,6 +82,7 @@ class Application:
         self._last_solar_producing = None
         self._last_energy_charger_available = None
         self._last_home_assistant_available = None
+        self._router_recovery_lock = threading.Lock()
         self._last_lighting_device_state = {}
         self._last_garden_watering_state = None
         self._last_garden_rain_delay_state = None
@@ -557,6 +558,7 @@ class Application:
             self.garden.config = self.config
 
         router_reboot = self.config.data.setdefault("router_reboot", {})
+        live_recovery_enabled = form.get("router_recovery_live_enabled") == "on"
         device_type = form.get(
             "recovery_device_type",
             form.get("router_reboot_method", router_reboot.get("recovery_device_type", "home_assistant")),
@@ -578,7 +580,8 @@ class Application:
         router_reboot["recovery_wait_after_power_on_seconds"] = int(
             form.get("recovery_wait_after_power_on_seconds", "180") or 180
         )
-        router_reboot["real_reboot_enabled"] = False
+        router_reboot["router_recovery_live_enabled"] = live_recovery_enabled
+        router_reboot["real_reboot_enabled"] = live_recovery_enabled
         router_reboot["http_url"] = form.get("router_http_url", "").strip()
         router_reboot["ssh_host"] = form.get("router_ssh_host", "").strip()
         router_reboot["ssh_user"] = form.get("router_ssh_user", "").strip()
@@ -732,6 +735,7 @@ class Application:
             entities["production_ct_energy_delivered"] = form.get(
                 "solar_entity_production_ct_energy_delivered", ""
             ).strip()
+        self.router_rebooter.config = self.config
         self.config.save()
 
     def history_snapshot(self):
@@ -1084,12 +1088,15 @@ class Application:
         """Mirror key router reboot DB events into the Home timeline."""
         title_map = {
             "router_reboot": "Router Reboot Executed",
+            "router_reboot_dry_run": "Router Reboot Dry Run",
             "router_reboot_recommended": "Router Reboot Recommended",
             "router_reboot_skipped": "Router Reboot Skipped",
         }
         severity = self.timeline.SEV_WARNING
         if event_type == "router_reboot" and result is not None:
             severity = self.timeline.SEV_SUCCESS if getattr(result, "internet_restored", False) else self.timeline.SEV_WARNING
+        if event_type == "router_reboot_dry_run":
+            severity = self.timeline.SEV_INFO
 
         self.record_timeline_event(
             category=self.timeline.CAT_RECOVERY,
@@ -1441,6 +1448,13 @@ class Application:
             )
             self.log.info(message)
             self.db.add_event(timestamp=str(now), event_type="router_reboot_skipped", message=message)
+            context = self.reboot_context(now, reasons)
+            context["recovery_mode"] = "skipped"
+            context["skip_reason"] = message
+            self.email_notifier.send_recovery_skipped(
+                context,
+                message,
+            )
             return
 
         self.execute_router_reboot(now, reasons)
@@ -1511,6 +1525,18 @@ class Application:
             return latest_reboot
         return None
 
+    def latest_automatic_recovery_activity(self):
+        events = [
+            event for event in (
+                self.db.latest_event("router_reboot"),
+                self.db.latest_event("router_reboot_dry_run"),
+            )
+            if event and self.parse_timestamp(event["timestamp"])
+        ]
+        if not events:
+            return None
+        return max(events, key=lambda event: self.parse_timestamp(event["timestamp"]))
+
     def latest_reboot_activity(self):
         events = [
             event for event in (
@@ -1534,15 +1560,49 @@ class Application:
         self.publish_router_reboot_timeline("router_reboot_recommended", message)
 
     def execute_router_reboot(self, now, reasons):
+        if not self._router_recovery_lock.acquire(blocking=False):
+            message = "Router recovery skipped because another recovery is already running."
+            self.log.warning(message)
+            context = self.reboot_context(now, reasons)
+            context["recovery_mode"] = "skipped"
+            context["skip_reason"] = message
+            self.db.add_event(timestamp=str(now), event_type="router_reboot_skipped", message=message)
+            self.publish_router_reboot_timeline("router_reboot_skipped", message)
+            self.email_notifier.send_recovery_skipped(context, message)
+            return
+
         context = self.reboot_context(now, reasons)
+        live_enabled = self.router_rebooter.live_recovery_enabled()
+        context["recovery_mode"] = "live" if live_enabled else "dry_run"
         context["start_time"] = str(now)
+
+        ready, blocked_reason = self.router_recovery_live_gate(context, live_enabled)
+        if not ready and live_enabled:
+            message = f"Router recovery skipped because live recovery is not ready: {blocked_reason}"
+            self.log.warning(message)
+            context["recovery_mode"] = "skipped"
+            context["skip_reason"] = blocked_reason
+            self.db.add_event(timestamp=str(now), event_type="router_reboot_skipped", message=message)
+            self.publish_router_reboot_timeline("router_reboot_skipped", message)
+            self.email_notifier.send_recovery_skipped(context, blocked_reason)
+            self._router_recovery_lock.release()
+            return
+
         self.email_notifier.send_recovery_started(context)
-        result = self.router_rebooter.execute(context["reason"])
-        context["end_time"] = str(datetime.now())
+        try:
+            result = self.router_rebooter.execute(context["reason"])
+        except Exception as exc:
+            self.log.exception(f"Router recovery failed: {exc}")
+            result = self._failed_reboot_result(exc, live_enabled)
+        finally:
+            context["end_time"] = str(datetime.now())
+            self._router_recovery_lock.release()
+
+        event_type = "router_reboot" if not result.dry_run else "router_reboot_dry_run"
         message = self.reboot_event_message(context, result)
-        self.db.add_event(timestamp=str(now), event_type="router_reboot", message=message)
+        self.db.add_event(timestamp=str(now), event_type=event_type, message=message)
         self.log.warning(message)
-        self.publish_router_reboot_timeline("router_reboot", message, result=result)
+        self.publish_router_reboot_timeline(event_type, message, result=result)
         self.email_notifier.send_reboot_notification(context, result)
 
     def reboot_context(self, now, reasons):
@@ -1561,9 +1621,57 @@ class Application:
             "maintenance_window": self.config.get("reboot_window_time", default="04:00"),
         }
 
+    def router_recovery_live_gate(self, context, live_enabled):
+        if not live_enabled:
+            return True, None
+
+        recovery = self.config.get("router_reboot", default={})
+        device_type = str(recovery.get("recovery_device_type") or recovery.get("method") or "").strip().lower()
+        if device_type in ("home_assistant", "matter", "matter_bridge", "tapo_p125m_matter"):
+            from modules.power_adapters.home_assistant import HomeAssistantAdapter
+
+            adapter = HomeAssistantAdapter(self.config, self.log)
+            validation = adapter._validate_settings()
+            if validation:
+                return False, validation["message"]
+            connection = adapter.test_connection()
+            if connection.status != "PASS":
+                return False, connection.message
+        elif not device_type:
+            return False, "Recovery method is not configured."
+
+        if self.recent_router_reboot(datetime.fromisoformat(context["timestamp"])) is not None:
+            return False, "Cooldown is active."
+        return True, None
+
+    def router_recovery_summary(self, now=None):
+        now = now or datetime.now()
+        recovery = self.config.get("router_reboot", default={})
+        latest_attempt = self.latest_automatic_recovery_activity()
+        latest_live = self.latest_reboot_activity()
+        cooldown_active = self.recent_router_reboot(now) is not None
+        cooldown_hours = self.config.get("reboot_cooldown_hours", default=24)
+        cooldown_status = "ACTIVE" if cooldown_active else "READY"
+        if cooldown_active and latest_live:
+            rebooted_at = self.parse_timestamp(latest_live["timestamp"])
+            remaining = timedelta(hours=cooldown_hours) - (now - rebooted_at)
+            if remaining.total_seconds() > 0:
+                minutes = int(remaining.total_seconds() // 60)
+                cooldown_status = f"ACTIVE - {minutes} minute(s) remaining"
+        return {
+            "mode_label": "LIVE AUTOMATIC RECOVERY" if self.router_rebooter.live_recovery_enabled() else "DRY RUN",
+            "live_enabled": self.router_rebooter.live_recovery_enabled(),
+            "recovery_method": recovery.get("recovery_device_type") or recovery.get("method") or "Not configured",
+            "recovery_entity": recovery.get("recovery_entity_id") or recovery.get("matter_entity_id") or "Not configured",
+            "cooldown_status": cooldown_status,
+            "last_attempt": latest_attempt["timestamp"] if latest_attempt else "None",
+            "last_result": latest_attempt["message"] if latest_attempt else "None",
+        }
+
     def reboot_event_message(self, context, result):
+        mode = "Dry Run" if result.dry_run else "Live"
         return (
-            f"Router reboot {result.method}: {result.result}. "
+            f"Router reboot {mode} {result.method}: {result.result}. "
             f"Reason: {context['reason']}. "
             f"Quality={context['quality_score']}; "
             f"Download={context['download']}; Upload={context['upload']}; "
@@ -1571,6 +1679,21 @@ class Application:
             f"FailedChecks={context['failed_checks']}; "
             f"CommandSent={result.command_sent}; RouterResponded={result.router_responded}; "
             f"InternetRestored={result.internet_restored}; Recovery={result.elapsed_recovery_time}"
+        )
+
+    def _failed_reboot_result(self, exc, live_enabled):
+        from modules.router_rebooter import RebootResult
+
+        return RebootResult(
+            method="home_assistant" if live_enabled else "dry_run",
+            dry_run=not live_enabled,
+            command_sent=False,
+            router_responded=False,
+            internet_restored=False,
+            result=f"Recovery failed: {exc}",
+            elapsed_recovery_time="0s",
+            router_uptime_before="Unavailable",
+            details=str(exc),
         )
 
     def failed_check_count(self):

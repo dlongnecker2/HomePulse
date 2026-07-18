@@ -222,6 +222,7 @@ class Dashboard:
                 lighting=self.application.lighting.lighting_config(),
                 garden=self.application.garden.garden_config(),
                 diagnostic_result=self.application.diagnostics.latest_result(),
+                router_recovery_status=self.application.router_recovery_summary(),
                 error=error,
                 saved=request.args.get("saved") == "1",
                 now=datetime.now(),
@@ -1425,12 +1426,14 @@ class Dashboard:
     def _reboot_status(self):
         router_reboot = self.application.config.get("router_reboot", default={})
         email = self.application.config.get("email", default={})
-        latest = self.application.db.latest_event("router_reboot")
+        latest = self.application.latest_automatic_recovery_activity()
         status = self.application.router_rebooter.status()
+        recovery_summary = self.application.router_recovery_summary()
         return [
             ("Current Method", status["label"]),
             ("Device Type", status["device_type"]),
             ("Real Reboot Enabled", "Yes" if status["real_reboot_enabled"] else "No"),
+            ("Automatic Recovery", recovery_summary["mode_label"]),
             ("Dry-run Active", "Yes" if status["dry_run_active"] else "No"),
             ("Device Name", router_reboot.get("recovery_device_name") or "Not configured"),
             ("Device IP", router_reboot.get("recovery_device_ip") or "Not configured"),
@@ -1438,6 +1441,9 @@ class Dashboard:
             ("Power Off Seconds", router_reboot.get("recovery_power_off_seconds", 10)),
             ("Wait After Power On", router_reboot.get("recovery_wait_after_power_on_seconds", 180)),
             ("Dry Run Mode", self.application.config.get("dry_run", default=True)),
+            ("Last Automatic Attempt", recovery_summary["last_attempt"]),
+            ("Last Automatic Result", recovery_summary["last_result"]),
+            ("Cooldown Status", recovery_summary["cooldown_status"]),
             ("Email Enabled", email.get("email_notifications_enabled", email.get("enabled", False))),
             ("Last Reboot Event", latest["timestamp"] if latest else "None recorded"),
         ]
