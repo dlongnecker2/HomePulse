@@ -25,6 +25,7 @@ from modules.logger import get_logger
 from modules.network import NetworkMonitor
 from modules.notifications import NotificationManager
 from modules.port_check import check_dashboard_port
+from modules.power_adapters.home_assistant import HomeAssistantAdapter
 from modules.router_rebooter import RouterRebooter
 from modules.scheduler import Scheduler
 from modules.solar import SolarManager
@@ -1628,8 +1629,6 @@ class Application:
         recovery = self.config.get("router_reboot", default={})
         device_type = str(recovery.get("recovery_device_type") or recovery.get("method") or "").strip().lower()
         if device_type in ("home_assistant", "matter", "matter_bridge", "tapo_p125m_matter"):
-            from modules.power_adapters.home_assistant import HomeAssistantAdapter
-
             adapter = HomeAssistantAdapter(self.config, self.log)
             validation = adapter._validate_settings()
             if validation:
@@ -1644,9 +1643,55 @@ class Application:
             return False, "Cooldown is active."
         return True, None
 
-    def router_recovery_summary(self, now=None):
+    def normalized_router_recovery(self, recovery=None):
+        normalized = dict(recovery or self.config.get("router_reboot", default={}))
+        if not normalized.get("recovery_entity_id") and normalized.get("matter_entity_id"):
+            normalized["recovery_entity_id"] = normalized.get("matter_entity_id")
+        normalized["home_assistant_url"] = str(normalized.get("home_assistant_url") or "").strip()
+        normalized["recovery_entity_id"] = str(normalized.get("recovery_entity_id") or "").strip()
+        normalized["matter_entity_id"] = str(normalized.get("matter_entity_id") or normalized.get("recovery_entity_id") or "").strip()
+        return normalized
+
+    def router_recovery_state(self, recovery=None, timeout_seconds=5):
+        normalized = self.normalized_router_recovery(recovery)
+        if not normalized.get("home_assistant_url") or not normalized.get("recovery_entity_id"):
+            return {
+                "current_state": "UNKNOWN",
+                "state_status": "WARN",
+                "state_message": "Home Assistant recovery is not fully configured.",
+            }
+
+        try:
+            adapter = HomeAssistantAdapter(self.config, self.log)
+            result = adapter.get_state(timeout_seconds=timeout_seconds)
+        except Exception as exc:
+            self.log.exception(f"Home Assistant recovery state lookup failed: {exc}")
+            return {
+                "current_state": "UNKNOWN",
+                "state_status": "FAIL",
+                "state_message": "Home Assistant recovery state could not be retrieved.",
+            }
+
+        raw_state = str(result.metadata.get("state") or "").strip().lower()
+        if result.status != "PASS":
+            current_state = "UNKNOWN"
+        elif raw_state in ("on", "off"):
+            current_state = raw_state.upper()
+        elif raw_state in ("unavailable", "unknown", ""):
+            current_state = "UNAVAILABLE"
+        else:
+            current_state = "UNAVAILABLE"
+
+        return {
+            "current_state": current_state,
+            "state_status": result.status,
+            "state_message": result.message,
+            "state_metadata": result.metadata,
+        }
+
+    def router_recovery_summary(self, now=None, include_live_state=False):
         now = now or datetime.now()
-        recovery = self.config.get("router_reboot", default={})
+        recovery = self.normalized_router_recovery()
         latest_attempt = self.latest_automatic_recovery_activity()
         latest_live = self.latest_reboot_activity()
         cooldown_active = self.recent_router_reboot(now) is not None
@@ -1658,11 +1703,20 @@ class Application:
             if remaining.total_seconds() > 0:
                 minutes = int(remaining.total_seconds() // 60)
                 cooldown_status = f"ACTIVE - {minutes} minute(s) remaining"
+        recovery_state = self.router_recovery_state(recovery) if include_live_state else {
+            "current_state": "UNKNOWN",
+            "state_status": "UNKNOWN",
+            "state_message": "Live state lookup not requested.",
+        }
         return {
             "mode_label": "LIVE AUTOMATIC RECOVERY" if self.router_rebooter.live_recovery_enabled() else "DRY RUN",
             "live_enabled": self.router_rebooter.live_recovery_enabled(),
+            "home_assistant_url": recovery.get("home_assistant_url") or "Not configured",
             "recovery_method": recovery.get("recovery_device_type") or recovery.get("method") or "Not configured",
             "recovery_entity": recovery.get("recovery_entity_id") or recovery.get("matter_entity_id") or "Not configured",
+            "current_state": recovery_state["current_state"],
+            "state_status": recovery_state["state_status"],
+            "state_message": recovery_state["state_message"],
             "cooldown_status": cooldown_status,
             "last_attempt": latest_attempt["timestamp"] if latest_attempt else "None",
             "last_result": latest_attempt["message"] if latest_attempt else "None",

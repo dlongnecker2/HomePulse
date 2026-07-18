@@ -125,11 +125,7 @@ class RouterRecoveryUiTests(unittest.TestCase):
             schedule_mode="every_1_hour",
             schedule_label="Every hour",
             speedtest_times=[],
-            router_reboot={
-                "home_assistant_url": "http://homeassistant.local:8123",
-                "recovery_entity_id": "switch.office_router_plug",
-                "router_recovery_live_enabled": live_enabled,
-            },
+            router_reboot={"router_recovery_live_enabled": live_enabled},
             email={"notifications": {}},
             energy={"home_assistant_entities": {}, "alerts": {}},
             vehicle={"entities": {}},
@@ -141,7 +137,9 @@ class RouterRecoveryUiTests(unittest.TestCase):
             router_recovery_status={
                 "mode_label": "LIVE AUTOMATIC RECOVERY" if live_enabled else "DRY RUN",
                 "recovery_method": "home_assistant",
+                "home_assistant_url": "http://homeassistant.local:8123",
                 "recovery_entity": "switch.office_router_plug",
+                "current_state": "ON",
                 "cooldown_status": "READY",
                 "last_attempt": "None",
                 "last_result": "None",
@@ -164,6 +162,9 @@ class RouterRecoveryUiTests(unittest.TestCase):
         html = self._render_settings(True)
         self.assertIn("LIVE AUTOMATIC RECOVERY", html)
         self.assertIn('name="router_recovery_live_enabled" checked', html)
+        self.assertIn("http://homeassistant.local:8123", html)
+        self.assertIn("switch.office_router_plug", html)
+        self.assertIn(">ON<", html)
 
 
 class RouterRecoveryExecutionTests(unittest.TestCase):
@@ -402,6 +403,32 @@ class RouterRecoveryExecutionTests(unittest.TestCase):
 
         self.assertEqual(result.status, "PASS")
         adapter.cycle_power.assert_called_once()
+
+    def test_router_recovery_summary_uses_live_state_lookup_without_rebooting(self):
+        app = self._fake_app(live_enabled=True)
+        with patch("modules.application.HomeAssistantAdapter.get_state", return_value=PowerAdapterResult(
+            status="PASS",
+            message="Home Assistant entity switch.office_router_plug is on.",
+            device_responded=True,
+            power_restored=True,
+            metadata={"state": "on", "entity_id": "switch.office_router_plug"},
+        )):
+            summary = app.router_recovery_summary(include_live_state=True)
+
+        self.assertEqual(summary["home_assistant_url"], "http://homeassistant.local:8123")
+        self.assertEqual(summary["recovery_entity"], "switch.office_router_plug")
+        self.assertEqual(summary["current_state"], "ON")
+        app.router_rebooter.execute.assert_not_called()
+
+    def test_router_recovery_summary_normalizes_failed_state_lookup(self):
+        app = self._fake_app(live_enabled=True)
+        original_config = dict(app.config.data["router_reboot"])
+        with patch("modules.application.HomeAssistantAdapter.get_state", side_effect=RuntimeError("boom")):
+            summary = app.router_recovery_summary(include_live_state=True)
+
+        self.assertEqual(summary["current_state"], "UNKNOWN")
+        self.assertEqual(app.config.data["router_reboot"], original_config)
+        app.router_rebooter.execute.assert_not_called()
 
 
 class RouterRecoveryNotificationTests(unittest.TestCase):

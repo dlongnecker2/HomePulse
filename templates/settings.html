@@ -16,7 +16,7 @@
     <div class="settings-message error">{{ error }}</div>
   {% endif %}
 
-  {% set entity_id = router_reboot.get("recovery_entity_id", router_reboot.get("matter_entity_id", "")) %}
+  {% set entity_id = router_recovery_status.get("recovery_entity", router_reboot.get("recovery_entity_id", router_reboot.get("matter_entity_id", ""))) %}
   {% set method = router_reboot.get("recovery_device_type", router_reboot.get("method", "home_assistant")) %}
   {% set live_recovery_enabled = router_reboot.get("router_recovery_live_enabled", false) %}
   {% set recovery_mode_label = router_recovery_status.get("mode_label", "DRY RUN") %}
@@ -61,9 +61,9 @@
       <input id="recovery-entity-id" name="recovery_entity_id" type="text" value="{{ entity_id }}" placeholder="switch.office_router_plug">
 
       <div class="recovery-device-summary">
-        <div><span>Home Assistant URL</span><strong id="recovery-summary-url">{{ router_reboot.get("home_assistant_url", "Not configured") or "Not configured" }}</strong></div>
-        <div><span>Entity ID</span><strong id="recovery-summary-entity">{{ entity_id or "Not configured" }}</strong></div>
-        <div><span>Current State</span><strong id="recovery-summary-state">Unknown</strong></div>
+        <div><span>Home Assistant URL</span><strong id="recovery-summary-url">{{ router_recovery_status.get("home_assistant_url") or "Not configured" }}</strong></div>
+        <div><span>Entity ID</span><strong id="recovery-summary-entity">{{ router_recovery_status.get("recovery_entity") or entity_id or "Not configured" }}</strong></div>
+        <div><span>Current State</span><strong id="recovery-summary-state">{{ router_recovery_status.get("current_state") or "UNKNOWN" }}</strong></div>
         <div><span>Last Test Result</span><strong id="recovery-summary-result">{{ diagnostic_result.status if diagnostic_result else "None" }}</strong></div>
       </div>
 
@@ -658,10 +658,16 @@
 
   function updateRecoverySummary(result) {
     const state = result.metadata?.state || result.metadata?.confirmed_state?.state;
-    document.getElementById("recovery-summary-url").textContent = fieldValue("home-assistant-url") || "Not configured";
-    document.getElementById("recovery-summary-entity").textContent = fieldValue("recovery-entity-id") || "Not configured";
-    if (state) document.getElementById("recovery-summary-state").textContent = state;
+    if (state) document.getElementById("recovery-summary-state").textContent = normalizeRecoveryState(state);
     document.getElementById("recovery-summary-result").textContent = `${result.status || "--"} - ${result.message || "No message returned."}`;
+  }
+
+  function normalizeRecoveryState(state) {
+    const value = String(state || "").trim().toUpperCase();
+    if (!value) return "UNKNOWN";
+    if (value === "ON" || value === "OFF") return value;
+    if (value === "UNAVAILABLE" || value === "UNKNOWN") return "UNAVAILABLE";
+    return "UNAVAILABLE";
   }
 </script>
 {% endblock %}

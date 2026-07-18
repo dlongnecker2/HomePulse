@@ -26,7 +26,7 @@ class HomeAssistantAdapter(PowerAdapter):
     def status(self):
         return self.test_connection()
 
-    def get_state(self):
+    def get_state(self, timeout_seconds=15):
         validation = self._validate_settings()
         if validation:
             return PowerAdapterResult(
@@ -38,7 +38,7 @@ class HomeAssistantAdapter(PowerAdapter):
         recovery = self._recovery()
         entity_id = self._entity_id(recovery)
         try:
-            response = self._request(f"/api/states/{entity_id}", method="GET", timeout=15)
+            response = self._request(f"/api/states/{entity_id}", method="GET", timeout=timeout_seconds)
             state = response.get("state")
             return PowerAdapterResult(
                 status="PASS",
