@@ -26,6 +26,8 @@
   {% set energy_alerts = energy.get("alerts", {}) %}
   {% set vehicle_entities = vehicle.get("entities", {}) %}
   {% set solar_entities = solar.get("entities", {}) %}
+  {% set weight_progress_config = weight_progress if weight_progress is defined else {} %}
+  {% set weight_progress_entities = weight_progress_config.get("entities", {}) %}
   {% set history_config = config.get("history", default={}) %}
   {% set weather_config = weather %}
   {% set lighting_config = lighting %}
@@ -154,6 +156,56 @@
         <input id="router-ssh-command" name="router_ssh_command" type="hidden" value="{{ router_reboot.get("ssh_command", "reboot") }}">
         <input id="smart-plug-url" name="smart_plug_url" type="hidden" value="{{ router_reboot.get("smart_plug_url", "") }}">
       </details>
+    </section>
+
+    <section class="settings-section">
+      <h3>Weight Progress</h3>
+
+      <label class="option-row">
+        <input type="checkbox" name="weight_progress_enabled" {% if weight_progress_config.get("enabled", true) %}checked{% endif %}>
+        <span>Enable Weight Progress</span>
+      </label>
+      <p class="settings-help">Read current weight and composition values from Home Assistant and store local trend history.</p>
+
+      <label class="field-label" for="weight-progress-weight-entity">Weight Entity</label>
+      <input id="weight-progress-weight-entity" name="weight_progress_weight_entity" type="text" value="{{ weight_progress_entities.get("weight", "") }}" placeholder="sensor.withings_weight">
+
+      <label class="field-label" for="weight-progress-body-fat-entity">Body Fat Entity</label>
+      <input id="weight-progress-body-fat-entity" name="weight_progress_body_fat_entity" type="text" value="{{ weight_progress_entities.get("body_fat", "") }}" placeholder="sensor.withings_fat_ratio">
+
+      <label class="field-label" for="weight-progress-withings-goal-entity">Withings Goal Entity</label>
+      <input id="weight-progress-withings-goal-entity" name="weight_progress_withings_goal_entity" type="text" value="{{ weight_progress_entities.get("withings_goal", "") }}" placeholder="sensor.withings_weight_goal">
+
+      <label class="field-label" for="weight-progress-fat-mass-entity">Fat Mass Entity</label>
+      <input id="weight-progress-fat-mass-entity" name="weight_progress_fat_mass_entity" type="text" value="{{ weight_progress_entities.get("fat_mass", "") }}" placeholder="sensor.withings_fat_mass">
+
+      <label class="field-label" for="weight-progress-fat-free-mass-entity">Fat-Free Mass Entity</label>
+      <input id="weight-progress-fat-free-mass-entity" name="weight_progress_fat_free_mass_entity" type="text" value="{{ weight_progress_entities.get("fat_free_mass", "") }}" placeholder="sensor.withings_fat_free_mass">
+
+      <label class="field-label" for="weight-progress-muscle-mass-entity">Muscle Mass Entity</label>
+      <input id="weight-progress-muscle-mass-entity" name="weight_progress_muscle_mass_entity" type="text" value="{{ weight_progress_entities.get("muscle_mass", "") }}" placeholder="sensor.withings_muscle_mass">
+
+      <label class="field-label" for="weight-progress-bone-mass-entity">Bone Mass Entity</label>
+      <input id="weight-progress-bone-mass-entity" name="weight_progress_bone_mass_entity" type="text" value="{{ weight_progress_entities.get("bone_mass", "") }}" placeholder="sensor.withings_bone_mass">
+
+      <label class="field-label" for="weight-progress-heart-rate-entity">Heart Rate Entity</label>
+      <input id="weight-progress-heart-rate-entity" name="weight_progress_heart_rate_entity" type="text" value="{{ weight_progress_entities.get("heart_rate", "") }}" placeholder="sensor.withings_heart_pulse">
+
+      <label class="field-label" for="weight-progress-battery-entity">Scale Battery Entity</label>
+      <input id="weight-progress-battery-entity" name="weight_progress_battery_entity" type="text" value="{{ weight_progress_entities.get("battery", "") }}" placeholder="sensor.withings_battery">
+
+      <label class="field-label" for="weight-progress-display-unit">Display Unit</label>
+      <select id="weight-progress-display-unit" name="weight_progress_display_unit">
+        <option value="lb" {% if weight_progress_config.get("display_unit", "lb") == "lb" %}selected{% endif %}>Pounds (lb)</option>
+        <option value="kg" {% if weight_progress_config.get("display_unit") == "kg" %}selected{% endif %}>Kilograms (kg)</option>
+      </select>
+      <p class="settings-help">Starting and goal values use the selected display unit.</p>
+
+      <label class="field-label" for="weight-progress-starting-weight">Starting Weight</label>
+      <input id="weight-progress-starting-weight" name="weight_progress_starting_weight" type="number" min="0" step="0.1" value="{{ weight_progress_config.get("starting_weight", "") if weight_progress_config.get("starting_weight") is not none else "" }}" placeholder="Optional baseline">
+
+      <label class="field-label" for="weight-progress-goal-weight">Goal Weight</label>
+      <input id="weight-progress-goal-weight" name="weight_progress_goal_weight" type="number" min="0" step="0.1" value="{{ weight_progress_config.get("goal_weight") if weight_progress_config.get("goal_weight") is not none else 220 }}">
     </section>
 
     <section class="settings-section">

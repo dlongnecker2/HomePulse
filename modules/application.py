@@ -37,6 +37,7 @@ from modules.vehicle import VehicleManager
 from modules.weather import WeatherManager
 from modules.garden import GardenManager
 from modules.network_mesh import NetworkMeshManager
+from modules.weight_progress import WeightProgressService
 from version import APP_NAME, APP_VERSION
 
 
@@ -58,6 +59,7 @@ class Application:
         self.lighting = LightingManager(self.config, self.log)
         self.garden = GardenManager(self.config, self.log)
         self.network_mesh = NetworkMeshManager(self.config, self.log)
+        self.weight_progress = WeightProgressService(self.config, self.log)
         self.history = HistoryService(self.config, self.log)
         self.environment = EnvironmentManager(self.config, self.log, self.db.environment)
         self.timeline = TimelineService()
@@ -143,6 +145,7 @@ class Application:
         self.db.initialize()
         self.log.info("Database initialized successfully")
         self.history.initialize()
+        self.weight_progress.initialize()
         self.environment.initialize()
         self.plugin_manager.initialize_plugins()
         self.load_latest_speedtest()
@@ -444,6 +447,7 @@ class Application:
         self.garden.config = self.config
         self.network_mesh.config = self.config
         self.history.refresh_config(self.config)
+        self.weight_progress.refresh_config(self.config)
         self.scheduler.remove_jobs_by_prefix("Scheduled Speed Test")
         self.scheduler.remove_jobs_by_prefix("History Snapshot")
         self.scheduler.remove_jobs_by_prefix("Solar Health Alert Check")
@@ -746,12 +750,54 @@ class Application:
             entities["production_ct_energy_delivered"] = form.get(
                 "solar_entity_production_ct_energy_delivered", ""
             ).strip()
+        weight_form_keys = (
+            "weight_progress_enabled",
+            "weight_progress_weight_entity",
+            "weight_progress_body_fat_entity",
+            "weight_progress_withings_goal_entity",
+            "weight_progress_fat_mass_entity",
+            "weight_progress_fat_free_mass_entity",
+            "weight_progress_muscle_mass_entity",
+            "weight_progress_bone_mass_entity",
+            "weight_progress_heart_rate_entity",
+            "weight_progress_battery_entity",
+            "weight_progress_display_unit",
+            "weight_progress_starting_weight",
+            "weight_progress_goal_weight",
+        )
+        if any(key in form for key in weight_form_keys):
+            weight_progress = self.config.data.setdefault("weight_progress", {})
+            entities = weight_progress.setdefault("entities", {})
+            weight_progress["enabled"] = form.get("weight_progress_enabled") == "on"
+            weight_progress["display_unit"] = (
+                form.get("weight_progress_display_unit", weight_progress.get("display_unit", "lb")).strip().lower() or "lb"
+            )
+            for key, form_key in (
+                ("weight", "weight_progress_weight_entity"),
+                ("body_fat", "weight_progress_body_fat_entity"),
+                ("withings_goal", "weight_progress_withings_goal_entity"),
+                ("fat_mass", "weight_progress_fat_mass_entity"),
+                ("fat_free_mass", "weight_progress_fat_free_mass_entity"),
+                ("muscle_mass", "weight_progress_muscle_mass_entity"),
+                ("bone_mass", "weight_progress_bone_mass_entity"),
+                ("heart_rate", "weight_progress_heart_rate_entity"),
+                ("battery", "weight_progress_battery_entity"),
+            ):
+                entities[key] = form.get(form_key, "").strip()
+            starting_weight = form.get("weight_progress_starting_weight", "").strip()
+            goal_weight = form.get("weight_progress_goal_weight", "").strip()
+            weight_progress["starting_weight"] = float(starting_weight) if starting_weight else None
+            weight_progress["goal_weight"] = (
+                float(goal_weight) if goal_weight else weight_progress.get("goal_weight", 220)
+            )
         try:
             self.router_rebooter.config = self.config
+            self.weight_progress.refresh_config(self.config)
             self.config.save()
         except Exception as exc:
             self.config.data = original_config
             self.router_rebooter.config = self.config
+            self.weight_progress.refresh_config(self.config)
             raise ValueError("Settings could not be saved. Your existing configuration was preserved.") from exc
 
         if history_changed:
@@ -765,6 +811,7 @@ class Application:
     def history_snapshot(self):
         try:
             count = self.history.snapshot(self)
+            self.weight_progress.snapshot()
             self.history.prune_old_data(self.history.retention_days())
             return count
         except Exception as exc:

@@ -121,6 +121,14 @@ class Dashboard:
         def garden():
             return render_template("garden.html", now=datetime.now())
 
+        @self.app.route("/weight-progress")
+        def weight_progress():
+            return render_template(
+                "weight_progress.html",
+                weight_progress=self.application.weight_progress.view_model(include_live=True),
+                now=datetime.now(),
+            )
+
         @self.app.route("/speed-test")
         def speed_test_center():
             status = self._dashboard_payload()
@@ -207,6 +215,8 @@ class Dashboard:
                 except ValueError as exc:
                     error = str(exc)
 
+            router_recovery = self.application.normalized_router_recovery()
+            weight_progress = self.application.weight_progress.weight_progress_config()
             return render_template(
                 "settings.html",
                 config=self.application.config,
@@ -214,20 +224,20 @@ class Dashboard:
                 schedule_label=self.application.speedtest_schedule_label(),
                 speedtest_times=self.application.configured_speedtest_times(),
                 router_reboot=self.application.config.get("router_reboot", default={}),
+                router_recovery_config=router_recovery,
                 email=self.application.config.get("email", default={}),
-            router_recovery = self.application.normalized_router_recovery()
                 energy=self.application.energy.energy_config(),
                 vehicle=self.application.vehicle.vehicle_config(),
                 solar=self.application.solar.solar_config(),
                 weather=self.application.weather.weather_config(),
                 lighting=self.application.lighting.lighting_config(),
                 garden=self.application.garden.garden_config(),
+                weight_progress=weight_progress,
                 diagnostic_result=self.application.diagnostics.latest_result(),
                 router_recovery_status=self.application.router_recovery_summary(
                     recovery=router_recovery,
                     include_live_state=True,
                 ),
-                router_recovery_config=router_recovery,
                 error=error,
                 saved=request.args.get("saved") == "1",
                 now=datetime.now(),

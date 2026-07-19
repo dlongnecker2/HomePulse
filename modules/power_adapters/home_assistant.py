@@ -27,7 +27,12 @@ class HomeAssistantAdapter(PowerAdapter):
         return self.test_connection()
 
     def get_state(self, timeout_seconds=15):
-        validation = self._validate_settings()
+        recovery = self._recovery()
+        entity_id = self._entity_id(recovery)
+        return self.get_entity_state(entity_id, timeout_seconds=timeout_seconds)
+
+    def get_entity_state(self, entity_id, timeout_seconds=15):
+        validation = self._validate_connection_settings()
         if validation:
             return PowerAdapterResult(
                 status=validation["status"],
@@ -35,8 +40,14 @@ class HomeAssistantAdapter(PowerAdapter):
                 metadata={"adapter": self.adapter_type, **validation["metadata"]},
             )
 
-        recovery = self._recovery()
-        entity_id = self._entity_id(recovery)
+        entity_id = str(entity_id or "").strip()
+        if not entity_id:
+            return PowerAdapterResult(
+                status="WARN",
+                message="Entity ID is required.",
+                metadata={"adapter": self.adapter_type, "missing": ["entity_id"]},
+            )
+
         try:
             response = self._request(f"/api/states/{entity_id}", method="GET", timeout=timeout_seconds)
             state = response.get("state")
@@ -50,6 +61,8 @@ class HomeAssistantAdapter(PowerAdapter):
                     "entity_id": entity_id,
                     "state": state,
                     "attributes": response.get("attributes", {}),
+                    "last_changed": response.get("last_changed"),
+                    "last_updated": response.get("last_updated"),
                 },
             )
         except HTTPError as exc:
@@ -233,19 +246,11 @@ class HomeAssistantAdapter(PowerAdapter):
             return json.loads(body) if body else {}
 
     def _validate_settings(self):
+        validation = self._validate_connection_settings()
+        if validation:
+            return validation
+
         recovery = self._recovery()
-        if not recovery.get("home_assistant_url"):
-            return {
-                "status": "WARN",
-                "message": "Home Assistant URL is required.",
-                "metadata": {"missing": ["home_assistant_url"]},
-            }
-        if not recovery.get("home_assistant_token"):
-            return {
-                "status": "WARN",
-                "message": "Missing token: enter a Home Assistant long-lived access token.",
-                "metadata": {"missing": ["home_assistant_token"]},
-            }
         entity_id = self._entity_id(recovery)
         if not entity_id:
             return {
@@ -258,6 +263,22 @@ class HomeAssistantAdapter(PowerAdapter):
                 "status": "FAIL",
                 "message": "Invalid entity ID: enter a Home Assistant switch entity such as switch.office_router_plug.",
                 "metadata": {"entity_id": entity_id},
+            }
+        return None
+
+    def _validate_connection_settings(self):
+        recovery = self._recovery()
+        if not recovery.get("home_assistant_url"):
+            return {
+                "status": "WARN",
+                "message": "Home Assistant URL is required.",
+                "metadata": {"missing": ["home_assistant_url"]},
+            }
+        if not recovery.get("home_assistant_token"):
+            return {
+                "status": "WARN",
+                "message": "Missing token: enter a Home Assistant long-lived access token.",
+                "metadata": {"missing": ["home_assistant_token"]},
             }
         return None
 

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Weight Progress{% endblock %}
+{% block content %}
+<section class="page-heading history-heading">
+  <div>
+    <h2>Weight Progress</h2>
+    <p>Local weight and body-composition history from Home Assistant. Daily readings can vary, so the trend matters more than a single point.</p>
+  </div>
+  <div class="range-controls" aria-label="Weight history ranges">
+    <span data-range="1w">1W</span>
+    <span class="active" data-range="1m">1M</span>
+    <span data-range="6m">6M</span>
+    <span data-range="1y">1Y</span>
+  </div>
+</section>
+
+<section class="history-summary-grid">
+  {% for card in weight_progress.summary_cards %}
+    <article class="summary-card">
+      <span>{{ card.label }}</span>
+      <strong>{{ card.value }}</strong>
+      {% if card.note %}
+        <div class="small">{{ card.note }}</div>
+      {% endif %}
+    </article>
+  {% endfor %}
+</section>
+
+<section class="dashboard-panel history-chart-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Weight Trend</h2>
+      <p>Recorded weight, seven-day rolling average, and the configured goal weight.</p>
+    </div>
+    <div class="range-controls" aria-label="Weight trend controls">
+      <span data-range="1w">1W</span>
+      <span class="active" data-range="1m">1M</span>
+      <span data-range="6m">6M</span>
+      <span data-range="1y">1Y</span>
+    </div>
+  </div>
+  <div id="weight-progress-chart-box" class="history-chart-box large" data-chart-key="weight-progress" data-default-range="{{ weight_progress.chart.default_range }}">
+    {% if weight_progress.measurement_count %}
+      <canvas id="weight-progress-chart"></canvas>
+    {% else %}
+      <div class="chart-empty-state">No weight history stored yet. The first successful weigh-in will appear here.</div>
+    {% endif %}
+  </div>
+  <p id="weight-progress-chart-note" class="small">{{ weight_progress.chart_message }}</p>
+</section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>Body Composition</h2>
+    <table>
+      {% for row in weight_progress.body_composition_rows %}
+        <tr><td>{{ row.label }}</td><td>{{ row.value }}</td></tr>
+      {% endfor %}
+    </table>
+  </article>
+
+  <article class="dashboard-panel">
+    <h2>Tracking Details</h2>
+    <table>
+      <tr><td>Display Unit</td><td>{{ weight_progress.display_unit }}</td></tr>
+      <tr><td>Stored Readings</td><td>{{ weight_progress.measurement_count }}</td></tr>
+      <tr><td>Latest Weigh-In</td><td>{{ weight_progress.latest_weigh_in_label }}</td></tr>
+      <tr><td>Goal Weight</td><td>{{ weight_progress.summary_cards[3].value }}</td></tr>
+      <tr><td>Withings Goal</td><td>{{ weight_progress.withings_goal }}{% if weight_progress.withings_goal_note %} <span class="small">({{ weight_progress.withings_goal_note }})</span>{% endif %}</td></tr>
+    </table>
+  </article>
+</section>
+
+<script>
+  window.WeightProgressData = {{ weight_progress | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/weight_progress.js') }}"></script>
+{% endblock %}

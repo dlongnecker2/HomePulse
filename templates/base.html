@@ -26,6 +26,7 @@
       <!-- Energy Center nav is reserved for future whole-home/grid analytics once meter-level data is available. -->
       <a href="{{ url_for('solar') }}" class="{% if request.endpoint == 'solar' %}active{% endif %}">Solar Center</a>
       <a href="{{ url_for('vehicle_center') }}" class="{% if request.endpoint == 'vehicle_center' %}active{% endif %}">Vehicle Center</a>
+      <a href="{{ url_for('weight_progress') }}" class="{% if request.endpoint == 'weight_progress' %}active{% endif %}">Weight Progress</a>
       <a href="{{ url_for('weather') }}" class="{% if request.endpoint == 'weather' %}active{% endif %}">Weather Center</a>
       <a href="{{ url_for('lighting') }}" class="{% if request.endpoint == 'lighting' %}active{% endif %}">Lighting Center</a>
       <a href="{{ url_for('garden') }}" class="{% if request.endpoint == 'garden' %}active{% endif %}">Garden Center</a>

@@ -3,6 +3,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from modules.config_backup import ConfigBackupService
+from modules.weight_progress.defaults import DEFAULT_WEIGHT_PROGRESS_CONFIG
 
 CONFIG_FILE = Path("config.json")
 CONFIG_DEFAULTS_FILE = Path("config.defaults.json")
@@ -97,6 +98,14 @@ BUILTIN_DEFAULT_CONFIG = {
             "charge_cost": "sensor.juice_box_cph50_charge_cost",
             "network": "sensor.juice_box_cph50_network",
         },
+    },
+    "weight_progress": {
+        "enabled": True,
+        "database": "data/weight_progress.db",
+        "display_unit": "lb",
+        "starting_weight": None,
+        "goal_weight": 220,
+        "entities": dict(DEFAULT_WEIGHT_PROGRESS_CONFIG["entities"]),
     },
     "vehicle": {
         "enabled": False,
