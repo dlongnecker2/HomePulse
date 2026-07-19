@@ -2,7 +2,7 @@ import json
 import tempfile
 import threading
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -467,7 +467,7 @@ class RouterRecoveryExecutionTests(unittest.TestCase):
     def test_cooldown_prevents_overlapping_live_recovery(self):
         app = self._fake_app(live_enabled=True)
         app.db._latest_events["router_reboot"] = {
-            "timestamp": "2026-07-18 07:30:00",
+            "timestamp": str(datetime.now() - timedelta(hours=1)),
             "event_type": "router_reboot",
             "message": "previous live recovery",
         }
