@@ -215,6 +215,7 @@ class Dashboard:
                 speedtest_times=self.application.configured_speedtest_times(),
                 router_reboot=self.application.config.get("router_reboot", default={}),
                 email=self.application.config.get("email", default={}),
+            router_recovery = self.application.normalized_router_recovery()
                 energy=self.application.energy.energy_config(),
                 vehicle=self.application.vehicle.vehicle_config(),
                 solar=self.application.solar.solar_config(),
@@ -222,7 +223,11 @@ class Dashboard:
                 lighting=self.application.lighting.lighting_config(),
                 garden=self.application.garden.garden_config(),
                 diagnostic_result=self.application.diagnostics.latest_result(),
-                router_recovery_status=self.application.router_recovery_summary(include_live_state=True),
+                router_recovery_status=self.application.router_recovery_summary(
+                    recovery=router_recovery,
+                    include_live_state=True,
+                ),
+                router_recovery_config=router_recovery,
                 error=error,
                 saved=request.args.get("saved") == "1",
                 now=datetime.now(),

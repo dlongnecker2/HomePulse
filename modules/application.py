@@ -1679,7 +1679,7 @@ class Application:
         normalized = self.normalized_router_recovery(recovery)
         if not normalized.get("home_assistant_url") or not normalized.get("recovery_entity_id"):
             return {
-                "current_state": "UNKNOWN",
+                "current_state": "Unknown",
                 "state_status": "WARN",
                 "state_message": "Home Assistant recovery is not fully configured.",
             }
@@ -1690,20 +1690,20 @@ class Application:
         except Exception as exc:
             self.log.exception(f"Home Assistant recovery state lookup failed: {exc}")
             return {
-                "current_state": "UNKNOWN",
+                "current_state": "Unknown",
                 "state_status": "FAIL",
                 "state_message": "Home Assistant recovery state could not be retrieved.",
             }
 
         raw_state = str(result.metadata.get("state") or "").strip().lower()
         if result.status != "PASS":
-            current_state = "UNKNOWN"
+            current_state = "Unknown"
         elif raw_state in ("on", "off"):
             current_state = raw_state.upper()
         elif raw_state in ("unavailable", "unknown", ""):
-            current_state = "UNAVAILABLE"
+            current_state = "Unknown"
         else:
-            current_state = "UNAVAILABLE"
+            current_state = "Unknown"
 
         return {
             "current_state": current_state,
@@ -1712,9 +1712,9 @@ class Application:
             "state_metadata": result.metadata,
         }
 
-    def router_recovery_summary(self, now=None, include_live_state=False):
+    def router_recovery_summary(self, now=None, recovery=None, include_live_state=False):
         now = now or datetime.now()
-        recovery = self.normalized_router_recovery()
+        recovery = self.normalized_router_recovery(recovery)
         latest_attempt = self.latest_automatic_recovery_activity()
         latest_live = self.latest_reboot_activity()
         cooldown_active = self.recent_router_reboot(now) is not None
@@ -1727,7 +1727,7 @@ class Application:
                 minutes = int(remaining.total_seconds() // 60)
                 cooldown_status = f"ACTIVE - {minutes} minute(s) remaining"
         recovery_state = self.router_recovery_state(recovery) if include_live_state else {
-            "current_state": "UNKNOWN",
+            "current_state": "Unknown",
             "state_status": "UNKNOWN",
             "state_message": "Live state lookup not requested.",
         }

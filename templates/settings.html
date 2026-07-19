@@ -16,7 +16,8 @@
     <div class="settings-message error">{{ error }}</div>
   {% endif %}
 
-  {% set entity_id = router_recovery_status.get("recovery_entity", router_reboot.get("recovery_entity_id", router_reboot.get("matter_entity_id", ""))) %}
+  {% set router_recovery = router_recovery_config if router_recovery_config is defined else router_reboot %}
+  {% set entity_id = router_recovery.get("recovery_entity_id", router_recovery.get("matter_entity_id", router_reboot.get("recovery_entity_id", router_reboot.get("matter_entity_id", "")))) %}
   {% set method = router_reboot.get("recovery_device_type", router_reboot.get("method", "home_assistant")) %}
   {% set live_recovery_enabled = router_reboot.get("router_recovery_live_enabled", false) %}
   {% set recovery_mode_label = router_recovery_status.get("mode_label", "DRY RUN") %}
@@ -61,16 +62,16 @@
       <input id="recovery-entity-id" name="recovery_entity_id" type="text" value="{{ entity_id }}" placeholder="switch.office_router_plug">
 
       <div class="recovery-device-summary">
-        <div><span>Home Assistant URL</span><strong id="recovery-summary-url">{{ router_recovery_status.get("home_assistant_url") or "Not configured" }}</strong></div>
-        <div><span>Entity ID</span><strong id="recovery-summary-entity">{{ router_recovery_status.get("recovery_entity") or entity_id or "Not configured" }}</strong></div>
-        <div><span>Current State</span><strong id="recovery-summary-state">{{ router_recovery_status.get("current_state") or "UNKNOWN" }}</strong></div>
+        <div><span>Home Assistant URL</span><strong id="recovery-summary-url">{{ router_recovery.get("home_assistant_url") or "Not configured" }}</strong></div>
+        <div><span>Entity ID</span><strong id="recovery-summary-entity">{{ router_recovery.get("recovery_entity_id") or router_recovery.get("matter_entity_id") or entity_id or "Not configured" }}</strong></div>
+        <div><span>Current State</span><strong id="recovery-summary-state">{{ router_recovery_status.get("current_state") or "Unknown" }}</strong></div>
         <div><span>Last Test Result</span><strong id="recovery-summary-result">{{ diagnostic_result.status if diagnostic_result else "None" }}</strong></div>
       </div>
 
       {% if live_recovery_enabled %}
         <div class="recovery-live-summary">
           <div><span>Recovery Method</span><strong>{{ router_recovery_status.get("recovery_method", "Not configured") }}</strong></div>
-          <div><span>Recovery Entity</span><strong>{{ router_recovery_status.get("recovery_entity", "Not configured") }}</strong></div>
+          <div><span>Recovery Entity</span><strong>{{ router_recovery.get("recovery_entity_id") or router_recovery.get("matter_entity_id") or "Not configured" }}</strong></div>
           <div><span>Cooldown Status</span><strong>{{ router_recovery_status.get("cooldown_status", "READY") }}</strong></div>
           <div><span>Last Automatic Attempt</span><strong>{{ router_recovery_status.get("last_attempt", "None") }}</strong></div>
           <div><span>Last Automatic Result</span><strong>{{ router_recovery_status.get("last_result", "None") }}</strong></div>
@@ -664,10 +665,9 @@
 
   function normalizeRecoveryState(state) {
     const value = String(state || "").trim().toUpperCase();
-    if (!value) return "UNKNOWN";
+    if (!value) return "Unknown";
     if (value === "ON" || value === "OFF") return value;
-    if (value === "UNAVAILABLE" || value === "UNKNOWN") return "UNAVAILABLE";
-    return "UNAVAILABLE";
+    return "Unknown";
   }
 </script>
 {% endblock %}

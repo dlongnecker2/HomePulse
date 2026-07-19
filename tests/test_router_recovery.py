@@ -102,6 +102,7 @@ class RouterRecoveryUiTests(unittest.TestCase):
             "internet",
             "solar",
             "vehicle_center",
+            "weight_progress",
             "weather",
             "lighting",
             "garden",
@@ -125,7 +126,17 @@ class RouterRecoveryUiTests(unittest.TestCase):
             schedule_mode="every_1_hour",
             schedule_label="Every hour",
             speedtest_times=[],
-            router_reboot={"router_recovery_live_enabled": live_enabled},
+            router_reboot={
+                "home_assistant_url": "http://homeassistant.local:8123",
+                "recovery_entity_id": "switch.office_router_plug",
+                "matter_entity_id": "switch.office_router_plug",
+                "router_recovery_live_enabled": live_enabled,
+            },
+            router_recovery_config={
+                "home_assistant_url": "http://homeassistant.local:8123",
+                "recovery_entity_id": "switch.office_router_plug",
+                "matter_entity_id": "switch.office_router_plug",
+            },
             email={"notifications": {}},
             energy={"home_assistant_entities": {}, "alerts": {}},
             vehicle={"entities": {}},
@@ -165,6 +176,128 @@ class RouterRecoveryUiTests(unittest.TestCase):
         self.assertIn("http://homeassistant.local:8123", html)
         self.assertIn("switch.office_router_plug", html)
         self.assertIn(">ON<", html)
+
+    def test_settings_summary_uses_router_recovery_config_when_status_is_partial(self):
+        app = Flask(__name__, template_folder=str(ROOT / "templates"))
+        app.jinja_env.globals["app_name"] = "HomePulse"
+        app.jinja_env.globals["render_test_button"] = lambda name, endpoint: f"<button>{name}</button>"
+        for endpoint in (
+            "home",
+            "home_center",
+            "environment_center",
+            "internet",
+            "solar",
+            "vehicle_center",
+            "weight_progress",
+            "weather",
+            "lighting",
+            "garden",
+            "speed_test_center",
+            "email_center",
+            "settings",
+            "lab",
+            "logs",
+            "about",
+            "test_home_assistant",
+            "test_home_assistant_power_cycle",
+            "test_smtp",
+            "test_ping",
+            "test_speed",
+            "test_full_diagnostics",
+        ):
+            app.add_url_rule(f"/{endpoint}", endpoint, lambda: "")
+
+        context = dict(
+            config=DummyConfig({"history": {}}),
+            schedule_mode="every_1_hour",
+            schedule_label="Every hour",
+            speedtest_times=[],
+            router_reboot={
+                "home_assistant_url": "http://homeassistant.local:8123",
+                "recovery_entity_id": "switch.office_router_plug",
+                "matter_entity_id": "switch.office_router_plug",
+                "router_recovery_live_enabled": True,
+            },
+            router_recovery_config={
+                "home_assistant_url": "http://homeassistant.local:8123",
+                "recovery_entity_id": "switch.office_router_plug",
+                "matter_entity_id": "switch.office_router_plug",
+            },
+            email={"notifications": {}},
+            energy={"home_assistant_entities": {}, "alerts": {}},
+            vehicle={"entities": {}},
+            solar={"entities": {}},
+            weather={},
+            lighting={},
+            garden={},
+            diagnostic_result=None,
+            router_recovery_status={
+                "mode_label": "LIVE AUTOMATIC RECOVERY",
+                "recovery_method": "home_assistant",
+                "current_state": "Unknown",
+                "cooldown_status": "READY",
+                "last_attempt": "None",
+                "last_result": "None",
+            },
+            error=None,
+            saved=False,
+            now=None,
+        )
+
+        with app.test_request_context("/settings"):
+            html = render_template("settings.html", **context)
+
+        self.assertIn("http://homeassistant.local:8123", html)
+        self.assertIn("switch.office_router_plug", html)
+        self.assertNotIn('id="recovery-summary-url">Not configured<', html)
+        self.assertNotIn('id="recovery-summary-entity">Not configured<', html)
+
+
+class RouterRecoveryStateTests(unittest.TestCase):
+    def _fake_app(self):
+        app = Application.__new__(Application)
+        app.log = MagicMock()
+        app.config = DummyConfig({
+            "reboot_cooldown_hours": 24,
+            "router_reboot": {
+                "home_assistant_url": "http://homeassistant.local:8123",
+                "home_assistant_token": "token",
+                "recovery_entity_id": "switch.office_router_plug",
+                "matter_entity_id": "switch.office_router_plug",
+            },
+        })
+        app.db = FakeDB()
+        app.router_rebooter = SimpleNamespace(live_recovery_enabled=lambda: True)
+        return app
+
+    def test_router_recovery_summary_displays_current_state_when_available(self):
+        app = self._fake_app()
+        with patch("modules.application.HomeAssistantAdapter.get_state") as get_state:
+            get_state.return_value = PowerAdapterResult(
+                status="PASS",
+                message="Connected. Entity state is on.",
+                device_responded=True,
+                power_restored=True,
+                metadata={
+                    "adapter": "home_assistant",
+                    "entity_id": "switch.office_router_plug",
+                    "state": "on",
+                },
+            )
+
+            summary = app.router_recovery_summary(include_live_state=True)
+
+        self.assertEqual(summary["home_assistant_url"], "http://homeassistant.local:8123")
+        self.assertEqual(summary["recovery_entity"], "switch.office_router_plug")
+        self.assertEqual(summary["current_state"], "ON")
+
+    def test_router_recovery_summary_uses_unknown_when_state_lookup_fails(self):
+        app = self._fake_app()
+        with patch("modules.application.HomeAssistantAdapter.get_state", side_effect=RuntimeError("boom")):
+            summary = app.router_recovery_summary(include_live_state=True)
+
+        self.assertEqual(summary["current_state"], "Unknown")
+        self.assertEqual(summary["state_status"], "FAIL")
 
 
 class RouterRecoveryExecutionTests(unittest.TestCase):
@@ -426,7 +559,7 @@ class RouterRecoveryExecutionTests(unittest.TestCase):
         with patch("modules.application.HomeAssistantAdapter.get_state", side_effect=RuntimeError("boom")):
             summary = app.router_recovery_summary(include_live_state=True)
 
-        self.assertEqual(summary["current_state"], "UNKNOWN")
+        self.assertEqual(summary["current_state"], "Unknown")
         self.assertEqual(app.config.data["router_reboot"], original_config)
         app.router_rebooter.execute.assert_not_called()
 
