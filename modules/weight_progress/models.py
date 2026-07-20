@@ -13,8 +13,13 @@ class WeightMeasurement:
     fat_free_mass_kg: float | None = None
     muscle_mass_kg: float | None = None
     bone_mass_kg: float | None = None
+    hydration_kg: float | None = None
     heart_rate_bpm: float | None = None
     scale_battery: str | None = None
+    comments: str | None = None
+    import_source: str | None = None
+    source_label: str | None = None
+    imported_at: str | None = None
     withings_goal_kg: float | None = None
     reading_hash: str | None = None
     metadata_json: str | None = None
@@ -38,8 +43,13 @@ class WeightMeasurement:
             fat_free_mass_kg=row["fat_free_mass_kg"],
             muscle_mass_kg=row["muscle_mass_kg"],
             bone_mass_kg=row["bone_mass_kg"],
+            hydration_kg=row["hydration_kg"],
             heart_rate_bpm=row["heart_rate_bpm"],
             scale_battery=row["scale_battery"],
+            comments=row["comments"],
+            import_source=row["import_source"],
+            source_label=row["source_label"],
+            imported_at=row["imported_at"],
             withings_goal_kg=row["withings_goal_kg"],
             reading_hash=row["reading_hash"],
             metadata_json=row["metadata_json"],
@@ -62,8 +72,13 @@ class WeightMeasurement:
             "fat_free_mass_kg": self.fat_free_mass_kg,
             "muscle_mass_kg": self.muscle_mass_kg,
             "bone_mass_kg": self.bone_mass_kg,
+            "hydration_kg": self.hydration_kg,
             "heart_rate_bpm": self.heart_rate_bpm,
             "scale_battery": self.scale_battery,
+            "comments": self.comments,
+            "import_source": self.import_source,
+            "source_label": self.source_label,
+            "imported_at": self.imported_at,
             "withings_goal_kg": self.withings_goal_kg,
             "reading_hash": self.reading_hash,
             "metadata": metadata,

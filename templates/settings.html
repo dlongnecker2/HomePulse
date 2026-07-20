@@ -204,6 +204,10 @@
       <label class="field-label" for="weight-progress-starting-weight">Starting Weight</label>
       <input id="weight-progress-starting-weight" name="weight_progress_starting_weight" type="number" min="0" step="0.1" value="{{ weight_progress_config.get("starting_weight", "") if weight_progress_config.get("starting_weight") is not none else "" }}" placeholder="Optional baseline">
 
+      <label class="field-label" for="weight-progress-journey-start-date">Journey Start Date</label>
+      <input id="weight-progress-journey-start-date" name="weight_progress_journey_start_date" type="date" value="{{ weight_progress_config.get("journey_start_date", "") if weight_progress_config.get("journey_start_date") is not none else "" }}" placeholder="2026-05-04">
+      <p class="settings-help">Current Journey uses the first stored reading on or after this date unless a manual starting weight is configured.</p>
+
       <label class="field-label" for="weight-progress-goal-weight">Goal Weight</label>
       <input id="weight-progress-goal-weight" name="weight_progress_goal_weight" type="number" min="0" step="0.1" value="{{ weight_progress_config.get("goal_weight") if weight_progress_config.get("goal_weight") is not none else 220 }}">
     </section>

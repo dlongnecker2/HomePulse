@@ -1,4 +1,7 @@
 let weightProgressChart = null;
+let weightProgressImportToken = null;
+
+const WEIGHT_PROGRESS_RANGE_STORAGE_KEY = "homepulse.weight_progress.range";
 
 function parseWeightProgressTimestamp(value) {
   if (!value) return null;
@@ -6,11 +9,61 @@ function parseWeightProgressTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function weightProgressRangeStart(range) {
+function normalizeWeightProgressRange(range) {
+  const normalized = String(range || "current_journey").toLowerCase();
+  const aliases = {
+    "1w": "30d",
+    "1m": "30d",
+    "6m": "90d",
+    "current": "current_journey",
+    "journey": "current_journey",
+  };
+  const mapped = aliases[normalized] || normalized;
+  return ["current_journey", "30d", "90d", "1y", "all"].includes(mapped) ? mapped : "current_journey";
+}
+
+function weightProgressRangeStart(range, journeyStartDate) {
   const now = new Date();
-  const normalized = String(range || "1m").toLowerCase();
-  const days = { "1w": 7, "1m": 30, "6m": 180, "1y": 365 }[normalized] || 30;
+  const normalized = normalizeWeightProgressRange(range);
+  if (normalized === "all") return null;
+  if (normalized === "current_journey") {
+    if (!journeyStartDate) return null;
+    const parsed = new Date(`${journeyStartDate}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const days = { "30d": 30, "90d": 90, "1y": 365 }[normalized];
+  if (!days) return null;
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+}
+
+function formatWeightProgressLabel(timestamp, range) {
+  const parsed = parseWeightProgressTimestamp(timestamp);
+  if (!parsed) return "";
+  const normalized = normalizeWeightProgressRange(range);
+  if (normalized === "1y") {
+    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(parsed);
+  }
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(parsed);
+}
+
+function formatWeightProgressTooltip(timestamp) {
+  const parsed = parseWeightProgressTimestamp(timestamp);
+  if (!parsed) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(parsed);
+}
+
+function filteredWeightProgressPoints(points, range, journeyStartDate) {
+  const start = weightProgressRangeStart(range, journeyStartDate);
+  return (Array.isArray(points) ? points : []).filter((point) => {
+    const parsed = parseWeightProgressTimestamp(point.timestamp);
+    return parsed && (!start || parsed >= start);
+  });
 }
 
 function formatWeightValue(value, unit) {
@@ -18,47 +71,57 @@ function formatWeightValue(value, unit) {
   return `${Number(value).toFixed(1)} ${unit}`;
 }
 
-function setActiveRange(container, range) {
-  if (!container) return;
-  const normalized = window.HomePulseHistory?.normalizeRange?.(range) || range || "1m";
-  window.HomePulseHistory?.setSelectedRange?.(container, normalized);
+function setWeightProgressActiveRange(range) {
+  const normalized = normalizeWeightProgressRange(range);
+  sessionStorage.setItem(WEIGHT_PROGRESS_RANGE_STORAGE_KEY, normalized);
   document.querySelectorAll("[data-range]").forEach((item) => {
-    const active = item.dataset.range === normalized;
-    item.classList.toggle("active", active);
+    item.classList.toggle("active", item.dataset.range === normalized);
   });
 }
 
-function filteredPoints(points, range) {
-  const start = weightProgressRangeStart(range);
-  return (Array.isArray(points) ? points : []).filter((point) => {
-    const parsed = parseWeightProgressTimestamp(point.timestamp);
-    return parsed && parsed >= start;
-  });
+function getWeightProgressSelectedRange(container) {
+  return normalizeWeightProgressRange(
+    sessionStorage.getItem(WEIGHT_PROGRESS_RANGE_STORAGE_KEY)
+      || container?.dataset.defaultRange
+      || "current_journey"
+  );
 }
 
 function renderWeightProgressChart() {
   const data = window.WeightProgressData || {};
   const container = document.getElementById("weight-progress-chart-box");
-  const canvas = document.getElementById("weight-progress-chart");
+  let canvas = document.getElementById("weight-progress-chart");
   const note = document.getElementById("weight-progress-chart-note");
-  if (!container || !canvas || !note) return;
+  if (!container || !note) return;
 
-  const range = window.HomePulseHistory?.selectedRange?.(container) || data.default_range || "1m";
-  setActiveRange(container, range);
+  const range = getWeightProgressSelectedRange(container);
+  setWeightProgressActiveRange(range);
 
-  const points = filteredPoints(data.chart?.points || [], range);
+  if (!canvas && (data.chart?.measurement_count || 0) > 0) {
+    canvas = document.createElement("canvas");
+    canvas.id = "weight-progress-chart";
+    container.replaceChildren(canvas);
+  }
+  if (!canvas) return;
+
+  const journeyStartDate = container.dataset.journeyStartDate || data.chart?.journey_start_date || null;
+  const sourcePoints = data.chart?.all_points || data.chart?.points || [];
+  const points = filteredWeightProgressPoints(sourcePoints, range, journeyStartDate);
   if (!points.length) {
     weightProgressChart?.destroy();
     weightProgressChart = null;
     const empty = document.createElement("div");
     empty.className = "chart-empty-state";
-    empty.textContent = "No weight history stored yet. The first successful weigh-in will appear here.";
+    empty.textContent = data.chart?.measurement_count
+      ? "No measurements are available for this range."
+      : "No weight history stored yet. The first successful weigh-in will appear here.";
     container.replaceChildren(empty);
     note.textContent = data.chart_message || "No weight history has been collected yet.";
     return;
   }
 
-  const labels = points.map((point) => window.HomePulseHistory?.formatHistoryLabel?.(point.timestamp, range) || point.timestamp);
+  const labels = points.map((point) => formatWeightProgressLabel(point.timestamp, range));
+  const tooltipLabels = points.map((point) => formatWeightProgressTooltip(point.timestamp));
   const weightValues = points.map((point) => point.weight);
   const rollingValues = points.map((point) => point.rolling_average);
   const goalValues = points.map((point) => point.goal_weight);
@@ -73,6 +136,7 @@ function renderWeightProgressChart() {
     weightProgressChart.data.datasets[0].data = weightValues;
     weightProgressChart.data.datasets[1].data = rollingValues;
     weightProgressChart.data.datasets[2].data = goalValues;
+    weightProgressChart.options.plugins.tooltip.callbacks.title = (items) => tooltipLabels[items[0].dataIndex] || "";
     weightProgressChart.options.scales.y.title.text = unit;
     weightProgressChart.update("active");
   } else {
@@ -134,6 +198,9 @@ function renderWeightProgressChart() {
             borderWidth: 1,
             padding: 11,
             callbacks: {
+              title(items) {
+                return tooltipLabels[items[0].dataIndex] || "";
+              },
               label(context) {
                 const label = context.dataset.label || "";
                 const value = context.parsed.y;
@@ -166,15 +233,203 @@ function renderWeightProgressChart() {
   }
 }
 
+function renderImportPreview(preview) {
+  const grid = document.getElementById("weight-progress-import-preview-grid");
+  const errors = document.getElementById("weight-progress-import-errors");
+  if (!grid || !errors) return;
+
+  const rows = [
+    ["Filename", preview.filename],
+    ["Worksheet", preview.worksheet],
+    ["Rows Found", preview.rows_found],
+    ["Valid Measurements", preview.valid_measurements],
+    ["Invalid Rows", preview.invalid_rows],
+    ["Exact Duplicates", preview.exact_duplicates],
+    ["Likely Overlaps", preview.likely_overlaps],
+    ["Before Journey Start", preview.measurements_before_journey_start],
+    ["On/After Journey Start", preview.measurements_on_or_after_journey_start],
+    ["Earliest Measurement", preview.earliest_measurement],
+    ["Latest Measurement", preview.latest_measurement],
+    ["Proposed Journey Date", preview.proposed_journey_date],
+    ["Proposed Baseline", preview.proposed_journey_baseline],
+    ["Proposed Starting Weight", preview.proposed_starting_weight],
+    ["Journey Source", preview.journey_start_source],
+  ];
+
+  grid.replaceChildren(...rows.map(([label, value]) => {
+    const card = document.createElement("article");
+    card.className = "summary-card";
+    const labelEl = document.createElement("span");
+    const valueEl = document.createElement("strong");
+    labelEl.textContent = label;
+    valueEl.textContent = value === null || value === undefined || value === "" ? "--" : String(value);
+    card.append(labelEl, valueEl);
+    return card;
+  }));
+  grid.hidden = false;
+
+  const errorRows = Array.isArray(preview.errors) ? preview.errors : [];
+  if (errorRows.length) {
+    errors.hidden = false;
+    errors.innerHTML = errorRows.map((entry) => {
+      const messages = Array.isArray(entry.messages) ? entry.messages.join(" ") : String(entry.message || "");
+      return `<div>Row ${entry.row}: ${messages}</div>`;
+    }).join("");
+  } else {
+    errors.hidden = true;
+    errors.textContent = "";
+  }
+}
+
+function setImportStatus(message, kind = "info") {
+  const status = document.getElementById("weight-progress-import-status");
+  if (!status) return;
+  status.hidden = false;
+  status.className = `settings-message ${kind}`;
+  status.textContent = message;
+}
+
+function setImportButtonsEnabled({ preview = false, confirm = false, cancel = false } = {}) {
+  const previewButton = document.getElementById("weight-progress-import-preview");
+  const confirmButton = document.getElementById("weight-progress-import-confirm");
+  const cancelButton = document.getElementById("weight-progress-import-cancel");
+  if (previewButton) previewButton.disabled = !preview;
+  if (confirmButton) confirmButton.disabled = !confirm;
+  if (cancelButton) cancelButton.disabled = !cancel;
+}
+
+function setupWeightProgressImport() {
+  const fileInput = document.getElementById("weight-progress-import-file");
+  const previewButton = document.getElementById("weight-progress-import-preview");
+  const confirmButton = document.getElementById("weight-progress-import-confirm");
+  const cancelButton = document.getElementById("weight-progress-import-cancel");
+  if (!fileInput || !previewButton || !confirmButton || !cancelButton) return;
+
+  const resetPreviewState = (clearFile = false) => {
+    weightProgressImportToken = null;
+    setImportButtonsEnabled({ preview: !!fileInput.files.length, confirm: false, cancel: false });
+    if (clearFile) {
+      fileInput.value = "";
+    }
+    const grid = document.getElementById("weight-progress-import-preview-grid");
+    const errors = document.getElementById("weight-progress-import-errors");
+    const status = document.getElementById("weight-progress-import-status");
+    if (grid) {
+      grid.hidden = true;
+      grid.replaceChildren();
+    }
+    if (errors) {
+      errors.hidden = true;
+      errors.textContent = "";
+    }
+    if (status) {
+      status.hidden = true;
+      status.textContent = "";
+    }
+  };
+
+  fileInput.addEventListener("change", () => {
+    resetPreviewState(false);
+    setImportButtonsEnabled({ preview: !!fileInput.files.length, confirm: false, cancel: false });
+  });
+
+  previewButton.addEventListener("click", async () => {
+    const file = fileInput.files?.[0];
+    if (!file) {
+      setImportStatus("Choose an .xlsx workbook before previewing.", "error");
+      return;
+    }
+    setImportButtonsEnabled({ preview: false, confirm: false, cancel: false });
+    setImportStatus("Previewing workbook...", "info");
+    try {
+      const formData = new FormData();
+      formData.append("workbook", file, file.name);
+      const response = await fetch("/api/weight-progress/import/preview", {
+        method: "POST",
+        body: formData,
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Preview failed.");
+      }
+      weightProgressImportToken = payload.preview.preview_token;
+      renderImportPreview(payload.preview);
+      setImportStatus(`Preview ready for ${payload.preview.filename}. No rows were written yet.`, "success");
+      setImportButtonsEnabled({ preview: true, confirm: true, cancel: true });
+    } catch (error) {
+      setImportStatus(error.message || "Preview failed.", "error");
+      setImportButtonsEnabled({ preview: !!fileInput.files.length, confirm: false, cancel: false });
+    }
+  });
+
+  confirmButton.addEventListener("click", async () => {
+    if (!weightProgressImportToken) {
+      setImportStatus("Preview the workbook before importing.", "error");
+      return;
+    }
+    setImportButtonsEnabled({ preview: false, confirm: false, cancel: false });
+    setImportStatus("Importing workbook...", "info");
+    try {
+      const response = await fetch("/api/weight-progress/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preview_token: weightProgressImportToken }),
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Import failed.");
+      }
+      setImportStatus(
+        `Imported ${payload.inserted} row(s). Skipped ${payload.exact_duplicates} exact duplicate(s), ${payload.likely_overlaps} likely overlap(s), and ${payload.invalid_rows} invalid row(s).`,
+        "success"
+      );
+      if (payload.preview) {
+        renderImportPreview(payload.preview);
+      }
+      setTimeout(() => {
+        window.location.reload();
+      }, 900);
+    } catch (error) {
+      setImportStatus(error.message || "Import failed.", "error");
+      setImportButtonsEnabled({ preview: !!fileInput.files.length, confirm: !!weightProgressImportToken, cancel: !!weightProgressImportToken });
+    }
+  });
+
+  cancelButton.addEventListener("click", async () => {
+    if (!weightProgressImportToken) {
+      resetPreviewState(true);
+      return;
+    }
+    try {
+      await fetch("/api/weight-progress/import/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preview_token: weightProgressImportToken }),
+        cache: "no-store",
+      });
+    } catch (error) {
+      // Ignore cancel errors and clear local state regardless.
+    } finally {
+      resetPreviewState(true);
+      setImportStatus("Import canceled.", "info");
+    }
+  });
+
+  resetPreviewState(false);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const container = document.getElementById("weight-progress-chart-box");
   if (!container) return;
   document.querySelectorAll("[data-range]").forEach((item) => {
     item.addEventListener("click", () => {
       const range = item.dataset.range;
-      setActiveRange(container, range);
+      setWeightProgressActiveRange(range);
       renderWeightProgressChart();
     });
   });
+  setupWeightProgressImport();
   renderWeightProgressChart();
 });

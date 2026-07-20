@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, redirect, render_template, request, url_for, jsonify
 from markupsafe import Markup, escape
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from version import APP_AUTHOR, APP_COPYRIGHT, APP_NAME, APP_VERSION
 
@@ -19,6 +20,7 @@ class Dashboard:
             template_folder="../templates",
             static_folder="../static",
         )
+        self.app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
         self.app.jinja_env.globals["app_name"] = APP_NAME
         self.app.jinja_env.globals["app_version"] = APP_VERSION
         self.app.jinja_env.globals["app_author"] = APP_AUTHOR
@@ -128,6 +130,42 @@ class Dashboard:
                 weight_progress=self.application.weight_progress.view_model(include_live=True),
                 now=datetime.now(),
             )
+
+        @self.app.route("/api/weight-progress/import/preview", methods=["POST"])
+        def api_weight_progress_import_preview():
+            try:
+                upload = request.files.get("workbook")
+                result = self.application.weight_progress.preview_weight_history_import(upload)
+                return jsonify({"ok": True, "preview": result, "timestamp": str(datetime.now())})
+            except RequestEntityTooLarge:
+                return jsonify({"ok": False, "error": "Upload exceeds the allowed size limit."}), 413
+            except Exception as exc:
+                self.application.log.exception(f"Weight Progress import preview failed: {exc}")
+                return jsonify({"ok": False, "error": str(exc), "timestamp": str(datetime.now())}), 400
+
+        @self.app.route("/api/weight-progress/import", methods=["POST"])
+        def api_weight_progress_import():
+            try:
+                payload = request.get_json(silent=True) or request.form.to_dict()
+                result = self.application.weight_progress.confirm_weight_history_import(payload.get("preview_token"))
+                result["timestamp"] = str(datetime.now())
+                return jsonify(result)
+            except RequestEntityTooLarge:
+                return jsonify({"ok": False, "error": "Upload exceeds the allowed size limit."}), 413
+            except Exception as exc:
+                self.application.log.exception(f"Weight Progress import failed: {exc}")
+                return jsonify({"ok": False, "error": str(exc), "timestamp": str(datetime.now())}), 400
+
+        @self.app.route("/api/weight-progress/import/cancel", methods=["POST"])
+        def api_weight_progress_import_cancel():
+            try:
+                payload = request.get_json(silent=True) or request.form.to_dict()
+                result = self.application.weight_progress.cancel_weight_history_import(payload.get("preview_token"))
+                result["timestamp"] = str(datetime.now())
+                return jsonify(result)
+            except Exception as exc:
+                self.application.log.exception(f"Weight Progress import cancel failed: {exc}")
+                return jsonify({"ok": False, "error": str(exc), "timestamp": str(datetime.now())}), 400
 
         @self.app.route("/speed-test")
         def speed_test_center():

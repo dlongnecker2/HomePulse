@@ -221,6 +221,7 @@
     "database": "data/weight_progress.db",
     "display_unit": "lb",
     "starting_weight": null,
+    "journey_start_date": null,
     "goal_weight": 220,
     "entities": {
       "weight": "sensor.withings_weight",

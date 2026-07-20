@@ -4,14 +4,41 @@
 <section class="page-heading history-heading">
   <div>
     <h2>Weight Progress</h2>
-    <p>Local weight and body-composition history from Home Assistant. Daily readings can vary, so the trend matters more than a single point.</p>
+    <p>Local weight and body-composition history from Home Assistant and optional Withings workbook imports. Current Journey baseline: {{ weight_progress.journey_start_label }}.</p>
   </div>
   <div class="range-controls" aria-label="Weight history ranges">
-    <span data-range="1w">1W</span>
-    <span class="active" data-range="1m">1M</span>
-    <span data-range="6m">6M</span>
-    <span data-range="1y">1Y</span>
+    {% for option in weight_progress.chart.range_options %}
+      <span data-range="{{ option.value }}" {% if option.value == weight_progress.chart.default_range %}class="active"{% endif %}>{{ option.label }}</span>
+    {% endfor %}
   </div>
+</section>
+
+<section class="dashboard-panel import-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Import Weight History</h2>
+      <p>Choose your local Withings workbook, preview the rows, and confirm only when the summary looks right. Preview never writes to the database.</p>
+    </div>
+  </div>
+  <div class="import-controls">
+    <label class="field-label" for="weight-progress-import-file">Withings workbook</label>
+    <input id="weight-progress-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    <div class="diagnostics-actions inline-diagnostics">
+      <div class="diagnostic-action">
+        <button type="button" id="weight-progress-import-preview" class="diagnostic-test-button" disabled>Preview Import</button>
+      </div>
+      <div class="diagnostic-action">
+        <button type="button" id="weight-progress-import-confirm" class="diagnostic-test-button" disabled>Import Workbook</button>
+      </div>
+      <div class="diagnostic-action">
+        <button type="button" id="weight-progress-import-cancel" class="diagnostic-test-button" disabled>Cancel</button>
+      </div>
+    </div>
+    <p class="settings-help">Accepted file type: .xlsx only. The workbook stays local and is discarded after preview, confirmation, or cancel.</p>
+  </div>
+  <div id="weight-progress-import-status" class="settings-message" hidden></div>
+  <section id="weight-progress-import-preview-grid" class="history-summary-grid" hidden></section>
+  <div id="weight-progress-import-errors" class="small" hidden></div>
 </section>
 
 <section class="history-summary-grid">
@@ -33,14 +60,13 @@
       <p>Recorded weight, seven-day rolling average, and the configured goal weight.</p>
     </div>
     <div class="range-controls" aria-label="Weight trend controls">
-      <span data-range="1w">1W</span>
-      <span class="active" data-range="1m">1M</span>
-      <span data-range="6m">6M</span>
-      <span data-range="1y">1Y</span>
+      {% for option in weight_progress.chart.range_options %}
+        <span data-range="{{ option.value }}" {% if option.value == weight_progress.chart.default_range %}class="active"{% endif %}>{{ option.label }}</span>
+      {% endfor %}
     </div>
   </div>
-  <div id="weight-progress-chart-box" class="history-chart-box large" data-chart-key="weight-progress" data-default-range="{{ weight_progress.chart.default_range }}">
-    {% if weight_progress.measurement_count %}
+  <div id="weight-progress-chart-box" class="history-chart-box large" data-chart-key="weight-progress" data-default-range="{{ weight_progress.chart.default_range }}" data-journey-start-date="{{ weight_progress.chart.journey_start_date or '' }}">
+    {% if weight_progress.chart.measurement_count %}
       <canvas id="weight-progress-chart"></canvas>
     {% else %}
       <div class="chart-empty-state">No weight history stored yet. The first successful weigh-in will appear here.</div>
@@ -62,11 +88,9 @@
   <article class="dashboard-panel">
     <h2>Tracking Details</h2>
     <table>
-      <tr><td>Display Unit</td><td>{{ weight_progress.display_unit }}</td></tr>
-      <tr><td>Stored Readings</td><td>{{ weight_progress.measurement_count }}</td></tr>
-      <tr><td>Latest Weigh-In</td><td>{{ weight_progress.latest_weigh_in_label }}</td></tr>
-      <tr><td>Goal Weight</td><td>{{ weight_progress.summary_cards[3].value }}</td></tr>
-      <tr><td>Withings Goal</td><td>{{ weight_progress.withings_goal }}{% if weight_progress.withings_goal_note %} <span class="small">({{ weight_progress.withings_goal_note }})</span>{% endif %}</td></tr>
+      {% for row in weight_progress.tracking_details %}
+        <tr><td>{{ row.label }}</td><td>{{ row.value }}</td></tr>
+      {% endfor %}
     </table>
   </article>
 </section>
@@ -74,6 +98,5 @@
 <script>
   window.WeightProgressData = {{ weight_progress | tojson }};
 </script>
-<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
 <script src="{{ url_for('static', filename='js/weight_progress.js') }}"></script>
 {% endblock %}

@@ -25,8 +25,13 @@ class WeightProgressDatabase:
                     fat_free_mass_kg REAL,
                     muscle_mass_kg REAL,
                     bone_mass_kg REAL,
+                    hydration_kg REAL,
                     heart_rate_bpm REAL,
                     scale_battery TEXT,
+                    comments TEXT,
+                    import_source TEXT,
+                    source_label TEXT,
+                    imported_at TEXT,
                     withings_goal_kg REAL,
                     reading_hash TEXT NOT NULL UNIQUE,
                     metadata_json TEXT
@@ -34,8 +39,16 @@ class WeightProgressDatabase:
                 """
             )
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(weight_measurements)").fetchall()}
-            if "withings_goal_kg" not in columns:
-                conn.execute("ALTER TABLE weight_measurements ADD COLUMN withings_goal_kg REAL")
+            for column, ddl in (
+                ("hydration_kg", "ALTER TABLE weight_measurements ADD COLUMN hydration_kg REAL"),
+                ("comments", "ALTER TABLE weight_measurements ADD COLUMN comments TEXT"),
+                ("import_source", "ALTER TABLE weight_measurements ADD COLUMN import_source TEXT"),
+                ("source_label", "ALTER TABLE weight_measurements ADD COLUMN source_label TEXT"),
+                ("imported_at", "ALTER TABLE weight_measurements ADD COLUMN imported_at TEXT"),
+                ("withings_goal_kg", "ALTER TABLE weight_measurements ADD COLUMN withings_goal_kg REAL"),
+            ):
+                if column not in columns:
+                    conn.execute(ddl)
             conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_weight_measurements_lookup
@@ -67,9 +80,10 @@ class WeightProgressDatabase:
                 """
                 INSERT OR IGNORE INTO weight_measurements
                 (captured_at, source_timestamp, source_entity, weight_kg, body_fat_percent,
-                 fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, heart_rate_bpm,
-                 scale_battery, withings_goal_kg, reading_hash, metadata_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg,
+                 heart_rate_bpm, scale_battery, comments, import_source, source_label, imported_at,
+                 withings_goal_kg, reading_hash, metadata_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     snapshot.captured_at,
@@ -81,8 +95,13 @@ class WeightProgressDatabase:
                     snapshot.fat_free_mass_kg,
                     snapshot.muscle_mass_kg,
                     snapshot.bone_mass_kg,
+                    snapshot.hydration_kg,
                     snapshot.heart_rate_bpm,
                     snapshot.scale_battery,
+                    snapshot.comments,
+                    snapshot.import_source,
+                    snapshot.source_label,
+                    snapshot.imported_at,
                     snapshot.withings_goal_kg,
                     snapshot.reading_hash,
                     snapshot.metadata_json,
@@ -99,8 +118,9 @@ class WeightProgressDatabase:
             row = conn.execute(
                 """
                 SELECT captured_at, source_timestamp, source_entity, weight_kg, body_fat_percent,
-                       fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, heart_rate_bpm,
-                       scale_battery, withings_goal_kg, reading_hash, metadata_json
+                       fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg,
+                       heart_rate_bpm, scale_battery, comments, import_source, source_label,
+                       imported_at, withings_goal_kg, reading_hash, metadata_json
                 FROM weight_measurements
                 ORDER BY source_timestamp DESC, id DESC
                 LIMIT 1
@@ -116,8 +136,9 @@ class WeightProgressDatabase:
             row = conn.execute(
                 """
                 SELECT captured_at, source_timestamp, source_entity, weight_kg, body_fat_percent,
-                       fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, heart_rate_bpm,
-                       scale_battery, withings_goal_kg, reading_hash, metadata_json
+                       fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg,
+                       heart_rate_bpm, scale_battery, comments, import_source, source_label,
+                       imported_at, withings_goal_kg, reading_hash, metadata_json
                 FROM weight_measurements
                 ORDER BY source_timestamp ASC, id ASC
                 LIMIT 1
@@ -131,8 +152,9 @@ class WeightProgressDatabase:
         query = [
             """
             SELECT captured_at, source_timestamp, source_entity, weight_kg, body_fat_percent,
-                   fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, heart_rate_bpm,
-                   scale_battery, withings_goal_kg, reading_hash, metadata_json
+                   fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg,
+                   heart_rate_bpm, scale_battery, comments, import_source, source_label,
+                   imported_at, withings_goal_kg, reading_hash, metadata_json
             FROM weight_measurements
             WHERE 1=1
             """

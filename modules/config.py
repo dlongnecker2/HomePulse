@@ -104,6 +104,7 @@ BUILTIN_DEFAULT_CONFIG = {
         "database": "data/weight_progress.db",
         "display_unit": "lb",
         "starting_weight": None,
+        "journey_start_date": None,
         "goal_weight": 220,
         "entities": dict(DEFAULT_WEIGHT_PROGRESS_CONFIG["entities"]),
     },

@@ -763,6 +763,7 @@ class Application:
             "weight_progress_battery_entity",
             "weight_progress_display_unit",
             "weight_progress_starting_weight",
+            "weight_progress_journey_start_date",
             "weight_progress_goal_weight",
         )
         if any(key in form for key in weight_form_keys):
@@ -785,8 +786,10 @@ class Application:
             ):
                 entities[key] = form.get(form_key, "").strip()
             starting_weight = form.get("weight_progress_starting_weight", "").strip()
+            journey_start_date = form.get("weight_progress_journey_start_date", "").strip()
             goal_weight = form.get("weight_progress_goal_weight", "").strip()
             weight_progress["starting_weight"] = float(starting_weight) if starting_weight else None
+            weight_progress["journey_start_date"] = self.parse_optional_date(journey_start_date)
             weight_progress["goal_weight"] = (
                 float(goal_weight) if goal_weight else weight_progress.get("goal_weight", 220)
             )
@@ -1421,6 +1424,16 @@ class Application:
         if not 0 <= hour <= 23 or not 0 <= minute <= 59:
             raise ValueError("time must be between 00:00 and 23:59")
         return hour, minute
+
+    @staticmethod
+    def parse_optional_date(value):
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return datetime.strptime(text, "%Y-%m-%d").date().isoformat()
+        except ValueError as exc:
+            raise ValueError("Journey start date must be in YYYY-MM-DD format.") from exc
 
     def health_check(self):
         previous_status = self.status.get().get("internet", {}).get("status")

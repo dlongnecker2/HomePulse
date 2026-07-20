@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -6,12 +7,24 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from flask import Flask, render_template
+from openpyxl import Workbook
+from openpyxl.utils.datetime import to_excel
+from werkzeug.datastructures import FileStorage
 
 from modules.power_adapters.base import PowerAdapterResult
 from modules.weight_progress import WeightMeasurement, WeightProgressService
 
 
 ROOT = Path(__file__).resolve().parents[1]
+WEIGHT_HISTORY_HEADERS = [
+    "Date",
+    "Weight (lb)",
+    "Fat mass (lb)",
+    "Bone mass (lb)",
+    "Muscle mass (lb)",
+    "Hydration (lb)",
+    "Comments",
+]
 
 
 class DummyConfig:
@@ -192,7 +205,7 @@ class WeightProgressServiceTests(unittest.TestCase):
         payload = service.view_model(include_live=False)
 
         self.assertEqual(payload["summary_cards"][0]["value"], "220.5 lb")
-        self.assertEqual(payload["summary_cards"][5]["value"], "17.5%")
+        self.assertEqual(payload["summary_cards"][6]["value"], "17.5%")
 
     def test_unknown_and_unavailable_states_fail_safely(self):
         service = self._service()
@@ -244,7 +257,7 @@ class WeightProgressServiceTests(unittest.TestCase):
         payload = service.view_model(include_live=False)
 
         self.assertEqual(payload["summary_cards"][2]["value"], "212.0 kg")
-        self.assertEqual(payload["summary_cards"][2]["note"], "Configured starting point")
+        self.assertEqual(payload["summary_cards"][2]["note"], "Manual")
 
     def test_earliest_stored_measurement_is_used_when_starting_weight_is_absent(self):
         service = self._service()
@@ -616,6 +629,8 @@ class WeightProgressTemplateTests(unittest.TestCase):
         self.assertIn("Current Weight", html)
         self.assertIn("Jul 19, 2026 at 7:35 AM", html)
         self.assertIn("Latest Weigh-In", html)
+        self.assertIn("Import Weight History", html)
+        self.assertIn("Current Journey baseline", html)
 
     def test_page_renders_empty_state_without_history(self):
         payload = self._service_payload()
@@ -630,6 +645,335 @@ class WeightProgressTemplateTests(unittest.TestCase):
 
         self.assertNotIn("super-secret-token", html)
         self.assertNotIn("home_assistant_token", html)
+
+
+def _build_workbook_bytes(rows, headers=None, sheet_name="weight"):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = sheet_name
+    sheet.append(headers or WEIGHT_HISTORY_HEADERS)
+    normalized_headers = [str(header).strip().lower() for header in (headers or WEIGHT_HISTORY_HEADERS)]
+    for row in rows:
+        if isinstance(row, dict):
+            sheet.append([row.get(header) if header in row else row.get(header.strip().lower()) for header in normalized_headers])
+        else:
+            sheet.append(list(row))
+    payload = BytesIO()
+    workbook.save(payload)
+    payload.seek(0)
+    return payload.getvalue()
+
+
+def _upload_file(content, filename="Weight History.xlsx"):
+    return FileStorage(
+        stream=BytesIO(content),
+        filename=filename,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _sample_import_rows():
+    return [
+        {
+            "date": datetime(2026, 7, 19, 7, 34, 0),
+            "weight (lb)": 283.1,
+            "fat mass (lb)": 102.3,
+            "bone mass (lb)": 8.9,
+            "muscle mass (lb)": 171.9,
+            "hydration (lb)": 185.2,
+            "comments": "latest reading",
+        },
+        {
+            "date": datetime(2026, 6, 1, 7, 15, 0),
+            "weight (lb)": 296.4,
+            "fat mass (lb)": 110.0,
+            "bone mass (lb)": 9.0,
+            "muscle mass (lb)": 176.0,
+            "hydration (lb)": 189.0,
+            "comments": "",
+        },
+        {
+            "date": datetime(2026, 5, 4, 18, 20, 0),
+            "weight (lb)": 308.9,
+            "fat mass (lb)": 119.0,
+            "bone mass (lb)": 9.1,
+            "muscle mass (lb)": 179.5,
+            "hydration (lb)": 191.2,
+            "comments": "same day second reading",
+        },
+        {
+            "date": datetime(2026, 5, 4, 9, 5, 16),
+            "weight (lb)": 309.7,
+            "fat mass (lb)": 119.9,
+            "bone mass (lb)": 9.1,
+            "muscle mass (lb)": 180.0,
+            "hydration (lb)": 192.0,
+            "comments": "journey baseline",
+        },
+        {
+            "date": datetime(2023, 12, 12, 12, 0, 0),
+            "weight (lb)": 360.0,
+            "fat mass (lb)": 144.0,
+            "bone mass (lb)": 10.0,
+            "muscle mass (lb)": 185.0,
+            "hydration (lb)": 198.0,
+            "comments": "earliest reading",
+        },
+    ]
+
+
+def _sample_import_workbook(headers=None):
+    return _build_workbook_bytes(_sample_import_rows(), headers=headers)
+
+
+class WeightProgressImportTests(unittest.TestCase):
+    def _service(self, config=None):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        cfg = config or build_config(
+            weight_progress={
+                "enabled": True,
+                "database": "data/weight_progress.db",
+                "display_unit": "lb",
+                "starting_weight": None,
+                "journey_start_date": "2026-05-04",
+                "goal_weight": 220,
+                "entities": build_config().data["weight_progress"]["entities"],
+            }
+        )
+        cfg.data["weight_progress"]["database"] = str(Path(temp_dir.name) / "weight_progress.db")
+        service = WeightProgressService(cfg, MagicMock())
+        service.initialize()
+        return service
+
+    def test_preview_identifies_journey_baseline_and_counts(self):
+        service = self._service()
+        preview = service.preview_weight_history_import(_upload_file(_sample_import_workbook()))
+
+        self.assertEqual(preview["filename"], "Weight History.xlsx")
+        self.assertEqual(preview["worksheet"], "weight")
+        self.assertEqual(preview["rows_found"], 5)
+        self.assertEqual(preview["valid_measurements"], 5)
+        self.assertEqual(preview["invalid_rows"], 0)
+        self.assertEqual(preview["measurements_before_journey_start"], 1)
+        self.assertEqual(preview["measurements_on_or_after_journey_start"], 4)
+        self.assertEqual(preview["proposed_journey_date"], "May 4, 2026")
+        self.assertEqual(preview["proposed_journey_baseline"], "May 4, 2026 at 9:05 AM")
+        self.assertEqual(preview["proposed_starting_weight"], "309.7 lb")
+
+    def test_preview_does_not_write_database_and_temp_file_is_removed_on_cancel(self):
+        service = self._service()
+        preview = service.preview_weight_history_import(_upload_file(_sample_import_workbook()))
+        token = preview["preview_token"]
+        temp_path = Path(service._pending_imports[token]["path"])
+
+        self.assertEqual(service.database.count_measurements(), 0)
+        self.assertTrue(temp_path.exists())
+
+        service.cancel_weight_history_import(token)
+
+        self.assertFalse(temp_path.exists())
+        self.assertEqual(service.database.count_measurements(), 0)
+
+    def test_required_header_validation_rejects_missing_weight_column(self):
+        service = self._service()
+        workbook = _build_workbook_bytes(_sample_import_rows(), headers=[
+            "Date",
+            "Fat mass (lb)",
+            "Bone mass (lb)",
+            "Muscle mass (lb)",
+            "Hydration (lb)",
+            "Comments",
+        ])
+
+        with self.assertRaises(ValueError):
+            service.preview_weight_history_import(_upload_file(workbook))
+
+    def test_case_insensitive_headers_and_excel_date_serials_are_supported(self):
+        service = self._service()
+        headers = [" date ", " weight (lb) ", " fat mass (lb) ", " bone mass (lb) ", " muscle mass (lb) ", " hydration (lb) ", " comments "]
+        rows = [
+            {
+                "date": to_excel(datetime(2026, 5, 4, 9, 5, 16)),
+                "weight (lb)": 309.7,
+                "fat mass (lb)": 119.9,
+                "bone mass (lb)": 9.1,
+                "muscle mass (lb)": 180.0,
+                "hydration (lb)": 192.0,
+                "comments": "serial date",
+            }
+        ]
+        preview = service.preview_weight_history_import(_upload_file(_build_workbook_bytes(rows, headers=headers)))
+        self.assertEqual(preview["valid_measurements"], 1)
+        self.assertEqual(preview["proposed_journey_baseline"], "May 4, 2026 at 9:05 AM")
+
+    def test_pounds_and_body_fat_values_are_preserved(self):
+        service = self._service()
+        preview = service.preview_weight_history_import(_upload_file(_sample_import_workbook()))
+        result = service.confirm_weight_history_import(preview["preview_token"])
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["inserted"], 5)
+        latest = service.database.latest_measurement()
+        payload = service.view_model(include_live=False)
+        self.assertAlmostEqual(latest.weight_kg * 2.2046226218, 283.1, places=1)
+        self.assertAlmostEqual(latest.hydration_kg * 2.2046226218, 185.2, places=1)
+        self.assertAlmostEqual(latest.body_fat_percent, 36.1, places=1)
+        self.assertEqual(latest.comments, "latest reading")
+        self.assertEqual(payload["summary_cards"][6]["value"], "36.1%")
+
+    def test_invalid_weight_rows_are_rejected_safely(self):
+        service = self._service()
+        rows = _sample_import_rows()
+        rows[0] = {
+            "date": datetime(2026, 7, 19, 7, 34, 0),
+            "weight (lb)": "not-a-number",
+            "fat mass (lb)": 102.3,
+            "bone mass (lb)": 8.9,
+            "muscle mass (lb)": 171.9,
+            "hydration (lb)": 185.2,
+            "comments": "invalid",
+        }
+        preview = service.preview_weight_history_import(_upload_file(_build_workbook_bytes(rows)))
+
+        self.assertEqual(preview["invalid_rows"], 1)
+        self.assertEqual(preview["valid_measurements"], 4)
+
+    def test_direct_body_fat_value_is_preserved_when_present(self):
+        service = self._service()
+        headers = ["Date", "Weight (lb)", "Body Fat (%)", "Fat mass (lb)", "Bone mass (lb)", "Muscle mass (lb)", "Hydration (lb)", "Comments"]
+        rows = [
+            {
+                "date": datetime(2026, 5, 4, 9, 5, 16),
+                "weight (lb)": 309.7,
+                "body fat (%)": 12.3,
+                "fat mass (lb)": 119.9,
+                "bone mass (lb)": 9.1,
+                "muscle mass (lb)": 180.0,
+                "hydration (lb)": 192.0,
+                "comments": "direct body fat",
+            }
+        ]
+        preview = service.preview_weight_history_import(_upload_file(_build_workbook_bytes(rows, headers=headers)))
+        service.confirm_weight_history_import(preview["preview_token"])
+
+        latest = service.database.latest_measurement()
+        self.assertEqual(round(latest.body_fat_percent, 1), 12.3)
+
+    def test_current_journey_and_all_history_ranges_are_filtered_correctly(self):
+        service = self._service()
+        preview = service.preview_weight_history_import(_upload_file(_sample_import_workbook()))
+        service.confirm_weight_history_import(preview["preview_token"])
+
+        current_journey = service.view_model(include_live=False, range_key="current_journey")
+        all_history = service.view_model(include_live=False, range_key="all")
+
+        self.assertEqual(current_journey["summary_cards"][2]["note"], "May 4, 2026")
+        self.assertEqual(current_journey["summary_cards"][5]["value"], "29.7%")
+        self.assertFalse(current_journey["chart"]["points"][0]["timestamp"].startswith("2023-12-12"))
+        self.assertTrue(all_history["chart"]["points"][0]["timestamp"].startswith("2023-12-12"))
+
+    def test_exact_reimport_creates_no_duplicates(self):
+        service = self._service()
+        preview = service.preview_weight_history_import(_upload_file(_sample_import_workbook()))
+        service.confirm_weight_history_import(preview["preview_token"])
+        first_count = service.database.count_measurements()
+
+        second_preview = service.preview_weight_history_import(_upload_file(_sample_import_workbook()))
+        second_result = service.confirm_weight_history_import(second_preview["preview_token"])
+
+        self.assertEqual(first_count, 5)
+        self.assertEqual(second_result["inserted"], 0)
+        self.assertEqual(second_result["exact_duplicates"], 5)
+        self.assertEqual(service.database.count_measurements(), 5)
+
+    def test_likely_overlap_with_existing_live_reading_is_skipped(self):
+        service = self._service()
+        existing = WeightMeasurement.create(
+            captured_at="2026-07-19 07:34:30.000000",
+            source_timestamp="2026-07-19 07:34:30.000000",
+            source_entity="sensor.withings_weight",
+            weight_kg=128.416,
+            body_fat_percent=36.1,
+            fat_mass_kg=46.4,
+            fat_free_mass_kg=82.0,
+            muscle_mass_kg=77.4,
+            bone_mass_kg=4.0,
+            hydration_kg=84.0,
+            heart_rate_bpm=None,
+            scale_battery=None,
+            reading_hash="live-overlap",
+            metadata={"source": "live"},
+        )
+        service.database.insert_measurement(existing)
+        workbook_rows = [
+            {
+                "date": datetime(2026, 7, 19, 7, 35, 0),
+                "weight (lb)": 283.1,
+                "fat mass (lb)": 102.3,
+                "bone mass (lb)": 8.9,
+                "muscle mass (lb)": 171.9,
+                "hydration (lb)": 185.2,
+                "comments": "overlap",
+            }
+        ] + _sample_import_rows()[1:]
+        preview = service.preview_weight_history_import(_upload_file(_build_workbook_bytes(workbook_rows)))
+
+        self.assertEqual(preview["likely_overlaps"], 1)
+        result = service.confirm_weight_history_import(preview["preview_token"])
+
+        self.assertEqual(result["likely_overlaps"], 1)
+        self.assertEqual(service.database.count_measurements(), len(workbook_rows))
+
+    def test_multiple_same_day_measurements_are_preserved(self):
+        service = self._service()
+        rows = [
+            {
+                "date": datetime(2026, 5, 4, 9, 5, 16),
+                "weight (lb)": 309.7,
+                "fat mass (lb)": 119.9,
+                "bone mass (lb)": 9.1,
+                "muscle mass (lb)": 180.0,
+                "hydration (lb)": 192.0,
+                "comments": "morning",
+            },
+            {
+                "date": datetime(2026, 5, 4, 18, 20, 0),
+                "weight (lb)": 308.9,
+                "fat mass (lb)": 119.0,
+                "bone mass (lb)": 9.1,
+                "muscle mass (lb)": 179.5,
+                "hydration (lb)": 191.2,
+                "comments": "evening",
+            },
+        ]
+        preview = service.preview_weight_history_import(_upload_file(_build_workbook_bytes(rows)))
+        service.confirm_weight_history_import(preview["preview_token"])
+
+        self.assertEqual(service.database.count_measurements(), 2)
+        stored = service.database.query_measurements()
+        self.assertEqual(len([row for row in stored if row.source_timestamp.startswith("2026-05-04")]), 2)
+
+    def test_preview_then_confirm_cleans_up_temp_files(self):
+        service = self._service()
+        preview = service.preview_weight_history_import(_upload_file(_sample_import_workbook()))
+        token = preview["preview_token"]
+        temp_path = Path(service._pending_imports[token]["path"])
+
+        self.assertTrue(temp_path.exists())
+        service.confirm_weight_history_import(token)
+
+        self.assertFalse(temp_path.exists())
+        self.assertNotIn(token, service._pending_imports)
+
+    def test_malformed_or_non_xlsx_uploads_fail_safely(self):
+        service = self._service()
+
+        with self.assertRaises(ValueError):
+            service.preview_weight_history_import(_upload_file(b"not a workbook", filename="Weight History.txt"))
+
+        with self.assertRaises(Exception):
+            service.preview_weight_history_import(_upload_file(b"not a real xlsx workbook", filename="Weight History.xlsx"))
 
 
 if __name__ == "__main__":
