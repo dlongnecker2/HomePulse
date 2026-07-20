@@ -279,7 +279,7 @@ class WeightProgressService:
         withings_goal = self._to_display_weight(latest.withings_goal_kg if latest else None, display_unit)
         total_lost = self._delta_value(starting_weight, current_weight)
         remaining_to_goal = self._delta_value(current_weight, goal_weight)
-        body_fat = self._to_display_percent(latest.body_fat_percent if latest else None)
+        body_fat = self._to_display_percent(self._derived_body_fat_percent(latest) if latest else None)
         weekly_change = self._average_weekly_change(journey_history, display_unit)
         progress_percent = self._journey_progress_percent(starting_weight, current_weight, goal_weight)
         chart_points = self._chart_points(history, goal_weight, display_unit)
@@ -421,8 +421,8 @@ class WeightProgressService:
             points.append(
                 {
                     "timestamp": timestamp,
-                    "body_fat_percent": self._to_display_percent(item.body_fat_percent),
-                    "body_fat": self._to_display_percent(item.body_fat_percent),
+                    "body_fat_percent": self._to_display_percent(self._derived_body_fat_percent(item)),
+                    "body_fat": self._to_display_percent(self._derived_body_fat_percent(item)),
                     "fat_mass": self._to_display_weight(item.fat_mass_kg, display_unit),
                     "fat_free_mass": self._to_display_weight(fat_free_mass_kg, display_unit) if fat_free_mass_kg is not None else None,
                     "fat_free_mass_derived": fat_free_mass_derived,
@@ -562,6 +562,15 @@ class WeightProgressService:
         if derived < 0:
             return None, None, False
         return derived, "Derived from weight - fat mass", True
+
+    def _derived_body_fat_percent(self, measurement):
+        if not measurement:
+            return None
+        if measurement.body_fat_percent is not None:
+            return measurement.body_fat_percent
+        if measurement.weight_kg is None or measurement.fat_mass_kg is None or measurement.weight_kg <= 0:
+            return None
+        return round((measurement.fat_mass_kg / measurement.weight_kg) * 100, 1)
 
     def _chart_points(self, history, goal_weight, display_unit):
         points = []

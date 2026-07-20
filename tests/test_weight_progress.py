@@ -681,6 +681,30 @@ class WeightProgressServiceTests(unittest.TestCase):
         self.assertEqual(trends["all_points"][1]["visceral_fat"], 8.4)
         self.assertEqual(trends["points"][0]["visceral_fat"], 8.4)
 
+    def test_body_fat_percent_is_derived_from_weight_and_fat_mass_when_missing(self):
+        service = self._service()
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-07-10 08:00:00",
+                source_timestamp="2026-07-10 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=100.0,
+                body_fat_percent=None,
+                fat_mass_kg=20.0,
+                fat_free_mass_kg=80.0,
+                muscle_mass_kg=60.0,
+                bone_mass_kg=3.2,
+                hydration_kg=70.0,
+                reading_hash="hash-derived-body-fat",
+                metadata={"timestamp": "2026-07-10 08:00:00"},
+            )
+        )
+
+        payload = service.view_model(include_live=False)
+
+        self.assertEqual(payload["summary_cards"][6]["value"], "20.0%")
+        self.assertEqual(payload["composition_trends"]["points"][0]["body_fat"], 20.0)
+
 
 class WeightProgressTemplateTests(unittest.TestCase):
     def _service_payload(self, measurement=None):
