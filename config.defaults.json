@@ -231,6 +231,8 @@
       "fat_free_mass": "sensor.withings_fat_free_mass",
       "muscle_mass": "sensor.withings_muscle_mass",
       "bone_mass": "sensor.withings_bone_mass",
+      "hydration": "sensor.withings_hydration",
+      "visceral_fat_index": "sensor.withings_visceral_fat_index",
       "heart_rate": "sensor.withings_heart_pulse",
       "battery": "sensor.withings_battery"
     }

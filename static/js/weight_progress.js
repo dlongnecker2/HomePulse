@@ -1,7 +1,9 @@
 let weightProgressChart = null;
+let weightProgressCompositionChart = null;
 let weightProgressImportToken = null;
 
 const WEIGHT_PROGRESS_RANGE_STORAGE_KEY = "homepulse.weight_progress.range";
+const WEIGHT_PROGRESS_COMPOSITION_METRIC_STORAGE_KEY = "homepulse.weight_progress.composition.metric";
 
 function parseWeightProgressTimestamp(value) {
   if (!value) return null;
@@ -15,8 +17,8 @@ function normalizeWeightProgressRange(range) {
     "1w": "30d",
     "1m": "30d",
     "6m": "90d",
-    "current": "current_journey",
-    "journey": "current_journey",
+    current: "current_journey",
+    journey: "current_journey",
   };
   const mapped = aliases[normalized] || normalized;
   return ["current_journey", "30d", "90d", "1y", "all"].includes(mapped) ? mapped : "current_journey";
@@ -85,6 +87,337 @@ function getWeightProgressSelectedRange(container) {
       || container?.dataset.defaultRange
       || "current_journey"
   );
+}
+
+function getWeightProgressCompositionMetric(container) {
+  const defaultMetric = container?.dataset.defaultMetric || "body_fat";
+  const metric = sessionStorage.getItem(WEIGHT_PROGRESS_COMPOSITION_METRIC_STORAGE_KEY) || defaultMetric;
+  return metric || "body_fat";
+}
+
+function setWeightProgressCompositionMetric(metric) {
+  const normalized = String(metric || "body_fat").trim() || "body_fat";
+  sessionStorage.setItem(WEIGHT_PROGRESS_COMPOSITION_METRIC_STORAGE_KEY, normalized);
+  document.querySelectorAll("[data-composition-metric]").forEach((item) => {
+    item.classList.toggle("active", item.dataset.compositionMetric === normalized);
+  });
+}
+
+function formatCompositionDate(timestamp) {
+  const parsed = parseWeightProgressTimestamp(timestamp);
+  if (!parsed) return "--";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(parsed);
+}
+
+function compositionMetricConfig(data, metric) {
+  const trend = data.composition_trends || {};
+  return {
+    key: metric,
+    label: trend.metric_labels?.[metric] || metric,
+    unit: trend.metric_units?.[metric] || data.display_unit || "lb",
+    field: trend.metric_fields?.[metric] || metric,
+    kind: trend.metric_kinds?.[metric] || "mass",
+  };
+}
+
+function formatCompositionMetricValue(value, metricConfig) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
+  if (metricConfig.kind === "percent") {
+    return `${Number(value).toFixed(1)}%`;
+  }
+  if (metricConfig.kind === "index") {
+    return `${Number(value).toFixed(1)} Index`;
+  }
+  return formatWeightValue(Number(value), metricConfig.unit);
+}
+
+function formatCompositionMetricChange(value, metricConfig) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
+  if (Number(value) === 0) return "No change";
+  const direction = Number(value) > 0 ? "Up" : "Down";
+  const magnitude = Math.abs(Number(value)).toFixed(1);
+  if (metricConfig.kind === "percent") {
+    return `${direction} ${magnitude} percentage points`;
+  }
+  if (metricConfig.kind === "index") {
+    return `${direction} ${magnitude} Index`;
+  }
+  return `${direction} ${magnitude} ${metricConfig.unit}`;
+}
+
+function compositionValueNote(point, metricConfig) {
+  if (!point) return null;
+  if (metricConfig.key === "fat_free_mass" && point.fat_free_mass_derived) {
+    return "Derived from weight - fat mass";
+  }
+  return null;
+}
+
+function filteredCompositionMetricPoints(points, metricConfig, range, journeyStartDate) {
+  const selectedPoints = filteredWeightProgressPoints(points, range, journeyStartDate);
+  return selectedPoints.map((point) => ({
+    timestamp: point.timestamp,
+    value: point[metricConfig.field],
+    derived: metricConfig.key === "fat_free_mass" ? Boolean(point.fat_free_mass_derived) : false,
+  }));
+}
+
+function rollingAverageForPoints(points, index) {
+  if (index < 1) return null;
+  const endPoint = parseWeightProgressTimestamp(points[index].timestamp);
+  if (!endPoint) return null;
+  const windowStart = endPoint.getTime() - 7 * 24 * 60 * 60 * 1000;
+  const values = [];
+  for (let i = 0; i <= index; i += 1) {
+    const point = points[i];
+    const parsed = parseWeightProgressTimestamp(point.timestamp);
+    if (!parsed || parsed.getTime() < windowStart) continue;
+    if (point.value === null || point.value === undefined || Number.isNaN(Number(point.value))) continue;
+    values.push(Number(point.value));
+  }
+  if (values.length < 2) return null;
+  return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2));
+}
+
+function buildCompositionSummary(selectedPoints, allPoints, metricConfig, journeyStartDate) {
+  const visiblePoints = selectedPoints.filter((point) => point.value !== null && point.value !== undefined && !Number.isNaN(Number(point.value)));
+  const allMetricPoints = allPoints.filter((point) => point.value !== null && point.value !== undefined && !Number.isNaN(Number(point.value)));
+  const journeyStart = journeyStartDate ? new Date(`${journeyStartDate}T00:00:00`) : null;
+  const journeyPoints = journeyStart
+    ? allMetricPoints.filter((point) => {
+        const parsed = parseWeightProgressTimestamp(point.timestamp);
+        return parsed && parsed >= journeyStart;
+      })
+    : allMetricPoints;
+  const currentPoint = visiblePoints[visiblePoints.length - 1] || null;
+  const earliestPoint = visiblePoints[0] || null;
+  const latestPoint = visiblePoints[visiblePoints.length - 1] || null;
+  const journeyPoint = journeyPoints[0] || visiblePoints[0] || null;
+  const currentValue = currentPoint ? Number(currentPoint.value) : null;
+  const journeyValue = journeyPoint ? Number(journeyPoint.value) : null;
+  const change = currentValue === null || journeyValue === null ? null : Number((currentValue - journeyValue).toFixed(1));
+  const summaryCards = [
+    {
+      key: "current_value",
+      label: "Current Value",
+      value: formatCompositionMetricValue(currentValue, metricConfig),
+      note: compositionValueNote(currentPoint, metricConfig),
+    },
+    {
+      key: "journey_starting_value",
+      label: "Journey Starting Value",
+      value: formatCompositionMetricValue(journeyValue, metricConfig),
+      note: compositionValueNote(journeyPoint, metricConfig),
+    },
+    {
+      key: "change_since_journey_start",
+      label: "Change Since Journey Start",
+      value: formatCompositionMetricChange(change, metricConfig),
+    },
+    {
+      key: "earliest_available_date",
+      label: "Earliest Available Date",
+      value: formatCompositionDate(earliestPoint?.timestamp),
+    },
+    {
+      key: "latest_measurement_date",
+      label: "Latest Measurement Date",
+      value: formatCompositionDate(latestPoint?.timestamp),
+    },
+  ];
+
+  let summaryMessage = "The selected body-composition trend uses actual readings and a seven-day trend line.";
+  if (metricConfig.key === "visceral_fat" && visiblePoints.length <= 1) {
+    summaryMessage = "Visceral-fat history will appear as additional measurements are collected.";
+  } else if (visiblePoints.length <= 1) {
+    summaryMessage = "Only one reading is available so far. Additional history will appear as measurements are collected.";
+  }
+
+  return {
+    metric: metricConfig.key,
+    metric_label: metricConfig.label,
+    metric_unit: metricConfig.unit,
+    current_value: currentValue,
+    journey_value: journeyValue,
+    change,
+    summary_cards: summaryCards,
+    summary_message: summaryMessage,
+    earliest_date: formatCompositionDate(earliestPoint?.timestamp),
+    latest_date: formatCompositionDate(latestPoint?.timestamp),
+    trend_points: visiblePoints.length,
+  };
+}
+
+function renderCompositionSummary(summary) {
+  const grid = document.getElementById("weight-progress-composition-summary");
+  if (!grid) return;
+  const cards = Array.from(grid.querySelectorAll(".summary-card"));
+  summary.summary_cards.forEach((card, index) => {
+    const element = cards[index];
+    if (!element) return;
+    const labelEl = element.querySelector("span");
+    const valueEl = element.querySelector("strong");
+    let noteEl = element.querySelector(".small");
+    if (labelEl) labelEl.textContent = card.label;
+    if (valueEl) valueEl.textContent = card.value || "--";
+    if (card.note) {
+      if (!noteEl) {
+        noteEl = document.createElement("div");
+        noteEl.className = "small";
+        element.appendChild(noteEl);
+      }
+      noteEl.textContent = card.note;
+      noteEl.hidden = false;
+    } else if (noteEl) {
+      noteEl.remove();
+    }
+  });
+
+  const note = document.getElementById("weight-progress-composition-chart-note");
+  if (note) {
+    note.textContent = summary.summary_message || "The selected body-composition trend uses actual readings and a seven-day trend line.";
+  }
+}
+
+function renderWeightProgressCompositionChart() {
+  const data = window.WeightProgressData || {};
+  const container = document.getElementById("weight-progress-composition-chart-box");
+  let canvas = document.getElementById("weight-progress-composition-chart");
+  const note = document.getElementById("weight-progress-composition-chart-note");
+  if (!container || !note) return;
+
+  const range = getWeightProgressSelectedRange(container);
+  const metric = getWeightProgressCompositionMetric(container);
+  setWeightProgressActiveRange(range);
+  setWeightProgressCompositionMetric(metric);
+
+  const metricConfig = compositionMetricConfig(data, metric);
+  const journeyStartDate = container.dataset.journeyStartDate || data.composition_trends?.journey_start_date || null;
+  const sourcePoints = data.composition_trends?.all_points || data.composition_trends?.points || [];
+  const selectedPoints = filteredCompositionMetricPoints(sourcePoints, metricConfig, range, journeyStartDate);
+  const summary = buildCompositionSummary(selectedPoints, sourcePoints, metricConfig, journeyStartDate);
+  renderCompositionSummary(summary);
+
+  if (!canvas && sourcePoints.length > 0) {
+    canvas = document.createElement("canvas");
+    canvas.id = "weight-progress-composition-chart";
+    container.replaceChildren(canvas);
+  }
+  if (!canvas) return;
+
+  const visiblePoints = selectedPoints.filter((point) => point.value !== null && point.value !== undefined && !Number.isNaN(Number(point.value)));
+  if (!visiblePoints.length) {
+    weightProgressCompositionChart?.destroy();
+    weightProgressCompositionChart = null;
+    const empty = document.createElement("div");
+    empty.className = "chart-empty-state";
+    empty.textContent = sourcePoints.length
+      ? "No body composition readings are available for this range."
+      : "No body composition history has been collected yet. The first successful measurement will appear here.";
+    container.replaceChildren(empty);
+    note.textContent = summary.summary_message;
+    return;
+  }
+
+  const labels = selectedPoints.map((point) => formatWeightProgressLabel(point.timestamp, range));
+  const tooltipLabels = selectedPoints.map((point) => formatWeightProgressTooltip(point.timestamp));
+  const actualValues = selectedPoints.map((point) => (point.value === null || point.value === undefined ? null : Number(point.value)));
+  const trendValues = selectedPoints.map((point, index) => {
+    if (point.value === null || point.value === undefined || Number.isNaN(Number(point.value))) return null;
+    const average = rollingAverageForPoints(selectedPoints, index);
+    return average;
+  });
+  const unit = metricConfig.unit === "%" || metricConfig.unit === "Index" ? metricConfig.unit : (data.display_unit || "lb");
+  const context = canvas.getContext("2d");
+  const gradient = context.createLinearGradient(0, 0, 0, canvas.clientHeight || 320);
+  gradient.addColorStop(0, "rgba(15, 118, 110, 0.3)");
+  gradient.addColorStop(1, "rgba(15, 118, 110, 0.05)");
+
+  if (weightProgressCompositionChart) {
+    weightProgressCompositionChart.data.labels = labels;
+    weightProgressCompositionChart.data.datasets[0].data = actualValues;
+    weightProgressCompositionChart.data.datasets[1].data = trendValues;
+    weightProgressCompositionChart.options.plugins.tooltip.callbacks.title = (items) => tooltipLabels[items[0].dataIndex] || "";
+    weightProgressCompositionChart.options.scales.y.title.text = unit;
+    weightProgressCompositionChart.options.plugins.legend.labels.filter = (legendItem) => legendItem.text !== "7-day trend" || visiblePoints.length > 1;
+    weightProgressCompositionChart.update("active");
+  } else {
+    weightProgressCompositionChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: metricConfig.label,
+            data: actualValues,
+            borderColor: "#0f766e",
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2.5,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+          },
+          {
+            label: "7-day trend",
+            data: trendValues,
+            borderColor: "#7c3aed",
+            borderDash: [6, 5],
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.35,
+            spanGaps: true,
+            fill: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: {
+            labels: {
+              color: "#344258",
+              boxWidth: 10,
+              usePointStyle: true,
+            },
+          },
+          tooltip: {
+            backgroundColor: "rgba(15, 23, 42, 0.94)",
+            borderColor: "rgba(255, 255, 255, 0.16)",
+            borderWidth: 1,
+            padding: 11,
+            callbacks: {
+              title(items) {
+                return tooltipLabels[items[0].dataIndex] || "";
+              },
+              label(context) {
+                const label = context.dataset.label || "";
+                const value = context.parsed.y;
+                return `${label}: ${formatCompositionMetricValue(value, metricConfig)}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: "#6b7688", maxRotation: 0, autoSkipPadding: 18 },
+          },
+          y: {
+            beginAtZero: false,
+            border: { display: false },
+            grid: { color: "rgba(107, 118, 136, 0.14)" },
+            ticks: { color: "#6b7688" },
+            title: { display: true, text: unit, color: "#6b7688" },
+          },
+        },
+      },
+    });
+  }
+
+  note.textContent = summary.summary_message;
 }
 
 function renderWeightProgressChart() {
@@ -420,16 +753,34 @@ function setupWeightProgressImport() {
   resetPreviewState(false);
 }
 
+function setupWeightProgressComposition() {
+  const selectors = document.querySelectorAll("[data-composition-metric]");
+  if (!selectors.length) return;
+  selectors.forEach((item) => {
+    item.addEventListener("click", () => {
+      setWeightProgressCompositionMetric(item.dataset.compositionMetric);
+      renderWeightProgressCompositionChart();
+    });
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const container = document.getElementById("weight-progress-chart-box");
-  if (!container) return;
+  const compositionContainer = document.getElementById("weight-progress-composition-chart-box");
+
+  setupWeightProgressImport();
+  if (!container && !compositionContainer) return;
+
   document.querySelectorAll("[data-range]").forEach((item) => {
     item.addEventListener("click", () => {
       const range = item.dataset.range;
       setWeightProgressActiveRange(range);
       renderWeightProgressChart();
+      renderWeightProgressCompositionChart();
     });
   });
-  setupWeightProgressImport();
+
+  setupWeightProgressComposition();
   renderWeightProgressChart();
+  renderWeightProgressCompositionChart();
 });

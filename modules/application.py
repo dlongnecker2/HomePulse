@@ -759,6 +759,8 @@ class Application:
             "weight_progress_fat_free_mass_entity",
             "weight_progress_muscle_mass_entity",
             "weight_progress_bone_mass_entity",
+            "weight_progress_hydration_entity",
+            "weight_progress_visceral_fat_index_entity",
             "weight_progress_heart_rate_entity",
             "weight_progress_battery_entity",
             "weight_progress_display_unit",
@@ -781,6 +783,8 @@ class Application:
                 ("fat_free_mass", "weight_progress_fat_free_mass_entity"),
                 ("muscle_mass", "weight_progress_muscle_mass_entity"),
                 ("bone_mass", "weight_progress_bone_mass_entity"),
+                ("hydration", "weight_progress_hydration_entity"),
+                ("visceral_fat_index", "weight_progress_visceral_fat_index_entity"),
                 ("heart_rate", "weight_progress_heart_rate_entity"),
                 ("battery", "weight_progress_battery_entity"),
             ):

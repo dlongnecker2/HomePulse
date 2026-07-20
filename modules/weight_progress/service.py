@@ -24,6 +24,15 @@ class WeightProgressService:
         "1y": timedelta(days=365),
         "all": None,
     }
+    COMPOSITION_METRICS = {
+        "body_fat": {"label": "Body Fat", "unit": "%", "kind": "percent", "field": "body_fat_percent"},
+        "fat_mass": {"label": "Fat Mass", "unit": "lb", "kind": "mass", "field": "fat_mass"},
+        "fat_free_mass": {"label": "Fat-Free Mass", "unit": "lb", "kind": "mass", "field": "fat_free_mass"},
+        "muscle_mass": {"label": "Muscle Mass", "unit": "lb", "kind": "mass", "field": "muscle_mass"},
+        "hydration": {"label": "Hydration", "unit": "lb", "kind": "mass", "field": "hydration"},
+        "bone_mass": {"label": "Bone Mass", "unit": "lb", "kind": "mass", "field": "bone_mass"},
+        "visceral_fat": {"label": "Visceral Fat", "unit": "Index", "kind": "index", "field": "visceral_fat_index"},
+    }
 
     def __init__(self, config, log):
         self.config = config
@@ -234,7 +243,8 @@ class WeightProgressService:
             fat_free_mass_kg=values.get("fat_free_mass", {}).get("weight_kg"),
             muscle_mass_kg=values.get("muscle_mass", {}).get("weight_kg"),
             bone_mass_kg=values.get("bone_mass", {}).get("weight_kg"),
-            hydration_kg=None,
+            hydration_kg=values.get("hydration", {}).get("weight_kg"),
+            visceral_fat_index=values.get("visceral_fat_index", {}).get("visceral_fat_index"),
             heart_rate_bpm=values.get("heart_rate", {}).get("heart_rate_bpm"),
             scale_battery=values.get("battery", {}).get("scale_battery"),
             comments=None,
@@ -275,6 +285,15 @@ class WeightProgressService:
         chart_points = self._chart_points(history, goal_weight, display_unit)
         all_chart_points = self._chart_points(all_history, goal_weight, display_unit)
         composition_rows = self._body_composition_rows(latest, display_unit)
+        composition_points = self._composition_points(history, display_unit)
+        all_composition_points = self._composition_points(all_history, display_unit)
+        composition_summary = self._composition_summary(
+            composition_points,
+            all_composition_points,
+            "body_fat",
+            journey_start_date,
+            display_unit,
+        )
         latest_label = self._format_display_timestamp(latest.source_timestamp if latest else None)
         measurement_count = len(all_history)
         journey_measurement_count = len(journey_history)
@@ -288,7 +307,7 @@ class WeightProgressService:
             "journey_measurement_count": journey_measurement_count,
             "journey_start_date": journey_start_date.isoformat() if journey_start_date else None,
             "journey_start_label": self._journey_start_label(cfg, journey_start_date, journey_history),
-            "journey_start_source": self._journey_start_source(cfg, journey_start_date, journey_history),
+            "journey_start_source": self._journey_start_source_text(cfg, journey_start_date, journey_history),
             "chart_message": self._chart_message(measurement_count, latest),
             "summary_cards": [
                 {"label": "Current Weight", "value": self._format_weight(current_weight, display_unit)},
@@ -302,6 +321,31 @@ class WeightProgressService:
                 {"label": "Journey Average Weekly Change", "value": self._format_delta(weekly_change, display_unit, per_week=True)},
             ],
             "body_composition_rows": composition_rows,
+            "composition_trends": {
+                "default_metric": "body_fat",
+                "selected_metric": "body_fat",
+                "range_key": self.normalize_range(range_key),
+                "journey_start_date": journey_start_date.isoformat() if journey_start_date else None,
+                "range_options": [
+                    {"value": "current_journey", "label": "Current Journey"},
+                    {"value": "30d", "label": "30 Days"},
+                    {"value": "90d", "label": "90 Days"},
+                    {"value": "1y", "label": "1 Year"},
+                    {"value": "all", "label": "All History"},
+                ],
+                "metric_options": [
+                    {"value": key, "label": metric["label"], "unit": self._composition_metric_unit(key, display_unit)} for key, metric in self.COMPOSITION_METRICS.items()
+                ],
+                "metric_units": {key: self._composition_metric_unit(key, display_unit) for key in self.COMPOSITION_METRICS},
+                "metric_labels": {key: metric["label"] for key, metric in self.COMPOSITION_METRICS.items()},
+                "metric_fields": {key: metric["field"] for key, metric in self.COMPOSITION_METRICS.items()},
+                "metric_kinds": {key: metric["kind"] for key, metric in self.COMPOSITION_METRICS.items()},
+                "points": composition_points,
+                "all_points": all_composition_points,
+                "summary_cards": composition_summary["summary_cards"],
+                "summary_message": composition_summary["summary_message"],
+                "selected_metric_summary": composition_summary,
+            },
             "withings_goal": self._format_weight(withings_goal, display_unit),
             "withings_goal_note": "Supplemental",
             "latest_weigh_in_label": latest_label,
@@ -329,7 +373,7 @@ class WeightProgressService:
                 {"label": "Stored Readings", "value": measurement_count},
                 {"label": "Journey Readings", "value": journey_measurement_count},
                 {"label": "Current Journey", "value": f"{journey_start_date:%b} {journey_start_date.day}, {journey_start_date:%Y}" if journey_start_date else "Since HomePulse tracking began"},
-                {"label": "Current Journey Source", "value": self._journey_start_source(cfg, journey_start_date, journey_history)},
+                {"label": "Current Journey Source", "value": self._journey_start_source_text(cfg, journey_start_date, journey_history)},
                 {"label": "Latest Weigh-In", "value": latest_label},
                 {"label": "Goal Weight", "value": self._format_weight(goal_weight, display_unit)},
                 {"label": "Withings Goal", "value": self._format_weight(withings_goal, display_unit)},
@@ -345,18 +389,179 @@ class WeightProgressService:
                 {"label": "Muscle Mass", "value": "--"},
                 {"label": "Bone Mass", "value": "--"},
                 {"label": "Hydration", "value": "--"},
+                {"label": "Visceral Fat Index", "value": "--"},
                 {"label": "Heart Rate", "value": "--"},
                 {"label": "Scale Battery", "value": "--"},
             ]
+        fat_free_mass_kg, fat_free_mass_note, fat_free_mass_derived = self._derived_fat_free_mass(measurement)
         return [
             {"label": "Fat Mass", "value": self._format_weight(self._to_display_weight(measurement.fat_mass_kg, display_unit), display_unit)},
-            {"label": "Fat-Free Mass", "value": self._format_weight(self._to_display_weight(measurement.fat_free_mass_kg, display_unit), display_unit)},
+            {
+                "label": "Fat-Free Mass",
+                "value": self._format_weight(self._to_display_weight(fat_free_mass_kg, display_unit), display_unit),
+                "note": fat_free_mass_note if fat_free_mass_derived else None,
+            },
             {"label": "Muscle Mass", "value": self._format_weight(self._to_display_weight(measurement.muscle_mass_kg, display_unit), display_unit)},
             {"label": "Bone Mass", "value": self._format_weight(self._to_display_weight(measurement.bone_mass_kg, display_unit), display_unit)},
             {"label": "Hydration", "value": self._format_weight(self._to_display_weight(measurement.hydration_kg, display_unit), display_unit)},
+            {"label": "Visceral Fat Index", "value": self._format_index(measurement.visceral_fat_index)},
             {"label": "Heart Rate", "value": f"{int(round(measurement.heart_rate_bpm))} bpm" if measurement.heart_rate_bpm is not None else "--"},
             {"label": "Scale Battery", "value": str(measurement.scale_battery).strip() if measurement.scale_battery else "--"},
         ]
+
+    def _composition_points(self, history, display_unit):
+        points = []
+        for item in history:
+            if not item.source_timestamp:
+                continue
+            timestamp = self._normalize_timestamp(item.source_timestamp)
+            if not timestamp:
+                continue
+            fat_free_mass_kg, _, fat_free_mass_derived = self._derived_fat_free_mass(item)
+            points.append(
+                {
+                    "timestamp": timestamp,
+                    "body_fat_percent": self._to_display_percent(item.body_fat_percent),
+                    "body_fat": self._to_display_percent(item.body_fat_percent),
+                    "fat_mass": self._to_display_weight(item.fat_mass_kg, display_unit),
+                    "fat_free_mass": self._to_display_weight(fat_free_mass_kg, display_unit) if fat_free_mass_kg is not None else None,
+                    "fat_free_mass_derived": fat_free_mass_derived,
+                    "muscle_mass": self._to_display_weight(item.muscle_mass_kg, display_unit),
+                    "bone_mass": self._to_display_weight(item.bone_mass_kg, display_unit),
+                    "hydration": self._to_display_weight(item.hydration_kg, display_unit),
+                    "visceral_fat": self._to_display_index(item.visceral_fat_index),
+                }
+            )
+        return points
+
+    def _composition_summary(self, selected_points, all_points, metric_key, journey_start_date, display_unit):
+        metric = self.COMPOSITION_METRICS[metric_key]
+        metric_unit = self._composition_metric_unit(metric_key, display_unit)
+        selected_value_points = [point for point in selected_points if point.get(metric["field"]) is not None]
+        all_value_points = [point for point in all_points if point.get(metric["field"]) is not None]
+        journey_value_points = all_value_points
+        if journey_start_date:
+            journey_value_points = [
+                point for point in all_value_points
+                if self._parse_timestamp(point.get("timestamp")) and self._parse_timestamp(point.get("timestamp")).date() >= journey_start_date
+            ]
+
+        current_point = selected_value_points[-1] if selected_value_points else None
+        earliest_point = selected_value_points[0] if selected_value_points else None
+        latest_point = selected_value_points[-1] if selected_value_points else None
+        journey_point = journey_value_points[0] if journey_value_points else (all_value_points[0] if all_value_points else None)
+        current_value = current_point.get(metric["field"]) if current_point else None
+        journey_value = journey_point.get(metric["field"]) if journey_point else None
+        change = None if current_value is None or journey_value is None else round(current_value - journey_value, 1)
+        summary_cards = [
+            {
+                "key": "current_value",
+                "label": "Current Value",
+                "value": self._format_composition_value(current_value, metric, metric_unit),
+                "note": self._composition_value_note(current_point, metric),
+            },
+            {
+                "key": "journey_starting_value",
+                "label": "Journey Starting Value",
+                "value": self._format_composition_value(journey_value, metric, metric_unit),
+                "note": self._composition_value_note(journey_point, metric),
+            },
+            {
+                "key": "change_since_journey_start",
+                "label": "Change Since Journey Start",
+                "value": self._format_composition_change(change, metric, metric_unit),
+            },
+            {
+                "key": "earliest_available_date",
+                "label": "Earliest Available Date",
+                "value": self._format_display_date(self._parse_timestamp(earliest_point.get("timestamp")) if earliest_point else None),
+            },
+            {
+                "key": "latest_measurement_date",
+                "label": "Latest Measurement Date",
+                "value": self._format_display_date(self._parse_timestamp(latest_point.get("timestamp")) if latest_point else None),
+            },
+        ]
+        summary_message = self._composition_summary_message(metric_key, selected_value_points)
+        return {
+            "metric": metric_key,
+            "metric_label": metric["label"],
+            "metric_unit": metric_unit,
+            "current_value": current_value,
+            "journey_value": journey_value,
+            "change": change,
+            "summary_cards": summary_cards,
+            "summary_message": summary_message,
+            "earliest_date": self._format_display_date(self._parse_timestamp(earliest_point.get("timestamp")) if earliest_point else None),
+            "latest_date": self._format_display_date(self._parse_timestamp(latest_point.get("timestamp")) if latest_point else None),
+            "trend_points": len(selected_value_points),
+        }
+
+    def _composition_summary_message(self, metric_key, selected_points):
+        if metric_key == "visceral_fat" and len(selected_points) <= 1:
+            return "Visceral-fat history will appear as additional measurements are collected."
+        if len(selected_points) <= 1:
+            return "Only one reading is available so far. Additional history will appear as measurements are collected."
+        return "The selected body-composition trend uses actual readings and a seven-day trend line."
+
+    def _composition_value_note(self, point, metric):
+        if not point:
+            return None
+        if metric["field"] == "fat_free_mass" and point.get("fat_free_mass_derived"):
+            return "Derived from weight - fat mass"
+        return None
+
+    def _format_composition_value(self, value, metric, display_unit):
+        if value is None:
+            return "--"
+        if metric["kind"] == "percent":
+            return f"{value:.1f}%"
+        if metric["kind"] == "index":
+            return f"{value:.1f} Index"
+        return self._format_weight(value, display_unit)
+
+    def _format_composition_change(self, value, metric, display_unit):
+        if value is None:
+            return "--"
+        if value == 0:
+            return "No change"
+        direction = "Up" if value > 0 else "Down"
+        magnitude = abs(value)
+        if metric["kind"] == "percent":
+            return f"{direction} {magnitude:.1f} percentage points"
+        if metric["kind"] == "index":
+            return f"{direction} {magnitude:.1f} Index"
+        return f"{direction} {magnitude:.1f} {display_unit}"
+
+    def _composition_metric_unit(self, metric_key, display_unit):
+        metric = self.COMPOSITION_METRICS[metric_key]
+        if metric["kind"] == "percent":
+            return "%"
+        if metric["kind"] == "index":
+            return "Index"
+        return display_unit
+
+    def _to_display_index(self, value):
+        if value is None:
+            return None
+        return round(value, 1)
+
+    def _format_index(self, value):
+        if value is None:
+            return "--"
+        return f"{value:.1f} Index"
+
+    def _derived_fat_free_mass(self, measurement):
+        if not measurement:
+            return None, None, False
+        if measurement.fat_free_mass_kg is not None:
+            return measurement.fat_free_mass_kg, None, False
+        if measurement.weight_kg is None or measurement.fat_mass_kg is None:
+            return None, None, False
+        derived = measurement.weight_kg - measurement.fat_mass_kg
+        if derived < 0:
+            return None, None, False
+        return derived, "Derived from weight - fat mass", True
 
     def _chart_points(self, history, goal_weight, display_unit):
         points = []
@@ -478,6 +683,15 @@ class WeightProgressService:
             return "Starting Weight — Since HomePulse tracking began"
         return "Since HomePulse tracking began"
 
+    def _journey_start_source_text(self, cfg, journey_start_date, journey_history):
+        if cfg.get("starting_weight") not in (None, ""):
+            return "Manual"
+        if journey_start_date:
+            return f"Starting Weight - {journey_start_date:%b} {journey_start_date.day}, {journey_start_date:%Y}"
+        if journey_history:
+            return "Starting Weight - Since HomePulse tracking began"
+        return "Since HomePulse tracking began"
+
     def _journey_progress_percent(self, starting_weight, current_weight, goal_weight):
         if starting_weight is None or current_weight is None or goal_weight is None:
             return None
@@ -507,7 +721,10 @@ class WeightProgressService:
         if key == "body_fat":
             value = self._parse_float(state)
             return {"body_fat_percent": value, **timestamps} if value is not None else {}
-        if key in {"withings_goal", "fat_mass", "fat_free_mass", "muscle_mass", "bone_mass"}:
+        if key == "visceral_fat_index":
+            value = self._parse_float(state)
+            return {"visceral_fat_index": value, **timestamps} if value is not None else {}
+        if key in {"withings_goal", "fat_mass", "fat_free_mass", "muscle_mass", "bone_mass", "hydration"}:
             value = self._parse_float(state)
             if value is None:
                 return {}
@@ -640,6 +857,12 @@ class WeightProgressService:
             return "--"
         time_text = parsed.strftime("%I:%M %p").lstrip("0")
         return f"{parsed.strftime('%b')} {parsed.day}, {parsed.year} at {time_text}"
+
+    @staticmethod
+    def _format_display_date(value):
+        if value is None:
+            return "--"
+        return f"{value:%b} {value.day}, {value:%Y}"
 
     @staticmethod
     def _now():

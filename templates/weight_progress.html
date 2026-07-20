@@ -4,41 +4,13 @@
 <section class="page-heading history-heading">
   <div>
     <h2>Weight Progress</h2>
-    <p>Local weight and body-composition history from Home Assistant and optional Withings workbook imports. Current Journey baseline: {{ weight_progress.journey_start_label }}.</p>
+    <p>Local weight and body-composition history from Home Assistant. Current Journey baseline: {{ weight_progress.journey_start_label }}.</p>
   </div>
   <div class="range-controls" aria-label="Weight history ranges">
     {% for option in weight_progress.chart.range_options %}
       <span data-range="{{ option.value }}" {% if option.value == weight_progress.chart.default_range %}class="active"{% endif %}>{{ option.label }}</span>
     {% endfor %}
   </div>
-</section>
-
-<section class="dashboard-panel import-panel">
-  <div class="panel-heading">
-    <div>
-      <h2>Import Weight History</h2>
-      <p>Choose your local Withings workbook, preview the rows, and confirm only when the summary looks right. Preview never writes to the database.</p>
-    </div>
-  </div>
-  <div class="import-controls">
-    <label class="field-label" for="weight-progress-import-file">Withings workbook</label>
-    <input id="weight-progress-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-    <div class="diagnostics-actions inline-diagnostics">
-      <div class="diagnostic-action">
-        <button type="button" id="weight-progress-import-preview" class="diagnostic-test-button" disabled>Preview Import</button>
-      </div>
-      <div class="diagnostic-action">
-        <button type="button" id="weight-progress-import-confirm" class="diagnostic-test-button" disabled>Import Workbook</button>
-      </div>
-      <div class="diagnostic-action">
-        <button type="button" id="weight-progress-import-cancel" class="diagnostic-test-button" disabled>Cancel</button>
-      </div>
-    </div>
-    <p class="settings-help">Accepted file type: .xlsx only. The workbook stays local and is discarded after preview, confirmation, or cancel.</p>
-  </div>
-  <div id="weight-progress-import-status" class="settings-message" hidden></div>
-  <section id="weight-progress-import-preview-grid" class="history-summary-grid" hidden></section>
-  <div id="weight-progress-import-errors" class="small" hidden></div>
 </section>
 
 <section class="history-summary-grid">
@@ -80,9 +52,50 @@
     <h2>Body Composition</h2>
     <table>
       {% for row in weight_progress.body_composition_rows %}
-        <tr><td>{{ row.label }}</td><td>{{ row.value }}</td></tr>
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>
+            {{ row.value }}
+            {% if row.note %}
+              <div class="small">{{ row.note }}</div>
+            {% endif %}
+          </td>
+        </tr>
       {% endfor %}
     </table>
+  </article>
+
+  <article class="dashboard-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Body Composition Trends</h2>
+        <p>Switch between body-fat percentage, mass measurements, and visceral fat while keeping the selected date range in sync with Weight Trend.</p>
+      </div>
+      <div class="range-controls" aria-label="Body composition metrics">
+        {% for option in weight_progress.composition_trends.metric_options %}
+          <span data-composition-metric="{{ option.value }}" {% if option.value == weight_progress.composition_trends.default_metric %}class="active"{% endif %}>{{ option.label }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    <section id="weight-progress-composition-summary" class="history-summary-grid composition-summary-grid">
+      {% for card in weight_progress.composition_trends.summary_cards %}
+        <article class="summary-card">
+          <span>{{ card.label }}</span>
+          <strong>{{ card.value }}</strong>
+          {% if card.note %}
+            <div class="small">{{ card.note }}</div>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </section>
+    <div id="weight-progress-composition-chart-box" class="history-chart-box large" data-chart-key="weight-progress-composition" data-default-range="{{ weight_progress.composition_trends.range_key }}" data-default-metric="{{ weight_progress.composition_trends.default_metric }}" data-journey-start-date="{{ weight_progress.composition_trends.journey_start_date or '' }}">
+      {% if weight_progress.composition_trends.points|length %}
+        <canvas id="weight-progress-composition-chart"></canvas>
+      {% else %}
+        <div class="chart-empty-state">No body composition history has been collected yet. The first successful measurement will appear here.</div>
+      {% endif %}
+    </div>
+    <p id="weight-progress-composition-chart-note" class="small">{{ weight_progress.composition_trends.summary_message }}</p>
   </article>
 
   <article class="dashboard-panel">
@@ -93,6 +106,16 @@
       {% endfor %}
     </table>
   </article>
+</section>
+
+<section class="dashboard-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>History Maintenance</h2>
+      <p class="settings-help">Manage the optional workbook import and local history cleanup in Settings.</p>
+    </div>
+    <a class="diagnostic-test-button" href="{{ url_for('settings') }}#weight-progress-history-maintenance">Manage Weight History</a>
+  </div>
 </section>
 
 <script>

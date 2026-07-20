@@ -188,6 +188,12 @@
       <label class="field-label" for="weight-progress-bone-mass-entity">Bone Mass Entity</label>
       <input id="weight-progress-bone-mass-entity" name="weight_progress_bone_mass_entity" type="text" value="{{ weight_progress_entities.get("bone_mass", "") }}" placeholder="sensor.withings_bone_mass">
 
+      <label class="field-label" for="weight-progress-hydration-entity">Hydration Entity</label>
+      <input id="weight-progress-hydration-entity" name="weight_progress_hydration_entity" type="text" value="{{ weight_progress_entities.get("hydration", "") }}" placeholder="sensor.withings_hydration">
+
+      <label class="field-label" for="weight-progress-visceral-fat-index-entity">Visceral Fat Index Entity</label>
+      <input id="weight-progress-visceral-fat-index-entity" name="weight_progress_visceral_fat_index_entity" type="text" value="{{ weight_progress_entities.get("visceral_fat_index", "") }}" placeholder="sensor.withings_visceral_fat_index">
+
       <label class="field-label" for="weight-progress-heart-rate-entity">Heart Rate Entity</label>
       <input id="weight-progress-heart-rate-entity" name="weight_progress_heart_rate_entity" type="text" value="{{ weight_progress_entities.get("heart_rate", "") }}" placeholder="sensor.withings_heart_pulse">
 
@@ -210,6 +216,31 @@
 
       <label class="field-label" for="weight-progress-goal-weight">Goal Weight</label>
       <input id="weight-progress-goal-weight" name="weight_progress_goal_weight" type="number" min="0" step="0.1" value="{{ weight_progress_config.get("goal_weight") if weight_progress_config.get("goal_weight") is not none else 220 }}">
+
+      <details id="weight-progress-history-maintenance" class="advanced-settings">
+        <summary>History Import &amp; Maintenance</summary>
+        <p class="settings-help">Choose a local Withings workbook, preview it, and confirm only when the summary looks right. The preview never writes to the database.</p>
+
+        <label class="field-label" for="weight-progress-import-file">Withings workbook</label>
+        <input id="weight-progress-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+
+        <div class="diagnostics-actions inline-diagnostics">
+          <div class="diagnostic-action">
+            <button type="button" id="weight-progress-import-preview" class="diagnostic-test-button" disabled>Preview Import</button>
+          </div>
+          <div class="diagnostic-action">
+            <button type="button" id="weight-progress-import-confirm" class="diagnostic-test-button" disabled>Import Workbook</button>
+          </div>
+          <div class="diagnostic-action">
+            <button type="button" id="weight-progress-import-cancel" class="diagnostic-test-button" disabled>Cancel</button>
+          </div>
+        </div>
+
+        <p class="settings-help">Accepted file type: .xlsx only. The workbook stays local and is discarded after preview, confirmation, or cancel.</p>
+        <div id="weight-progress-import-status" class="settings-message" hidden></div>
+        <section id="weight-progress-import-preview-grid" class="history-summary-grid" hidden></section>
+        <div id="weight-progress-import-errors" class="small" hidden></div>
+      </details>
     </section>
 
     <section class="settings-section">
@@ -725,5 +756,18 @@
     if (value === "ON" || value === "OFF") return value;
     return "Unknown";
   }
+</script>
+<script src="{{ url_for('static', filename='js/weight_progress.js') }}"></script>
+<script>
+  (function() {
+    if (window.location.hash !== "#weight-progress-history-maintenance") {
+      return;
+    }
+    const details = document.getElementById("weight-progress-history-maintenance");
+    if (details) {
+      details.open = true;
+      details.scrollIntoView({ block: "start" });
+    }
+  })();
 </script>
 {% endblock %}

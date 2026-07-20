@@ -14,6 +14,7 @@ class WeightMeasurement:
     muscle_mass_kg: float | None = None
     bone_mass_kg: float | None = None
     hydration_kg: float | None = None
+    visceral_fat_index: float | None = None
     heart_rate_bpm: float | None = None
     scale_battery: str | None = None
     comments: str | None = None
@@ -44,6 +45,7 @@ class WeightMeasurement:
             muscle_mass_kg=row["muscle_mass_kg"],
             bone_mass_kg=row["bone_mass_kg"],
             hydration_kg=row["hydration_kg"],
+            visceral_fat_index=row["visceral_fat_index"],
             heart_rate_bpm=row["heart_rate_bpm"],
             scale_battery=row["scale_battery"],
             comments=row["comments"],
@@ -73,6 +75,7 @@ class WeightMeasurement:
             "muscle_mass_kg": self.muscle_mass_kg,
             "bone_mass_kg": self.bone_mass_kg,
             "hydration_kg": self.hydration_kg,
+            "visceral_fat_index": self.visceral_fat_index,
             "heart_rate_bpm": self.heart_rate_bpm,
             "scale_battery": self.scale_battery,
             "comments": self.comments,

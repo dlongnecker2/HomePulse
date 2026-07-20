@@ -64,6 +64,8 @@ def build_config(weight_progress=None, router_reboot=None):
                     "fat_free_mass": "sensor.withings_fat_free_mass",
                     "muscle_mass": "sensor.withings_muscle_mass",
                     "bone_mass": "sensor.withings_bone_mass",
+                    "hydration": "sensor.withings_hydration",
+                    "visceral_fat_index": "sensor.withings_visceral_fat_index",
                     "heart_rate": "sensor.withings_heart_pulse",
                     "battery": "sensor.withings_battery",
                 },
@@ -165,6 +167,24 @@ class WeightProgressServiceTests(unittest.TestCase):
                     "attributes": {"unit_of_measurement": "kg"},
                 },
             ),
+            "sensor.withings_hydration": PowerAdapterResult(
+                status="PASS",
+                message="ok",
+                metadata={
+                    "state": "76.5",
+                    "last_updated": "2026-07-18T08:00:00",
+                    "attributes": {"unit_of_measurement": "kg"},
+                },
+            ),
+            "sensor.withings_visceral_fat_index": PowerAdapterResult(
+                status="PASS",
+                message="ok",
+                metadata={
+                    "state": "8.4",
+                    "last_updated": "2026-07-18T08:00:00",
+                    "attributes": {"unit_of_measurement": "Index"},
+                },
+            ),
             "sensor.withings_heart_pulse": PowerAdapterResult(
                 status="PASS",
                 message="ok",
@@ -191,7 +211,7 @@ class WeightProgressServiceTests(unittest.TestCase):
         with patch("modules.weight_progress.service.HomeAssistantAdapter.get_entity_state", side_effect=fake_get_entity_state) as get_state:
             measurement = service.capture_current_measurement()
 
-        self.assertEqual(get_state.call_count, 9)
+        self.assertEqual(get_state.call_count, 11)
         self.assertEqual(measurement.weight_kg, 100.0)
         self.assertEqual(measurement.body_fat_percent, 17.5)
         self.assertEqual(measurement.withings_goal_kg, 95.0)
@@ -375,6 +395,24 @@ class WeightProgressServiceTests(unittest.TestCase):
                     status="PASS",
                     message="ok",
                     metadata={
+                        "state": "76.5",
+                        "last_updated": "2026-07-18T08:00:00",
+                        "attributes": {"unit_of_measurement": "kg"},
+                    },
+                ),
+                PowerAdapterResult(
+                    status="PASS",
+                    message="ok",
+                    metadata={
+                        "state": "8.4",
+                        "last_updated": "2026-07-18T08:00:00",
+                        "attributes": {"unit_of_measurement": "Index"},
+                    },
+                ),
+                PowerAdapterResult(
+                    status="PASS",
+                    message="ok",
+                    metadata={
                         "state": "58",
                         "last_updated": "2026-07-18T08:00:00",
                         "attributes": {"unit_of_measurement": "bpm"},
@@ -460,6 +498,24 @@ class WeightProgressServiceTests(unittest.TestCase):
                     "state": "3.2",
                     "last_updated": "2026-07-18T08:00:00",
                     "attributes": {"unit_of_measurement": "kg"},
+                },
+            ),
+            "sensor.withings_hydration": PowerAdapterResult(
+                status="PASS",
+                message="ok",
+                metadata={
+                    "state": "76.5",
+                    "last_updated": "2026-07-18T08:00:00",
+                    "attributes": {"unit_of_measurement": "kg"},
+                },
+            ),
+            "sensor.withings_visceral_fat_index": PowerAdapterResult(
+                status="PASS",
+                message="ok",
+                metadata={
+                    "state": "8.4",
+                    "last_updated": "2026-07-18T08:00:00",
+                    "attributes": {"unit_of_measurement": "Index"},
                 },
             ),
             "sensor.withings_heart_pulse": PowerAdapterResult(
@@ -564,6 +620,67 @@ class WeightProgressServiceTests(unittest.TestCase):
 
         self.assertEqual(payload["chart"]["points"][-1]["rolling_average"], 197.0)
 
+    def test_body_composition_trends_include_all_points_and_current_journey_filter(self):
+        config = build_config(
+            weight_progress={
+                "enabled": True,
+                "database": "data/weight_progress.db",
+                "display_unit": "kg",
+                "starting_weight": None,
+                "journey_start_date": "2026-05-04",
+                "goal_weight": 220.0,
+                "entities": build_config().data["weight_progress"]["entities"],
+            }
+        )
+        service = self._service(config)
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-05-01 08:00:00",
+                source_timestamp="2026-05-01 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=100.0,
+                body_fat_percent=20.0,
+                fat_mass_kg=20.0,
+                fat_free_mass_kg=80.0,
+                muscle_mass_kg=60.0,
+                bone_mass_kg=3.2,
+                hydration_kg=70.0,
+                visceral_fat_index=9.2,
+                heart_rate_bpm=58,
+                scale_battery="low",
+                reading_hash="hash-old",
+                metadata={"timestamp": "2026-05-01 08:00:00"},
+            )
+        )
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-05-05 08:00:00",
+                source_timestamp="2026-05-05 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=99.0,
+                body_fat_percent=18.0,
+                fat_mass_kg=18.0,
+                fat_free_mass_kg=81.0,
+                muscle_mass_kg=60.5,
+                bone_mass_kg=3.1,
+                hydration_kg=68.0,
+                visceral_fat_index=8.4,
+                heart_rate_bpm=57,
+                scale_battery="full",
+                reading_hash="hash-new",
+                metadata={"timestamp": "2026-05-05 08:00:00"},
+            )
+        )
+
+        payload = service.view_model(include_live=False)
+        trends = payload["composition_trends"]
+
+        self.assertEqual(trends["selected_metric_summary"]["trend_points"], 1)
+        self.assertEqual(trends["selected_metric_summary"]["summary_cards"][3]["value"], "May 5, 2026")
+        self.assertEqual(trends["all_points"][0]["hydration"], 70.0)
+        self.assertEqual(trends["all_points"][1]["visceral_fat"], 8.4)
+        self.assertEqual(trends["points"][0]["visceral_fat"], 8.4)
+
 
 class WeightProgressTemplateTests(unittest.TestCase):
     def _service_payload(self, measurement=None):
@@ -629,8 +746,13 @@ class WeightProgressTemplateTests(unittest.TestCase):
         self.assertIn("Current Weight", html)
         self.assertIn("Jul 19, 2026 at 7:35 AM", html)
         self.assertIn("Latest Weigh-In", html)
-        self.assertIn("Import Weight History", html)
         self.assertIn("Current Journey baseline", html)
+        self.assertIn("Body Composition Trends", html)
+        self.assertIn("Manage Weight History", html)
+        self.assertNotIn("Import Weight History", html)
+        self.assertLess(html.index("Current Weight"), html.index("Weight Trend"))
+        self.assertLess(html.index("Weight Trend"), html.index("Body Composition Trends"))
+        self.assertLess(html.index("Body Composition Trends"), html.index("Manage Weight History"))
 
     def test_page_renders_empty_state_without_history(self):
         payload = self._service_payload()
@@ -638,6 +760,9 @@ class WeightProgressTemplateTests(unittest.TestCase):
 
         self.assertIn("No weight history has been collected yet.", html)
         self.assertIn("No weight history stored yet. The first successful weigh-in will appear here.", html)
+        self.assertIn("No body composition history has been collected yet.", html)
+        self.assertNotIn("Import Weight History", html)
+        self.assertIn("Manage Weight History", html)
 
     def test_no_tokens_appear_in_rendered_output(self):
         payload = self._service_payload()
@@ -645,6 +770,91 @@ class WeightProgressTemplateTests(unittest.TestCase):
 
         self.assertNotIn("super-secret-token", html)
         self.assertNotIn("home_assistant_token", html)
+
+
+class WeightProgressSettingsTests(unittest.TestCase):
+    def _render(self):
+        app = Flask(__name__, template_folder=str(ROOT / "templates"))
+        app.jinja_env.globals["app_name"] = "HomePulse"
+        app.jinja_env.globals["render_test_button"] = lambda name, endpoint: f"<button>{name}</button>"
+
+        for endpoint in (
+            "home",
+            "home_center",
+            "environment_center",
+            "internet",
+            "solar",
+            "vehicle_center",
+            "weight_progress",
+            "weather",
+            "lighting",
+            "garden",
+            "speed_test_center",
+            "email_center",
+            "settings",
+            "lab",
+            "logs",
+            "about",
+            "test_home_assistant",
+            "test_home_assistant_power_cycle",
+            "test_smtp",
+            "test_ping",
+            "test_speed",
+            "test_full_diagnostics",
+        ):
+            app.add_url_rule(f"/{endpoint}", endpoint, lambda: "")
+
+        context = dict(
+            config=build_config(),
+            schedule_mode="every_1_hour",
+            schedule_label="Every hour",
+            speedtest_times=[],
+            router_reboot={
+                "home_assistant_url": "http://homeassistant.local:8123",
+                "recovery_entity_id": "switch.office_router_plug",
+                "matter_entity_id": "switch.office_router_plug",
+                "router_recovery_live_enabled": False,
+            },
+            router_recovery_config={
+                "home_assistant_url": "http://homeassistant.local:8123",
+                "recovery_entity_id": "switch.office_router_plug",
+                "matter_entity_id": "switch.office_router_plug",
+            },
+            email={"notifications": {}},
+            energy={"home_assistant_entities": {}, "alerts": {}},
+            vehicle={"entities": {}},
+            solar={"entities": {}},
+            weather={},
+            lighting={},
+            garden={},
+            diagnostic_result=None,
+            router_recovery_status={
+                "mode_label": "DRY RUN",
+                "recovery_method": "home_assistant",
+                "home_assistant_url": "http://homeassistant.local:8123",
+                "recovery_entity": "switch.office_router_plug",
+                "current_state": "ON",
+                "cooldown_status": "READY",
+                "last_attempt": "None",
+                "last_result": "None",
+            },
+            error=None,
+            saved=False,
+            now=None,
+            weight_progress=build_config().data["weight_progress"],
+        )
+
+        with app.test_request_context("/settings#weight-progress-history-maintenance"):
+            return render_template("settings.html", **context)
+
+    def test_settings_contains_collapsed_history_import_section(self):
+        html = self._render()
+
+        self.assertIn("History Import &amp; Maintenance", html)
+        self.assertIn('id="weight-progress-history-maintenance" class="advanced-settings"', html)
+        self.assertNotIn('id="weight-progress-history-maintenance" class="advanced-settings" open', html)
+        self.assertIn("Preview Import", html)
+        self.assertIn("weight_progress.js", html)
 
 
 def _build_workbook_bytes(rows, headers=None, sheet_name="weight"):
