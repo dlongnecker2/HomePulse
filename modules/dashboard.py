@@ -559,12 +559,20 @@ class Dashboard:
                 category = request.args.get("category", None)
                 severity = request.args.get("severity", None)
                 hours_back = request.args.get("hours_back", 24, type=int)
-                events = self.application.timeline.get_events(
-                    category=category,
-                    severity=severity,
-                    limit=limit,
-                    hours_back=hours_back,
+                events, error, timed_out = self._safe_timed_call(
+                    lambda: self.application.timeline.get_events(
+                        category=category,
+                        severity=severity,
+                        limit=limit,
+                        hours_back=hours_back,
+                    ),
+                    timeout_seconds=1.25,
+                    fallback=[],
                 )
+                if timed_out:
+                    return jsonify({"events": [], "count": 0, "error": "timeout"}), 504
+                if error is not None:
+                    raise error
                 return jsonify({"events": events, "count": len(events)})
             except Exception as exc:
                 self.application.log.exception(f"Timeline API failed: {exc}")
@@ -578,13 +586,29 @@ class Dashboard:
                 unread_only = request.args.get("unread_only", False, type=lambda x: x.lower() == "true")
                 severity = request.args.get("severity", None)
                 hours_back = request.args.get("hours_back", 24, type=int)
-                notifications = self.application.notification_manager.get_notifications(
-                    limit=limit,
-                    unread_only=unread_only,
-                    severity=severity,
-                    hours_back=hours_back,
+                notifications, error, timed_out = self._safe_timed_call(
+                    lambda: self.application.notification_manager.get_notifications(
+                        limit=limit,
+                        unread_only=unread_only,
+                        severity=severity,
+                        hours_back=hours_back,
+                    ),
+                    timeout_seconds=1.25,
+                    fallback=[],
                 )
-                unread_count = self.application.notification_manager.get_unread_count()
+                if timed_out:
+                    return jsonify({"notifications": [], "count": 0, "unread_count": 0, "error": "timeout"}), 504
+                if error is not None:
+                    raise error
+                unread_count, unread_error, unread_timed_out = self._safe_timed_call(
+                    self.application.notification_manager.get_unread_count,
+                    timeout_seconds=1.25,
+                    fallback=0,
+                )
+                if unread_timed_out:
+                    return jsonify({"notifications": notifications, "count": len(notifications), "unread_count": 0, "error": "timeout"}), 504
+                if unread_error is not None:
+                    raise unread_error
                 return jsonify({
                     "notifications": notifications,
                     "count": len(notifications),
@@ -1110,6 +1134,17 @@ class Dashboard:
         home = self._home_placeholder()
         
         # Compute health score and alerts
+        timeline_summary, _, _ = self._safe_timed_call(
+            lambda: self.application.timeline.get_summary(hours_back=24),
+            timeout_seconds=1.25,
+            fallback={},
+        )
+        timeline_recent, _, _ = self._safe_timed_call(
+            lambda: self.application.timeline.get_events(limit=20, hours_back=24),
+            timeout_seconds=1.25,
+            fallback=[],
+        )
+
         statuses = {
             "internet": internet,
             "solar": solar,
@@ -1142,8 +1177,8 @@ class Dashboard:
             "health_trend": health_result.get("trend"),
             "health_breakdown": health_result.get("breakdown"),
             "alerts": alerts[:10],  # Top 10 alerts
-            "timeline_summary": self.application.timeline.get_summary(hours_back=24),
-            "timeline_recent": self.application.timeline.get_events(limit=20, hours_back=24),
+            "timeline_summary": timeline_summary,
+            "timeline_recent": timeline_recent,
             "widgets": self.application.plugin_manager.widget_registry.all(),
             "devices": self.application.plugin_manager.device_registry.all(),
             "last_updated": str(datetime.now()),
@@ -1190,19 +1225,8 @@ class Dashboard:
         }
 
     def _safe_center_status(self, name, function):
-        result_holder = {"value": None, "error": None}
-
-        def _runner():
-            try:
-                result_holder["value"] = function() or {"enabled": False, "status": "Unavailable"}
-            except Exception as exc:
-                result_holder["error"] = exc
-
-        worker = threading.Thread(target=_runner, daemon=True)
-        worker.start()
-        worker.join(timeout=1.25)
-
-        if worker.is_alive():
+        value, error, timed_out = self._safe_timed_call(function, timeout_seconds=1.25)
+        if timed_out:
             self.application.log.warning(f"Home Center {name} status timed out after 1.25s")
             return {
                 "enabled": False,
@@ -1212,18 +1236,32 @@ class Dashboard:
                 "message": f"{name.title()} status timed out.",
             }
 
-        if result_holder["error"] is not None:
-            exc = result_holder["error"]
-            self.application.log.debug(f"Home Center {name} status unavailable: {exc}", exc_info=True)
+        if error is not None:
+            self.application.log.debug(f"Home Center {name} status unavailable: {error}", exc_info=True)
             return {
                 "enabled": False,
                 "configured": False,
                 "status": "Unavailable",
-                "error": str(exc),
+                "error": str(error),
                 "message": f"{name.title()} status unavailable.",
             }
 
-        return result_holder["value"]
+        return value
+
+    def _safe_timed_call(self, function, timeout_seconds=1.25, fallback=None):
+        result_holder = {"value": fallback, "error": None}
+
+        def _runner():
+            try:
+                result_holder["value"] = function()
+            except Exception as exc:
+                result_holder["error"] = exc
+
+        worker = threading.Thread(target=_runner, daemon=True)
+        worker.start()
+        worker.join(timeout=timeout_seconds)
+        timed_out = worker.is_alive()
+        return result_holder["value"], result_holder["error"], timed_out
 
     @staticmethod
     def _lighting_placeholder():
