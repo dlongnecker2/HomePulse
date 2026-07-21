@@ -55,6 +55,8 @@ function setStatusClass(element, status) {
   else element.classList.add("starting");
 }
 
+let homeGlanceRequestSeq = 0;
+
 async function refreshDashboardStatus() {
   try {
     const response = await fetch("/api/status", { cache: "no-store" });
@@ -113,12 +115,18 @@ async function refreshDashboardStatus() {
 }
 
 async function refreshHomeGlance() {
+  const requestSeq = ++homeGlanceRequestSeq;
   try {
     const response = await fetch("/api/home/status", { cache: "no-store" });
+    if (requestSeq !== homeGlanceRequestSeq) return;
     if (!response.ok) throw new Error(`Home status returned ${response.status}`);
     const data = await response.json();
+    if (requestSeq !== homeGlanceRequestSeq) return;
     setText("home-glance-status", data.overall_status || "Partial");
     setText("home-glance-detail", `Health ${data.health_score ?? "--"}% - ${data.last_updated || "--"}`);
+    if (data.greenhouse && typeof data.greenhouse === "object" && Object.keys(data.greenhouse).length > 0) {
+      updateGreenhouseCard(data.greenhouse);
+    }
     const badge = document.getElementById("home-glance-badge");
     if (badge) {
       const status = String(data.overall_status || "Partial").toLowerCase();
@@ -129,9 +137,59 @@ async function refreshHomeGlance() {
       else badge.classList.add("disabled");
     }
   } catch (error) {
+    if (requestSeq !== homeGlanceRequestSeq) return;
     setText("home-glance-status", "Partial");
     setText("home-glance-detail", "Home Center status is unavailable right now.");
   }
+}
+
+function updateGreenhouseCard(greenhouse) {
+  const temp = cleanNumber(greenhouse?.temperature);
+  const humidity = cleanNumber(greenhouse?.humidity);
+  const unit = greenhouse?.temperature_unit || "°F";
+  const band = greenhouseTemperatureBand(temp);
+  const status = greenhouseDisplayStatus(greenhouse);
+
+  setText("greenhouse-temperature", temp === null ? greenhouse?.temperature_display || "Unavailable" : `${temp.toFixed(1).replace(/\.0$/, "")}${unit}`);
+  setText("greenhouse-humidity", humidity === null ? "Humidity unavailable" : `Humidity ${humidity.toFixed(humidity % 1 === 0 ? 0 : 1).replace(/\.0$/, "")}%`);
+  setText("greenhouse-updated", `Observed ${formatTimestamp(greenhouse?.observed_at || greenhouse?.last_updated)}`);
+  setText("greenhouse-source", `Source ${greenhouse?.source ? greenhouse.source.replace(/_/g, " ") : greenhouse?.source_status ? greenhouse.source_status.replace(/_/g, " ") : "unavailable"}`);
+
+  const badge = document.getElementById("greenhouse-status-badge");
+  if (badge) {
+    badge.className = "energy-status-badge";
+    badge.textContent = status || band || "Unavailable";
+    badge.classList.add(greenhouseBadgeClass(greenhouse, band));
+  }
+}
+
+function greenhouseTemperatureBand(temp) {
+  if (temp === null || temp === undefined || !Number.isFinite(Number(temp))) return null;
+  const number = Number(temp);
+  if (number < 40) return "Cold";
+  if (number < 85) return "Normal";
+  if (number < 95) return "Warm";
+  return "Hot";
+}
+
+function greenhouseDisplayStatus(greenhouse) {
+  if (!greenhouse?.enabled) return "Disabled";
+  if (!greenhouse?.configured) return "Unavailable";
+  if (greenhouse?.status) return greenhouse.status;
+  if (greenhouse?.source_status === "stale") return "Not Available";
+  if (greenhouse?.source_status === "cached") return "Last Known";
+  if (greenhouse?.source_status === "live") return "Connected";
+  return "Not Available";
+}
+
+function greenhouseBadgeClass(greenhouse, band) {
+  if (!greenhouse?.enabled) return "disabled";
+  if (!greenhouse?.configured || greenhouse?.source_status === "unavailable" || greenhouse?.source_status === "stale") return "offline";
+  if (greenhouse?.source_status === "cached") return "degraded";
+  if (band === "Cold") return "degraded";
+  if (band === "Warm") return "degraded";
+  if (band === "Hot") return "unhealthy";
+  return "healthy";
 }
 
 function formatCurrency(value) {

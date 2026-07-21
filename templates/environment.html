@@ -13,6 +13,56 @@
     </span>
   </header>
 
+  <article class="center-glass-card greenhouse-summary-card">
+    <div class="center-card-heading">
+      <div>
+        <span class="center-kicker">Greenhouse</span>
+        <h3>Current greenhouse conditions</h3>
+      </div>
+      <div class="environment-mini-meta">
+        <span id="greenhouse-status-badge" class="energy-status-badge {{ 'healthy' if environment.greenhouse.source_status == 'live' else 'degraded' if environment.greenhouse.source_status == 'cached' else 'offline' if environment.greenhouse.source_status == 'stale' else 'disabled' }}">
+          {{ environment.greenhouse.status or environment.greenhouse.temperature_band or "Unavailable" }}
+        </span>
+        <span id="greenhouse-source-status">{{ environment.greenhouse.source_status|default("unavailable", true)|replace("_", " ")|title }}</span>
+      </div>
+    </div>
+
+    <div class="greenhouse-summary-grid">
+      <div class="greenhouse-temperature-panel">
+        <div class="center-kicker">Current temperature</div>
+        <div id="greenhouse-temperature" class="greenhouse-temperature-value">
+          {{ environment.greenhouse.temperature_display or "Unavailable" }}
+        </div>
+        <div id="greenhouse-temperature-band" class="greenhouse-band greenhouse-band-{{ environment.greenhouse.temperature_band|lower if environment.greenhouse.temperature_band else 'disabled' }}">
+          {{ environment.greenhouse.temperature_band or "Unavailable" }}
+        </div>
+      </div>
+      <div class="center-detail-list greenhouse-detail-list">
+        <div><span>Humidity</span><strong id="greenhouse-humidity">{{ environment.greenhouse.humidity_display or "Unavailable" }}</strong></div>
+        <div><span>Today's high</span><strong id="greenhouse-today-high">{{ environment.greenhouse.today_high or "Unavailable" }}</strong></div>
+        <div><span>Today's low</span><strong id="greenhouse-today-low">{{ environment.greenhouse.today_low or "Unavailable" }}</strong></div>
+        <div><span>Observed at</span><strong id="greenhouse-updated">{{ environment.greenhouse.observed_at or environment.greenhouse.last_updated or "Unavailable" }}</strong></div>
+        <div><span>Source timestamp</span><strong id="greenhouse-source-timestamp">{{ environment.greenhouse.source_timestamp or "Unavailable" }}</strong></div>
+        <div><span>Data source</span><strong id="greenhouse-data-source">{{ environment.greenhouse.source|default(environment.greenhouse.source_status, true)|default("unavailable", true)|replace("_", " ")|title }}</strong></div>
+      </div>
+    </div>
+
+    <p id="greenhouse-message" class="module-copy">{{ environment.greenhouse.message or "Greenhouse data is waiting for a usable reading." }}</p>
+  </article>
+
+  <article class="center-glass-card center-chart-card greenhouse-chart-card">
+    <div class="center-card-heading">
+      <div>
+        <span class="center-kicker">History</span>
+        <h3 id="greenhouse-history-title">Greenhouse temperature trend</h3>
+      </div>
+      <span class="environment-mini-meta" id="greenhouse-history-meta">
+        {{ environment.greenhouse.history_count or 0 }} samples
+      </span>
+    </div>
+    <div id="greenhouse-temperature-chart" class="center-history-chart" data-default-range="1d"></div>
+  </article>
+
   <div class="center-dashboard-grid">
     <article class="center-glass-card center-kpi-card">
       <div class="center-kpi-label">Snapshot</div>
@@ -217,6 +267,7 @@
 <script>
   window.HomePulseEnvironmentInitial = {{ environment | tojson }};
 </script>
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
 <script src="{{ url_for('static', filename='js/center_framework.js') }}"></script>
 <script src="{{ url_for('static', filename='js/environment_center.js') }}"></script>
 {% endblock %}

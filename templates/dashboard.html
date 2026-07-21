@@ -175,6 +175,33 @@
     <div id="weather-location" class="card-foot">Location: --</div>
   </article>
 
+  <article class="status-card greenhouse-card">
+    <div class="card-topline">
+      <div class="card-title">
+        <div class="card-label">Greenhouse</div>
+      </div>
+      <span id="greenhouse-status-badge" class="energy-status-badge {{ 'healthy' if status.greenhouse.source_status == 'live' else 'degraded' if status.greenhouse.source_status == 'cached' else 'offline' if status.greenhouse.source_status == 'stale' else 'disabled' }}">
+        {{ status.greenhouse.status or status.greenhouse.temperature_band or "Unavailable" }}
+      </span>
+    </div>
+    <div id="greenhouse-temperature" class="card-value greenhouse-value no-wrap">
+      {{ status.greenhouse.temperature_display or "Unavailable" }}
+    </div>
+    <div id="greenhouse-humidity" class="card-foot">
+      {% if status.greenhouse.humidity_display %}
+        Humidity {{ status.greenhouse.humidity_display }}
+      {% else %}
+        Humidity unavailable
+      {% endif %}
+    </div>
+    <div id="greenhouse-updated" class="card-foot">
+      Observed {{ status.greenhouse.observed_at or status.greenhouse.last_updated or "--" }}
+    </div>
+    <div id="greenhouse-source" class="card-foot">
+      Source {{ status.greenhouse.source|default(status.greenhouse.source_status, true)|default("unavailable", true)|replace("_", " ")|title }}
+    </div>
+  </article>
+
   <article class="status-card energy-card">
     <div class="card-topline">
       <div class="card-title">

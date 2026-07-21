@@ -40,6 +40,7 @@ class Dashboard:
         status["intelligence"] = self.application.internet_intelligence()
         status["events"] = self.application.db.recent_events(limit=5)
         status["dashboard_widgets"] = self.application.plugin_manager.widget_registry.all()
+        status["greenhouse"] = self.application.environment.greenhouse_status()
         # NOTE: Insights are NOT generated here to avoid blocking /api/status.
         # Insights are fetched by the frontend via /api/insights/status endpoint separately.
         status["insights"] = []
@@ -558,7 +559,6 @@ class Dashboard:
                 category = request.args.get("category", None)
                 severity = request.args.get("severity", None)
                 hours_back = request.args.get("hours_back", 24, type=int)
-                
                 events = self.application.timeline.get_events(
                     category=category,
                     severity=severity,
@@ -578,7 +578,6 @@ class Dashboard:
                 unread_only = request.args.get("unread_only", False, type=lambda x: x.lower() == "true")
                 severity = request.args.get("severity", None)
                 hours_back = request.args.get("hours_back", 24, type=int)
-                
                 notifications = self.application.notification_manager.get_notifications(
                     limit=limit,
                     unread_only=unread_only,
@@ -1107,6 +1106,7 @@ class Dashboard:
         self.application.observe_lighting_status(lighting)
         garden = self._safe_center_status("garden", self.application.garden.get_status)
         self.application.observe_garden_status(garden)
+        greenhouse = self.application.environment.greenhouse_status()
         home = self._home_placeholder()
         
         # Compute health score and alerts
@@ -1132,6 +1132,7 @@ class Dashboard:
             "energy": energy,
             "vehicle": vehicle,
             "weather": weather,
+            "greenhouse": greenhouse,
             "lighting": lighting,
             "garden": garden,
             "home": home,
@@ -1160,7 +1161,12 @@ class Dashboard:
 
     def _system_status(self):
         """System health (HomePulse itself)."""
-        uptime_seconds = (datetime.now() - self.application.started_at).total_seconds()
+        started_at = getattr(self.application, "started_at", None)
+        if started_at is None:
+            uptime_seconds = 0
+        else:
+            now = datetime.now(started_at.tzinfo) if getattr(started_at, "tzinfo", None) is not None else datetime.now()
+            uptime_seconds = (now - started_at).total_seconds()
         return {
             "enabled": True,
             "status": "Healthy",

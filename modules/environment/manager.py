@@ -1,6 +1,6 @@
 import json
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timezone
 import threading
 import base64
 import hashlib
@@ -18,6 +18,8 @@ from modules.environment.models import EnvironmentalEntity, EnvironmentalReading
 
 DEFAULT_REFRESH_INTERVAL_MINUTES = 5
 DEFAULT_STALE_AFTER_MINUTES = 10
+GREENHOUSE_KEYWORDS = ("greenhouse", "green house")
+GREENHOUSE_HISTORY_LIMIT = 240
 SUPPORTED_SENSOR_DEVICE_CLASSES = {
     "temperature",
     "humidity",
@@ -145,7 +147,7 @@ class EnvironmentManager:
             return []
 
     def refresh_snapshot(self):
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if not self.enabled():
             self._snapshot = self._snapshot_payload(self._empty_snapshot(message="Environment monitoring is disabled."))
             return self._snapshot
@@ -168,7 +170,10 @@ class EnvironmentManager:
                     continue
 
             self._load_cached_snapshot()
-            snapshot = self._snapshot_payload(self._snapshot or self._empty_snapshot())
+            source = dict(self._snapshot or self._empty_snapshot())
+            source["observed_at"] = now.isoformat(timespec="seconds")
+            source["last_successful_refresh"] = now.isoformat(timespec="seconds")
+            snapshot = self._snapshot_payload(source)
             snapshot["refresh"] = {
                 "timestamp": now.isoformat(timespec="seconds"),
                 "discovered_entities": discovery["supported_entities"],
@@ -493,6 +498,7 @@ class EnvironmentManager:
         entities = self.store.all_entities(supported_only=True)
         latest_readings = {row["entity_id"]: row for row in self.store.latest_readings()}
         grouped = self._group_entities(entities, latest_readings)
+        greenhouse = self._greenhouse_payload(entities, latest_readings, source)
         summary = {
             "areas": len(grouped),
             "devices": sum(len(area["devices"]) for area in grouped),
@@ -525,6 +531,7 @@ class EnvironmentManager:
             "summary": summary,
             "areas": grouped,
             "entities": self._flat_entities(grouped),
+            "greenhouse": greenhouse,
             "refresh": source.get("refresh", {}),
         }
         return result
@@ -534,6 +541,7 @@ class EnvironmentManager:
             entities = self.store.all_entities(supported_only=True)
             latest_readings = {row["entity_id"]: row for row in self.store.latest_readings()}
             grouped = self._group_entities(entities, latest_readings)
+            observed_at = self._last_successful_refresh_at.isoformat(timespec="seconds") if self._last_successful_refresh_at else self._latest_timestamp(latest_readings)
             self._snapshot = {
                 "enabled": self.enabled(),
                 "configured": self._configured(),
@@ -542,6 +550,7 @@ class EnvironmentManager:
                 "message": "Loaded from cached environmental snapshot." if entities else "No cached environmental snapshot is available yet.",
                 "error": None,
                 "last_successful_refresh": self._latest_timestamp(latest_readings) or None,
+                "observed_at": observed_at,
                 "snapshot_age_seconds": self._snapshot_age_seconds(self._latest_timestamp(latest_readings)),
                 "snapshot_age_label": self._age_label(self._snapshot_age_seconds(self._latest_timestamp(latest_readings))),
                 "stale": self._is_stale(self._snapshot_age_seconds(self._latest_timestamp(latest_readings)), False),
@@ -556,6 +565,18 @@ class EnvironmentManager:
                 },
                 "areas": grouped,
                 "entities": self._flat_entities(grouped),
+                "greenhouse": self._greenhouse_payload(
+                    entities,
+                    latest_readings,
+                    {
+                        "status": "Connected" if entities else "No data",
+                        "availability": "live" if entities else "unavailable",
+                        "message": "Loaded from cached environmental snapshot." if entities else "No cached environmental snapshot is available yet.",
+                        "stale": self._is_stale(self._snapshot_age_seconds(self._latest_timestamp(latest_readings)), False),
+                        "last_successful_refresh": self._latest_timestamp(latest_readings),
+                        "observed_at": observed_at,
+                    },
+                ),
                 "refresh": {},
             }
             self._last_successful_refresh_at = self._parse_timestamp(self._snapshot.get("last_successful_refresh"))
@@ -588,8 +609,418 @@ class EnvironmentManager:
             },
             "areas": [],
             "entities": [],
+            "greenhouse": self._empty_greenhouse(),
             "refresh": {},
         }
+
+    def greenhouse_status(self):
+        status = self.get_status()
+        greenhouse = status.get("greenhouse")
+        return greenhouse if isinstance(greenhouse, dict) else self._empty_greenhouse()
+
+    def _greenhouse_payload(self, entities, latest_readings, source):
+        greenhouse = self._empty_greenhouse()
+        temp_entity = self._select_greenhouse_entity(entities, "temperature")
+        humidity_entity = self._select_greenhouse_entity(entities, "humidity")
+        temp_reading = latest_readings.get(temp_entity.get("entity_id")) if temp_entity else {}
+        humidity_reading = latest_readings.get(humidity_entity.get("entity_id")) if humidity_entity else {}
+        temp_reading = temp_reading or (temp_entity or {}).get("latest_reading") or {}
+        humidity_reading = humidity_reading or (humidity_entity or {}).get("latest_reading") or {}
+        temp_history_rows = self._greenhouse_history_rows(temp_entity)
+        humidity_history_rows = self._greenhouse_history_rows(humidity_entity)
+        temp_resolution = self._greenhouse_resolve_sensor(temp_entity, temp_reading, temp_history_rows, source, "temperature")
+        humidity_resolution = self._greenhouse_resolve_sensor(humidity_entity, humidity_reading, humidity_history_rows, source, "humidity")
+        temp_value, temp_unit = self._greenhouse_display_temperature(temp_resolution["reading"])
+        humidity_value, humidity_unit = self._greenhouse_display_humidity(humidity_resolution["reading"])
+        history_points = self._greenhouse_history_points(temp_history_rows)
+        today_points = self._greenhouse_today_points(history_points)
+        latest_timestamp = self._greenhouse_latest_timestamp(
+            temp_resolution.get("timestamp"),
+            humidity_resolution.get("timestamp"),
+        )
+        observed_at = source.get("observed_at") or source.get("last_successful_refresh") or latest_timestamp
+        source_status = self._greenhouse_combined_source_status(temp_resolution, humidity_resolution)
+        status = self._greenhouse_display_status(source_status)
+        availability = self._greenhouse_display_availability(source_status)
+        stale = source_status == "stale"
+        message = self._greenhouse_combined_message(temp_resolution, humidity_resolution)
+
+        greenhouse.update(
+            {
+                "enabled": self.enabled(),
+                "configured": bool(temp_entity or humidity_entity),
+                "status": status,
+                "availability": availability,
+                "message": message,
+                "temperature_entity_id": temp_entity.get("entity_id") if temp_entity else None,
+                "humidity_entity_id": humidity_entity.get("entity_id") if humidity_entity else None,
+                "temperature_name": temp_entity.get("display_name") if temp_entity else "Greenhouse",
+                "humidity_name": humidity_entity.get("display_name") if humidity_entity else None,
+                "temperature": temp_value,
+                "temperature_unit": temp_unit,
+                "temperature_display": self._format_display_value(temp_value, temp_unit),
+                "humidity": humidity_value,
+                "humidity_unit": humidity_unit,
+                "humidity_display": self._format_display_value(humidity_value, humidity_unit, digits=0),
+                "temperature_band": self._temperature_band(temp_value),
+                "latest_reading": latest_timestamp,
+                "source_timestamp": latest_timestamp,
+                "observed_at": observed_at,
+                "source": "live" if source_status == "live" else "cached" if source_status in {"cached", "stale"} else "unavailable",
+                "last_updated": observed_at or latest_timestamp or source.get("last_successful_refresh"),
+                "today_high": self._format_display_value(max(today_points) if today_points else None, temp_unit),
+                "today_low": self._format_display_value(min(today_points) if today_points else None, temp_unit),
+                "history_count": len(history_points),
+                "history_points": [
+                    {
+                        "timestamp": row["timestamp"],
+                        "value": row["value"],
+                        "unit": row["unit"],
+                        "availability": row.get("availability", "available"),
+                    }
+                    for row in history_points
+                ],
+                "history_available": bool(history_points),
+                "source_status": source_status,
+                "stale": stale,
+                "area_name": temp_entity.get("area_name") if temp_entity else None,
+                "device_name": temp_entity.get("device_name") if temp_entity else None,
+            }
+        )
+        return greenhouse
+
+    def _empty_greenhouse(self):
+        return {
+            "enabled": self.enabled(),
+            "configured": False,
+            "status": "Unavailable" if self.enabled() else "Disabled",
+            "availability": "disabled" if not self.enabled() else "unavailable",
+            "message": "Greenhouse temperature data is not cached yet.",
+            "temperature_entity_id": None,
+            "humidity_entity_id": None,
+            "temperature_name": "Greenhouse",
+            "humidity_name": None,
+            "temperature": None,
+            "temperature_unit": None,
+            "temperature_display": None,
+            "humidity": None,
+            "humidity_unit": None,
+            "humidity_display": None,
+            "temperature_band": None,
+            "latest_reading": None,
+            "last_updated": None,
+            "observed_at": None,
+            "source_timestamp": None,
+            "today_high": None,
+            "today_low": None,
+            "history_count": 0,
+            "history_points": [],
+            "history_available": False,
+            "source": "unavailable",
+            "source_status": "unavailable",
+            "stale": True,
+            "area_name": None,
+            "device_name": None,
+        }
+
+    def _select_greenhouse_entity(self, entities, kind):
+        kind = str(kind or "").strip().lower()
+        candidates = []
+        for entity in entities or []:
+            if not isinstance(entity, dict):
+                continue
+            entity_id = str(entity.get("entity_id") or "").strip().lower()
+            device_class = str(entity.get("device_class") or "").strip().lower()
+            search_text = self._entity_search_text(entity)
+            if not any(keyword in search_text for keyword in GREENHOUSE_KEYWORDS):
+                continue
+            if kind == "temperature" and device_class != "temperature":
+                continue
+            if kind == "humidity" and device_class != "humidity":
+                continue
+            score = 0
+            if kind == "temperature":
+                score += 20 if device_class == "temperature" else 0
+                score += 10 if "temperature" in entity_id else 0
+                score += 6 if "temp" in search_text else 0
+            elif kind == "humidity":
+                score += 20 if device_class == "humidity" else 0
+                score += 10 if "humidity" in entity_id else 0
+                score += 6 if "humidity" in search_text else 0
+            score += 3 if "greenhouse" in entity_id else 0
+            score += 2 if str(entity.get("area_name") or "").strip().lower().startswith("greenhouse") else 0
+            score += 1 if str(entity.get("device_name") or "").strip().lower().startswith("greenhouse") else 0
+            candidates.append((score, entity))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (-item[0], str(item[1].get("entity_id") or "")))
+        return candidates[0][1]
+
+    @staticmethod
+    def _entity_search_text(entity):
+        return " ".join(
+            str(value or "").strip().lower()
+            for value in (
+                entity.get("entity_id"),
+                entity.get("display_name"),
+                entity.get("entity_name"),
+                entity.get("area_name"),
+                entity.get("device_name"),
+                entity.get("label_source"),
+            )
+        )
+
+    def _greenhouse_display_temperature(self, reading):
+        if not isinstance(reading, dict):
+            return None, None
+        number = self._parse_number(reading.get("parsed_number"))
+        if number is None:
+            number = self._parse_number(reading.get("raw_state"))
+        if number is None:
+            return None, self._normalize_temperature_unit(reading.get("unit_of_measurement"))
+        unit = self._normalize_temperature_unit(reading.get("unit_of_measurement"))
+        if unit == "°C":
+            return round((number * 9 / 5) + 32, 2), "°F"
+        return number, unit or "°F"
+
+    def _greenhouse_display_humidity(self, reading):
+        if not isinstance(reading, dict):
+            return None, None
+        number = self._parse_number(reading.get("parsed_number"))
+        if number is None:
+            number = self._parse_number(reading.get("raw_state"))
+        return number, "%" if number is not None else self._normalize_humidity_unit(reading.get("unit_of_measurement"))
+
+    @staticmethod
+    def _normalize_temperature_unit(unit):
+        text = str(unit or "").strip()
+        if not text:
+            return None
+        if text.lower() in {"c", "°c", "celsius"}:
+            return "°C"
+        if text.lower() in {"f", "°f", "fahrenheit"}:
+            return "°F"
+        return text
+
+    @staticmethod
+    def _normalize_humidity_unit(unit):
+        text = str(unit or "").strip()
+        return text or "%"
+
+    def _greenhouse_history_rows(self, entity):
+        if not entity:
+            return []
+        entity_id = entity.get("entity_id")
+        if not entity_id:
+            return []
+        return self.store.history(entity_id, limit=GREENHOUSE_HISTORY_LIMIT)
+
+    def _greenhouse_history_points(self, entity_or_rows):
+        if isinstance(entity_or_rows, list):
+            rows = entity_or_rows
+        else:
+            rows = self._greenhouse_history_rows(entity_or_rows)
+        if not rows:
+            return []
+        points = []
+        for row in rows or []:
+            value, unit = self._greenhouse_display_temperature(row)
+            if value is None:
+                continue
+            points.append(
+                {
+                    "timestamp": row.get("timestamp"),
+                    "value": value,
+                    "unit": unit or "°F",
+                    "availability": row.get("availability") or "available",
+                }
+            )
+        points.sort(key=lambda item: item.get("timestamp") or "")
+        return points
+
+    def _greenhouse_today_points(self, points):
+        today = datetime.now().date()
+        values = []
+        for point in points or []:
+            timestamp = self._parse_timestamp(point.get("timestamp"))
+            if not timestamp:
+                continue
+            local_date = timestamp.astimezone().date() if timestamp.tzinfo else timestamp.date()
+            if local_date == today and point.get("value") is not None:
+                values.append(point["value"])
+        return values
+
+    @staticmethod
+    def _format_display_value(value, unit, digits=1):
+        if value is None:
+            return None
+        number = round(float(value), digits)
+        if digits == 0:
+            number = round(float(value))
+            return f"{int(number)}{unit}" if unit else str(int(number))
+        text = f"{number:.{digits}f}"
+        return f"{text}{unit}" if unit else text
+
+    @staticmethod
+    def _temperature_band(value):
+        if value is None:
+            return None
+        number = float(value)
+        if number < 40:
+            return "Cold"
+        if number < 85:
+            return "Normal"
+        if number < 95:
+            return "Warm"
+        return "Hot"
+
+    def _greenhouse_resolve_sensor(self, entity, current_reading, history_rows, source, kind):
+        observed_at = source.get("observed_at") or source.get("last_successful_refresh")
+        resolved = {
+            "reading": {},
+            "timestamp": None,
+            "source_timestamp": None,
+            "observed_at": observed_at,
+            "value": None,
+            "unit": None,
+            "source_status": "unavailable",
+            "availability": "unavailable",
+            "status": "Not Available",
+            "stale": False,
+            "message": "Greenhouse temperature is currently unavailable." if kind == "temperature" else "Greenhouse humidity is currently unavailable.",
+        }
+        if not entity:
+            return resolved
+
+        current_reading = current_reading if isinstance(current_reading, dict) else {}
+        if kind == "temperature":
+            live_value, unit = self._greenhouse_display_temperature(current_reading)
+        else:
+            live_value, unit = self._greenhouse_display_humidity(current_reading)
+
+        selected = current_reading if live_value is not None else None
+        fallback_used = False
+        if selected is None:
+            for row in reversed(history_rows or []):
+                if kind == "temperature":
+                    row_value, row_unit = self._greenhouse_display_temperature(row)
+                else:
+                    row_value, row_unit = self._greenhouse_display_humidity(row)
+                if row_value is None:
+                    continue
+                selected = row
+                live_value = row_value
+                unit = row_unit
+                fallback_used = True
+                break
+
+        if selected is None or live_value is None:
+            return resolved
+
+        timestamp = selected.get("timestamp") or current_reading.get("timestamp")
+        resolved["source_timestamp"] = timestamp
+        age_seconds = self._reading_age_seconds(timestamp) if timestamp else None
+        age_label = self._age_label(age_seconds) if age_seconds is not None else "unknown age"
+
+        if not fallback_used:
+            resolved["source_status"] = "live"
+            resolved["availability"] = "live"
+            resolved["status"] = "Connected"
+            resolved["message"] = f"Last changed {age_label}." if age_seconds is not None else "Connected to live greenhouse readings."
+            resolved["value"] = live_value
+            resolved["unit"] = unit
+            resolved["reading"] = selected
+            resolved["stale"] = False
+            resolved["timestamp"] = timestamp
+            resolved["source_timestamp"] = timestamp
+            return resolved
+
+        threshold_seconds = self.stale_after_minutes() * 60
+        is_stale = age_seconds is not None and age_seconds > threshold_seconds
+        if is_stale:
+            resolved["source_status"] = "stale"
+            resolved["availability"] = "unavailable"
+            resolved["status"] = "Not Available"
+            resolved["message"] = f"Last known reading {age_label}. Not Available."
+            resolved["value"] = None
+            resolved["unit"] = None
+            resolved["reading"] = {}
+            resolved["stale"] = True
+        else:
+            resolved["source_status"] = "cached"
+            resolved["availability"] = "available"
+            resolved["status"] = "Last Known"
+            resolved["message"] = f"Last known reading {age_label}."
+            resolved["value"] = live_value
+            resolved["unit"] = unit
+            resolved["reading"] = selected
+            resolved["stale"] = False
+
+        resolved["timestamp"] = timestamp
+        return resolved
+
+    def _greenhouse_combined_source_status(self, temp_resolution, humidity_resolution):
+        priorities = ("live", "cached", "stale", "unavailable")
+        for status in priorities:
+            if temp_resolution.get("source_status") == status or humidity_resolution.get("source_status") == status:
+                return status
+        return "unavailable"
+
+    @staticmethod
+    def _greenhouse_display_status(source_status):
+        if source_status == "live":
+            return "Connected"
+        if source_status == "cached":
+            return "Last Known"
+        if source_status == "stale":
+            return "Not Available"
+        return "Not Available"
+
+    @staticmethod
+    def _greenhouse_display_availability(source_status):
+        if source_status == "live":
+            return "live"
+        if source_status == "cached":
+            return "available"
+        return "unavailable"
+
+    def _greenhouse_combined_message(self, temp_resolution, humidity_resolution):
+        for resolution in (temp_resolution, humidity_resolution):
+            message = str(resolution.get("message") or "").strip()
+            if message and resolution.get("source_status") != "unavailable":
+                return message
+        for resolution in (temp_resolution, humidity_resolution):
+            message = str(resolution.get("message") or "").strip()
+            if message:
+                return message
+        return "Greenhouse data is waiting for a usable reading."
+
+    def _greenhouse_latest_timestamp(self, *timestamps):
+        values = [
+            value
+            for value in (self._normalize_utc_timestamp(timestamp) for timestamp in timestamps)
+            if value is not None
+        ]
+        if not values:
+            return None
+        return max(values).isoformat(timespec="seconds")
+
+    def _reading_age_seconds(self, timestamp):
+        parsed = self._parse_timestamp(timestamp)
+        if not parsed:
+            return None
+        now = datetime.now(parsed.tzinfo) if parsed.tzinfo is not None else datetime.now()
+        delta = now - parsed
+        return max(0, int(delta.total_seconds()))
+
+    def _normalize_utc_timestamp(self, value):
+        parsed = self._parse_timestamp(value)
+        if not parsed:
+            return None
+        if parsed.tzinfo is None:
+            local_tz = datetime.now().astimezone().tzinfo or timezone.utc
+            parsed = parsed.replace(tzinfo=local_tz)
+        return parsed.astimezone(timezone.utc)
 
     def _group_entities(self, entities, latest_readings):
         areas = OrderedDict()

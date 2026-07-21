@@ -49,6 +49,109 @@ function entityHistoryHtml(history) {
   `;
 }
 
+function greenhouseStatusLabel(greenhouse) {
+  if (!greenhouse?.enabled) return "Disabled";
+  if (!greenhouse?.configured) return "Unavailable";
+  if (greenhouse?.status) return greenhouse.status;
+  if (greenhouse?.source_status === "stale") return "Not Available";
+  if (greenhouse?.source_status === "cached") return "Last Known";
+  if (greenhouse?.source_status === "live") return "Connected";
+  return "Not Available";
+}
+
+function greenhouseBadgeClass(greenhouse) {
+  if (!greenhouse?.enabled || !greenhouse?.configured) return "disabled";
+  if (greenhouse?.source_status === "unavailable" || greenhouse?.source_status === "stale") return "offline";
+  if (greenhouse?.source_status === "cached") return "degraded";
+  const band = String(greenhouse?.temperature_band || "").toLowerCase();
+  if (band === "cold" || band === "warm") return "degraded";
+  if (band === "hot") return "unhealthy";
+  return "healthy";
+}
+
+function parseHistoryTimestamp(value) {
+  if (!value) return null;
+  const parsed = new Date(String(value).replace(" ", "T"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function filterGreenhouseHistory(history, range) {
+  const rows = Array.isArray(history) ? history.slice() : [];
+  const normalized = String(range || "1d").toLowerCase();
+  const durations = {
+    "1d": 24 * 60 * 60 * 1000,
+    "1w": 7 * 24 * 60 * 60 * 1000,
+    "1m": 31 * 24 * 60 * 60 * 1000,
+    "6m": 183 * 24 * 60 * 60 * 1000,
+    "1y": 365 * 24 * 60 * 60 * 1000,
+  };
+  const cutoff = Date.now() - (durations[normalized] || durations["1d"]);
+  return rows.filter((row) => {
+    const parsed = parseHistoryTimestamp(row.timestamp);
+    return parsed && parsed.getTime() >= cutoff && Number.isFinite(Number(row.value));
+  });
+}
+
+function renderGreenhouseChart(greenhouse) {
+  const chart = document.getElementById("greenhouse-temperature-chart");
+  if (!chart) return;
+
+  const history = Array.isArray(greenhouse?.history_points) ? greenhouse.history_points : [];
+  if (!history.length) {
+    chart.replaceChildren();
+    renderEmptyState("greenhouse-temperature-chart", "No greenhouse temperature history is available yet.", "History will appear after the next genuine reading is stored.");
+    return;
+  }
+
+  const range = window.HomePulseHistory?.selectedRange(chart) || "1d";
+  const points = filterGreenhouseHistory(history, range);
+  renderCenterChart(chart, points, {
+    digits: 1,
+    yLabel: "°F",
+    unit: "°F",
+    xLabel: "Time",
+    range,
+    emptyMessage: "No greenhouse history available for this range yet.",
+    onRangeChange: () => renderGreenhouseChart(greenhouse),
+  });
+}
+
+function renderGreenhouseSnapshot(greenhouse) {
+  const current = greenhouse || {};
+  setElementText("greenhouse-status-badge", greenhouseStatusLabel(current));
+  setElementText("greenhouse-source-status", current.source_status ? current.source_status.replace(/_/g, " ") : "Unavailable");
+  setElementText("greenhouse-temperature", current.temperature_display || "Unavailable");
+  setElementText("greenhouse-humidity", current.humidity_display ? `Humidity ${current.humidity_display}` : "Humidity unavailable");
+  setElementText("greenhouse-temperature-band", current.temperature_band || "Unavailable");
+  setElementText("greenhouse-today-high", current.today_high || "Unavailable");
+  setElementText("greenhouse-today-low", current.today_low || "Unavailable");
+  setElementText("greenhouse-updated", current.observed_at || current.last_updated || "Unavailable");
+  setElementText("greenhouse-data-source", current.source ? current.source.replace(/_/g, " ") : current.source_status ? current.source_status.replace(/_/g, " ") : "Unavailable");
+  setElementText("greenhouse-message", current.message || "Greenhouse data is waiting for a usable reading.");
+
+  const badge = document.getElementById("greenhouse-status-badge");
+  if (badge) {
+    badge.className = "energy-status-badge";
+    badge.classList.add(greenhouseBadgeClass(current));
+    badge.textContent = greenhouseStatusLabel(current);
+  }
+
+  const band = document.getElementById("greenhouse-temperature-band");
+  if (band) {
+    band.className = "greenhouse-band";
+    const bandClass = String(current.temperature_band || "disabled").toLowerCase();
+    band.classList.add(`greenhouse-band-${bandClass}`);
+    band.textContent = current.temperature_band || "Unavailable";
+  }
+
+  const countMeta = document.getElementById("greenhouse-history-meta");
+  if (countMeta) {
+    countMeta.textContent = `${current.history_count || 0} samples`;
+  }
+
+  renderGreenhouseChart(current);
+}
+
 function renderEnvironmentGroups(snapshot) {
   const container = document.getElementById("environment-groups");
   if (!container) return;
@@ -137,7 +240,13 @@ function renderEnvironmentTable(snapshot) {
   }).join("");
 }
 
+let environmentRefreshSeq = 0;
+let lastEnvironmentSnapshot = window.HomePulseEnvironmentInitial || null;
+
 function renderEnvironmentSnapshot(snapshot) {
+  if (snapshot && typeof snapshot === "object") {
+    lastEnvironmentSnapshot = snapshot;
+  }
   const badge = document.getElementById("environment-status-badge");
   if (badge) {
     badge.classList.remove("healthy", "offline", "disabled");
@@ -155,6 +264,7 @@ function renderEnvironmentSnapshot(snapshot) {
   setElementText("environment-summary-devices", `${snapshot?.summary?.devices ?? 0} devices`);
   setElementText("environment-last-refresh", snapshot?.last_successful_refresh || "No successful refresh yet");
 
+  renderGreenhouseSnapshot(snapshot?.greenhouse || {});
   renderEnvironmentGroups(snapshot);
   renderEnvironmentTable(snapshot);
 }
@@ -216,21 +326,31 @@ function bindEnvironmentInteractions() {
 }
 
 async function refreshEnvironmentCenter() {
+  const requestSeq = ++environmentRefreshSeq;
   try {
     const response = await fetch("/api/environment/status", { cache: "no-store" });
+    if (requestSeq !== environmentRefreshSeq) return;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const snapshot = await response.json();
-    renderEnvironmentSnapshot(snapshot);
+    if (requestSeq !== environmentRefreshSeq) return;
+    if (snapshot && typeof snapshot === "object") {
+      renderEnvironmentSnapshot(snapshot);
+    }
   } catch (error) {
+    if (requestSeq !== environmentRefreshSeq) return;
     console.error("[EnvironmentCenter] Refresh failed:", error);
-    setElementText("environment-summary-status", "Unavailable");
-    setElementText("environment-summary-message", "Cached snapshot unavailable");
+    if (lastEnvironmentSnapshot) {
+      renderEnvironmentSnapshot(lastEnvironmentSnapshot);
+    } else {
+      setElementText("environment-summary-status", "Unavailable");
+      setElementText("environment-summary-message", "Cached snapshot unavailable");
+    }
   }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   bindEnvironmentInteractions();
-  renderEnvironmentSnapshot(window.HomePulseEnvironmentInitial || {});
+  renderEnvironmentSnapshot(lastEnvironmentSnapshot || {});
   refreshEnvironmentCenter();
   setInterval(refreshEnvironmentCenter, 30000);
 });
