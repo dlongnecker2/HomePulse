@@ -1003,7 +1003,7 @@ class EnvironmentManager:
         ]
         if not values:
             return None
-        return max(values).isoformat(timespec="seconds")
+        return max(values, key=lambda value: value.timestamp()).isoformat(timespec="seconds")
 
     def _reading_age_seconds(self, timestamp):
         parsed = self._parse_timestamp(timestamp)
