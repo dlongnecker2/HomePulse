@@ -1294,6 +1294,16 @@ h2 {
   border-color: rgba(22, 128, 60, 0.18);
 }
 
+.greenhouse-card-link {
+  color: inherit;
+  text-decoration: none;
+  display: block;
+}
+
+.greenhouse-card-link:hover {
+  color: inherit;
+}
+
 .greenhouse-card .card-value {
   white-space: normal;
   overflow: visible;

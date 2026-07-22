@@ -175,7 +175,7 @@
     <div id="weather-location" class="card-foot">Location: --</div>
   </article>
 
-  <article class="status-card greenhouse-card">
+  <a class="status-card greenhouse-card greenhouse-card-link" href="{{ url_for('garden') }}#greenhouse" aria-label="Open greenhouse details in Garden">
     <div class="card-topline">
       <div class="card-title">
         <div class="card-label">Greenhouse</div>
@@ -200,7 +200,7 @@
     <div id="greenhouse-source" class="card-foot">
       Source {{ status.greenhouse.source|default(status.greenhouse.source_status, true)|default("unavailable", true)|replace("_", " ")|title }}
     </div>
-  </article>
+  </a>
 
   <article class="status-card energy-card">
     <div class="card-topline">

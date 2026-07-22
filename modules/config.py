@@ -43,8 +43,20 @@ BUILTIN_DEFAULT_CONFIG = {
     "garden": {
         "enabled": False,
         "provider_strategy": "automatic_failover",
-        "provider_priority": ["bhyve"],
+        "provider_priority": ["home_assistant"],
         "providers": {
+            "home_assistant": {
+                "enabled": True,
+                "controller_name": "",
+                "controller_prefixes": [],
+                "controller_entity_ids": [],
+                "zone_entity_ids": [],
+                "smart_watering_entity_ids": [],
+                "next_watering_entity_id": "",
+                "rain_delay_entity_id": "",
+                "integration_name": "",
+                "discovery_keywords": "bhyve,orbit,sprinkler,irrigation,watering,rain delay,zone",
+            },
             "bhyve": {
                 "enabled": False,
                 "username": "",
@@ -352,9 +364,56 @@ class Config:
 
         providers = garden.get("providers")
         if not isinstance(providers, dict):
-            providers = {"bhyve": {"enabled": False, "username": "", "password": "", "access_token": ""}}
+            providers = {
+                "home_assistant": {
+                    "enabled": True,
+                    "controller_name": "",
+                    "controller_prefixes": [],
+                    "controller_entity_ids": [],
+                    "zone_entity_ids": [],
+                    "smart_watering_entity_ids": [],
+                    "next_watering_entity_id": "",
+                    "rain_delay_entity_id": "",
+                    "integration_name": "",
+                    "discovery_keywords": "bhyve,orbit,sprinkler,irrigation,watering,rain delay,zone",
+                },
+                "bhyve": {"enabled": False, "username": "", "password": "", "access_token": ""},
+            }
             garden["providers"] = providers
             changed = True
+
+        home_assistant = providers.get("home_assistant")
+        if not isinstance(home_assistant, dict):
+            providers["home_assistant"] = {
+                "enabled": True,
+                "controller_name": "",
+                "controller_prefixes": [],
+                "controller_entity_ids": [],
+                "zone_entity_ids": [],
+                "smart_watering_entity_ids": [],
+                "next_watering_entity_id": "",
+                "rain_delay_entity_id": "",
+                "integration_name": "",
+                "discovery_keywords": "bhyve,orbit,sprinkler,irrigation,watering,rain delay,zone",
+            }
+            home_assistant = providers["home_assistant"]
+            changed = True
+
+        for key, default_value in (
+            ("enabled", True),
+            ("controller_name", ""),
+            ("controller_prefixes", []),
+            ("controller_entity_ids", []),
+            ("zone_entity_ids", []),
+            ("smart_watering_entity_ids", []),
+            ("next_watering_entity_id", ""),
+            ("rain_delay_entity_id", ""),
+            ("integration_name", ""),
+            ("discovery_keywords", "bhyve,orbit,sprinkler,irrigation,watering,rain delay,zone"),
+        ):
+            if key not in home_assistant:
+                home_assistant[key] = default_value
+                changed = True
 
         bhyve = providers.get("bhyve")
         if not isinstance(bhyve, dict):
@@ -379,16 +438,16 @@ class Config:
 
         priority = garden.get("provider_priority")
         if not isinstance(priority, list):
-            garden["provider_priority"] = ["bhyve"]
+            garden["provider_priority"] = ["home_assistant"]
             changed = True
         else:
             normalized = []
             for key in priority:
                 text = str(key or "").strip().lower()
-                if text == "bhyve" and text not in normalized:
+                if text == "home_assistant" and text not in normalized:
                     normalized.append(text)
-            if "bhyve" not in normalized:
-                normalized.append("bhyve")
+            if "home_assistant" not in normalized:
+                normalized.append("home_assistant")
             if normalized != priority:
                 garden["provider_priority"] = normalized
                 changed = True

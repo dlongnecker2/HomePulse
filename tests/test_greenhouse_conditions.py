@@ -12,6 +12,8 @@ from modules.environment.database import EnvironmentStore
 from modules.environment.models import EnvironmentalReading
 from modules.environment.manager import EnvironmentManager
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 class DummyConfig:
     def __init__(self, data):
@@ -573,6 +575,23 @@ class GreenhouseTemplateTests(unittest.TestCase):
                     "stale": False,
                 },
             },
+            "garden": {
+                "status": "Monitoring",
+                "provider": "bhyve",
+                "selected_provider": "bhyve",
+                "controller_count": 1,
+                "active_watering_zone": "Front Beds",
+                "next_watering_schedule": "2026-07-20 04:00:00",
+                "rain_delay_active": False,
+                "rain_delay_until": None,
+                "provider_strategy": "automatic_failover",
+                "enabled_providers": ["bhyve"],
+                "attempted_providers": ["bhyve"],
+                "fallback_used": False,
+                "last_updated": "2026-07-20T02:39:05+00:00",
+                "message": "Garden Center ready.",
+                "controllers": [],
+            },
             "internet": {"status": "Healthy", "details": "OK", "last_check": "2026-07-20T02:39:05+00:00"},
             "speedtest": {"download": None, "upload": None, "ping": None, "server": None, "last_run": None},
             "router": {"status": "Monitoring", "last_reboot": None},
@@ -658,16 +677,13 @@ class GreenhouseTemplateTests(unittest.TestCase):
         self.assertIn("Connected", html)
         self.assertIn("Observed 2026-07-20T02:39:05+00:00", html)
 
-    def test_environment_center_renders_greenhouse_section_and_chart(self):
+    def test_environment_center_does_not_render_duplicate_greenhouse_section(self):
         with self.app.test_request_context("/environment"):
             html = render_template("environment.html", now=None, environment=self.context["environment"])
 
-        self.assertIn("Current greenhouse conditions", html)
-        self.assertIn("Greenhouse temperature trend", html)
-        self.assertIn("75.0°F", html)
-        self.assertIn("44%", html)
-        self.assertIn("Connected", html)
-        self.assertIn("Observed at", html)
+        self.assertNotIn("Current greenhouse conditions", html)
+        self.assertNotIn("Greenhouse temperature trend", html)
+        self.assertNotIn("greenhouse-temperature-chart", html)
 
     def test_frontend_refresh_sequence_guard_is_present(self):
         live_dashboard = (ROOT / "static" / "js" / "live_dashboard.js").read_text(encoding="utf-8")
@@ -799,4 +815,3 @@ class GreenhouseRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-ROOT = Path(__file__).resolve().parents[1]

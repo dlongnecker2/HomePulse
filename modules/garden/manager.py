@@ -6,13 +6,26 @@ from datetime import datetime
 from urllib.error import HTTPError, URLError
 
 from modules.garden.providers import BhyveProvider
+from modules.garden.providers import HomeAssistantGardenProvider
 
 
 GARDEN_DEFAULTS = {
     "enabled": False,
     "provider_strategy": "automatic_failover",
-    "provider_priority": ["bhyve"],
+    "provider_priority": ["home_assistant"],
     "providers": {
+        "home_assistant": {
+            "enabled": True,
+            "controller_name": "",
+            "controller_prefixes": [],
+            "controller_entity_ids": [],
+            "zone_entity_ids": [],
+            "smart_watering_entity_ids": [],
+            "next_watering_entity_id": "",
+            "rain_delay_entity_id": "",
+            "integration_name": "",
+            "discovery_keywords": "bhyve,orbit,sprinkler,irrigation,watering,rain delay,zone",
+        },
         "bhyve": {
             "enabled": False,
             "username": "",
@@ -33,6 +46,7 @@ class GardenManager:
         self.log = log
         self._last_warning_at = None
         self.providers = {
+            "home_assistant": HomeAssistantGardenProvider(),
             "bhyve": BhyveProvider(),
         }
         self._provider_state = {
@@ -66,22 +80,46 @@ class GardenManager:
         bhyve_cfg["password"] = str(bhyve_cfg.get("password") or "")
         bhyve_cfg["access_token"] = str(bhyve_cfg.get("access_token") or "")
 
+        home_assistant_cfg = merged.setdefault("providers", {}).setdefault("home_assistant", {})
+        home_assistant_cfg["enabled"] = bool(home_assistant_cfg.get("enabled", True))
+        home_assistant_cfg["controller_name"] = str(home_assistant_cfg.get("controller_name") or "")
+        home_assistant_cfg["controller_prefixes"] = self._normalize_list(home_assistant_cfg.get("controller_prefixes"))
+        home_assistant_cfg["controller_entity_ids"] = self._normalize_list(home_assistant_cfg.get("controller_entity_ids"))
+        home_assistant_cfg["zone_entity_ids"] = self._normalize_list(home_assistant_cfg.get("zone_entity_ids"))
+        home_assistant_cfg["smart_watering_entity_ids"] = self._normalize_list(home_assistant_cfg.get("smart_watering_entity_ids"))
+        home_assistant_cfg["next_watering_entity_id"] = str(home_assistant_cfg.get("next_watering_entity_id") or "")
+        home_assistant_cfg["rain_delay_entity_id"] = str(home_assistant_cfg.get("rain_delay_entity_id") or "")
+        home_assistant_cfg["integration_name"] = str(home_assistant_cfg.get("integration_name") or "")
+        home_assistant_cfg["discovery_keywords"] = str(
+            home_assistant_cfg.get("discovery_keywords") or "bhyve,orbit,sprinkler,irrigation,watering,rain delay,zone"
+        )
+        merged["router_recovery"] = self.config.get("router_reboot", default={})
+
         priority = merged.get("provider_priority")
         if not isinstance(priority, list) or not priority:
-            priority = ["bhyve"]
+            priority = ["home_assistant"]
         else:
             normalized = []
             for key in priority:
                 text = str(key or "").strip().lower()
-                if text == "bhyve" and text not in normalized:
+                if text == "home_assistant" and text not in normalized:
                     normalized.append(text)
-            if "bhyve" not in normalized:
-                normalized.append("bhyve")
+            if "home_assistant" not in normalized:
+                normalized.append("home_assistant")
             priority = normalized
 
         merged["provider_priority"] = priority
         merged["provider_strategy"] = "automatic_failover"
         return merged
+
+    @staticmethod
+    def _normalize_list(value):
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            text = value.strip()
+            return [text] if text else []
+        return []
 
     def enabled_providers_in_priority(self, garden):
         providers = garden.get("providers", {})
@@ -113,10 +151,10 @@ class GardenManager:
                 enabled=True,
                 configured=False,
                 status="Not configured",
-                source="Garden framework",
+                source="Home Assistant irrigation",
                 live_data=False,
                 error="No garden providers are enabled.",
-                message="Enable the B-hyve provider in Settings.",
+                message="Enable the Home Assistant irrigation provider in Settings.",
             )
             return self.attach_framework_fields(status, garden, [], {}, None, False)
 
@@ -204,7 +242,7 @@ class GardenManager:
             "enabled": enabled,
             "configured": configured,
             "status": status,
-            "provider": "bhyve",
+            "provider": "home_assistant",
             "source": source,
             "live_data": live_data,
             "controller_count": 0,

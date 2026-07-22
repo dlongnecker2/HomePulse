@@ -1,53 +1,101 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }} Garden{% endblock %}
 {% block content %}
+{% set garden_snapshot = garden or {} %}
+{% set greenhouse_snapshot = greenhouse or {} %}
 <section class="page-heading">
   <div>
     <h2>Garden Center</h2>
-    <p>Irrigation status foundation with B-hyve as the first provider.</p>
+    <p>Irrigation status and greenhouse conditions, grouped where the daily care workflow belongs.</p>
   </div>
 </section>
 
+<article class="center-glass-card greenhouse-summary-card" id="greenhouse">
+  <div class="center-card-heading">
+    <div>
+      <span class="center-kicker">Greenhouse</span>
+      <h3>Current greenhouse conditions</h3>
+    </div>
+    <div class="environment-mini-meta">
+      <span id="garden-greenhouse-status-badge" class="energy-status-badge {{ 'healthy' if greenhouse_snapshot.source_status == 'live' else 'degraded' if greenhouse_snapshot.source_status == 'cached' else 'offline' if greenhouse_snapshot.source_status == 'stale' else 'disabled' }}">
+        {{ greenhouse_snapshot.status or greenhouse_snapshot.temperature_band or "Unavailable" }}
+      </span>
+      <span id="garden-greenhouse-source-status">{{ greenhouse_snapshot.source_status|default("unavailable", true)|replace("_", " ")|title }}</span>
+    </div>
+  </div>
+
+  <div class="greenhouse-summary-grid">
+    <div class="greenhouse-temperature-panel">
+      <div class="center-kicker">Current temperature</div>
+      <div id="garden-greenhouse-temperature" class="greenhouse-temperature-value">
+        {{ greenhouse_snapshot.temperature_display or "Unavailable" }}
+      </div>
+      <div id="garden-greenhouse-temperature-band" class="greenhouse-band greenhouse-band-{{ greenhouse_snapshot.temperature_band|lower if greenhouse_snapshot.temperature_band else 'disabled' }}">
+        {{ greenhouse_snapshot.temperature_band or "Unavailable" }}
+      </div>
+    </div>
+    <div class="center-detail-list greenhouse-detail-list">
+      <div><span>Humidity</span><strong id="garden-greenhouse-humidity">{{ greenhouse_snapshot.humidity_display or "Unavailable" }}</strong></div>
+      <div><span>Today's high</span><strong id="garden-greenhouse-today-high">{{ greenhouse_snapshot.today_high or "Unavailable" }}</strong></div>
+      <div><span>Today's low</span><strong id="garden-greenhouse-today-low">{{ greenhouse_snapshot.today_low or "Unavailable" }}</strong></div>
+      <div><span>Latest reading</span><strong id="garden-greenhouse-latest-reading">{{ greenhouse_snapshot.get("latest_reading") or greenhouse_snapshot.get("source_timestamp") or greenhouse_snapshot.get("observed_at") or "Unavailable" }}</strong></div>
+      <div><span>Observed at</span><strong id="garden-greenhouse-updated">{{ greenhouse_snapshot.observed_at or greenhouse_snapshot.last_updated or "Unavailable" }}</strong></div>
+      <div><span>Source timestamp</span><strong id="garden-greenhouse-source-timestamp">{{ greenhouse_snapshot.source_timestamp or "Unavailable" }}</strong></div>
+      <div><span>Data source</span><strong id="garden-greenhouse-data-source">{{ greenhouse_snapshot.source|default(greenhouse_snapshot.source_status, true)|default("unavailable", true)|replace("_", " ")|title }}</strong></div>
+    </div>
+  </div>
+
+  <p id="garden-greenhouse-message" class="module-copy">{{ greenhouse_snapshot.message or "Greenhouse data is waiting for a usable reading." }}</p>
+</article>
+
+<article class="center-glass-card center-chart-card greenhouse-chart-card">
+  <div class="center-card-heading">
+    <div>
+      <span class="center-kicker">History</span>
+      <h3 id="garden-greenhouse-history-title">Greenhouse temperature trend</h3>
+    </div>
+    <span class="environment-mini-meta" id="garden-greenhouse-history-meta">
+      {{ greenhouse_snapshot.history_count or 0 }} samples
+    </span>
+  </div>
+  <div id="garden-greenhouse-temperature-chart" class="center-history-chart" data-default-range="1d"></div>
+</article>
+
 <section class="insight-grid">
   <article class="dashboard-panel compact-panel">
-    <h2>Summary</h2>
+    <h2>Irrigation Summary</h2>
     <table>
-      <tr><td>Status</td><td id="garden-status">--</td></tr>
-      <tr><td>Provider</td><td id="garden-provider">--</td></tr>
-      <tr><td>Controllers</td><td id="garden-controller-count">--</td></tr>
-      <tr><td>Active Zone</td><td id="garden-active-zone">--</td></tr>
-      <tr><td>Next Schedule</td><td id="garden-next-schedule">--</td></tr>
-      <tr><td>Rain Delay</td><td id="garden-rain-delay">--</td></tr>
+      <tr><td>Status</td><td id="garden-status">{{ garden_snapshot.status or "--" }}</td></tr>
+      <tr><td>Provider</td><td id="garden-provider">{{ garden_snapshot.provider|default("Home Assistant", true)|replace("_", " ")|title }}</td></tr>
+      <tr><td>Integration</td><td id="garden-integration">{{ garden_snapshot.integration or "--" }}</td></tr>
+      <tr><td>Controllers</td><td id="garden-controller-count">{{ garden_snapshot.controller_count or "--" }}</td></tr>
+      <tr><td>Active Zone</td><td id="garden-active-zone">{{ garden_snapshot.active_watering_zone or "--" }}</td></tr>
+      <tr><td>Next Schedule</td><td id="garden-next-schedule">{{ garden_snapshot.next_watering_schedule or "--" }}</td></tr>
+      <tr><td>Rain Delay</td><td id="garden-rain-delay">{{ "Active" if garden_snapshot.rain_delay_active else "Inactive" if garden_snapshot.rain_delay_active is sameas false else "--" }}</td></tr>
+      <tr><td>Entities</td><td id="garden-entity-count">{{ garden_snapshot.entity_count or "--" }}</td></tr>
+      <tr><td>Discovery</td><td id="garden-discovery-status">{{ garden_snapshot.discovery_status or "--" }}</td></tr>
+      <tr><td>Last Refresh</td><td id="garden-last-updated">{{ garden_snapshot.last_successful_refresh or garden_snapshot.last_updated or "--" }}</td></tr>
     </table>
-    <p id="garden-message" style="color: var(--text-secondary); margin-top: 1em;">Loading...</p>
+    <p id="garden-message" style="color: var(--text-secondary); margin-top: 1em;">{{ garden_snapshot.message or garden_snapshot.status or "Home Assistant irrigation data is loading." }}</p>
     <p id="garden-error" style="color: var(--warning-text); display: none;"></p>
-  </article>
-
-  <article class="dashboard-panel compact-panel">
-    <h2>Provider Status</h2>
-    <table>
-      <tr><td>Strategy</td><td id="garden-strategy">--</td></tr>
-      <tr><td>Enabled Providers</td><td id="garden-enabled-providers">--</td></tr>
-      <tr><td>Attempted Providers</td><td id="garden-attempted-providers">--</td></tr>
-      <tr><td>Fallback Used</td><td id="garden-fallback-used">--</td></tr>
-      <tr><td>Last Updated</td><td id="garden-last-updated">--</td></tr>
-    </table>
   </article>
 </section>
 
 <section class="content-grid">
   <article class="dashboard-panel">
     <h2>Controllers</h2>
-    <p id="garden-controllers-empty">No controllers available.</p>
+    <p id="garden-controllers-empty">{{ "No irrigation entities were found in Home Assistant." if not garden_snapshot.controllers else "No controllers available." }}</p>
     <div id="garden-controllers-table" hidden>
       <table>
         <thead>
           <tr>
             <th>Name</th>
-            <th>Online</th>
+            <th>Status</th>
             <th>Active Zone</th>
             <th>Next Schedule</th>
             <th>Rain Delay</th>
+            <th>Zones</th>
+            <th>Controls</th>
           </tr>
         </thead>
         <tbody id="garden-controllers-body"></tbody>
@@ -56,101 +104,33 @@
   </article>
 </section>
 
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>Zones</h2>
+    <p id="garden-zones-empty">{{ "No irrigation entities were found in Home Assistant." if not garden_snapshot.zones else "No zones available." }}</p>
+    <div id="garden-zones-table" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th>Zone</th>
+            <th>Controller</th>
+            <th>Valve State</th>
+            <th>Smart Watering</th>
+            <th>Remaining</th>
+            <th>Availability</th>
+            <th>Controls</th>
+          </tr>
+        </thead>
+        <tbody id="garden-zones-body"></tbody>
+      </table>
+    </div>
+  </article>
+</section>
+
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-  refreshGardenCenter();
-  setInterval(refreshGardenCenter, 60000);
-});
-
-function textOrDash(value) {
-  if (value === null || value === undefined || value === "") return "--";
-  return String(value);
-}
-
-function formatList(values) {
-  if (!Array.isArray(values) || values.length === 0) return "--";
-  return values.join(", ");
-}
-
-function formatTime(value) {
-  if (!value) return "--";
-  try {
-    return new Date(String(value).replace(" ", "T")).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "--";
-  }
-}
-
-async function refreshGardenCenter() {
-  try {
-    const response = await fetch("/api/garden/status", { cache: "no-store" });
-    if (!response.ok) throw new Error(`Status ${response.status}`);
-    const data = await response.json();
-    updateGardenCenter(data);
-  } catch (error) {
-    const errorEl = document.getElementById("garden-error");
-    errorEl.textContent = `Unable to load Garden Center: ${error}`;
-    errorEl.style.display = "block";
-  }
-}
-
-function updateGardenCenter(data) {
-  document.getElementById("garden-status").textContent = textOrDash(data.status);
-  document.getElementById("garden-provider").textContent = textOrDash(data.selected_provider || data.provider);
-  document.getElementById("garden-controller-count").textContent = textOrDash(data.controller_count);
-  document.getElementById("garden-active-zone").textContent = textOrDash(data.active_watering_zone);
-  document.getElementById("garden-next-schedule").textContent = textOrDash(data.next_watering_schedule);
-
-  if (data.rain_delay_active === true) {
-    document.getElementById("garden-rain-delay").textContent = data.rain_delay_until ? `Active until ${data.rain_delay_until}` : "Active";
-  } else if (data.rain_delay_active === false) {
-    document.getElementById("garden-rain-delay").textContent = "Inactive";
-  } else {
-    document.getElementById("garden-rain-delay").textContent = "--";
-  }
-
-  document.getElementById("garden-message").textContent = textOrDash(data.message);
-  document.getElementById("garden-strategy").textContent = textOrDash(data.provider_strategy);
-  document.getElementById("garden-enabled-providers").textContent = formatList(data.enabled_providers);
-  document.getElementById("garden-attempted-providers").textContent = formatList(data.attempted_providers);
-  document.getElementById("garden-fallback-used").textContent = data.fallback_used ? "Yes" : "No";
-  document.getElementById("garden-last-updated").textContent = formatTime(data.last_updated);
-
-  const errorEl = document.getElementById("garden-error");
-  if (data.error) {
-    errorEl.textContent = `Provider error: ${data.error}`;
-    errorEl.style.display = "block";
-  } else {
-    errorEl.style.display = "none";
-  }
-
-  const controllers = Array.isArray(data.controllers) ? data.controllers : [];
-  const table = document.getElementById("garden-controllers-table");
-  const empty = document.getElementById("garden-controllers-empty");
-  const body = document.getElementById("garden-controllers-body");
-
-  body.innerHTML = "";
-  if (controllers.length === 0) {
-    table.setAttribute("hidden", "");
-    empty.textContent = data.configured ? "No controllers available." : "Not configured. Add B-hyve credentials in Settings.";
-    empty.style.display = "block";
-    return;
-  }
-
-  controllers.forEach((controller) => {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${textOrDash(controller.controller_name)}</td>
-      <td>${controller.online === true ? "Online" : controller.online === false ? "Offline" : "--"}</td>
-      <td>${textOrDash(controller.active_watering_zone)}</td>
-      <td>${textOrDash(controller.next_watering_schedule)}</td>
-      <td>${controller.rain_delay_active === true ? "Active" : controller.rain_delay_active === false ? "Inactive" : "--"}</td>
-    `;
-    body.appendChild(row);
-  });
-
-  empty.style.display = "none";
-  table.removeAttribute("hidden");
-}
+  window.HomePulseGardenInitial = {{ {"garden": garden_snapshot, "greenhouse": greenhouse_snapshot} | tojson }};
 </script>
+<script src="{{ url_for('static', filename='js/history_api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/center_framework.js') }}"></script>
+<script src="{{ url_for('static', filename='js/garden_center.js') }}"></script>
 {% endblock %}

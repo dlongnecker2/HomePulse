@@ -122,7 +122,12 @@ class Dashboard:
 
         @self.app.route("/garden")
         def garden():
-            return render_template("garden.html", now=datetime.now())
+            return render_template(
+                "garden.html",
+                now=datetime.now(),
+                garden=self.application.garden.get_status(),
+                greenhouse=self.application.environment.greenhouse_status(),
+            )
 
         @self.app.route("/weight-progress")
         def weight_progress():
@@ -897,7 +902,9 @@ class Dashboard:
         @self.app.route("/api/garden/status")
         def api_garden_status():
             try:
-                return jsonify(self.application.garden.get_status())
+                garden_status = self.application.garden.get_status()
+                garden_status["greenhouse"] = self.application.environment.greenhouse_status()
+                return jsonify(garden_status)
             except Exception as exc:
                 self.application.log.exception(f"Garden API failed: {exc}")
                 return jsonify({
