@@ -241,7 +241,7 @@ class VehicleManager:
             return "partial", "Vehicle Center is receiving partial vehicle data."
         return "live", "Vehicle Center is receiving live vehicle data."
 
-    def get_unified_status(self, energy_status=None):
+    def get_unified_status(self, energy_status=None, base_status=None):
         """
         Return vehicle status merged with ChargePoint / Energy Center data.
         Falls back to Chevrolet-only data when energy_status is None or
@@ -249,7 +249,7 @@ class VehicleManager:
         Never raises.
         """
         from modules.vehicle.state_engine import merge_vehicle_state
-        base = self.get_status()
+        base = dict(base_status) if base_status is not None else self.get_status()
         try:
             merged = merge_vehicle_state(base, energy_status or {})
             base.update(merged)

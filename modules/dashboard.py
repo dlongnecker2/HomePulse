@@ -1128,7 +1128,7 @@ class Dashboard:
         vehicle_dict = self._safe_center_status("vehicle", self.application.vehicle.get_status)
         # Get unified vehicle status (merged with charger data)
         try:
-            vehicle = self.application.vehicle.get_unified_status(energy)
+            vehicle = self.application.vehicle.get_unified_status(energy, base_status=vehicle_dict)
         except Exception:
             vehicle = vehicle_dict
         self.application.observe_vehicle_status(vehicle)
@@ -1137,7 +1137,7 @@ class Dashboard:
         self.application.observe_lighting_status(lighting)
         garden = self._safe_center_status("garden", self.application.garden.get_status)
         self.application.observe_garden_status(garden)
-        greenhouse = self.application.environment.greenhouse_status()
+        greenhouse = dashboard_status.get("greenhouse", self.application.environment.greenhouse_status())
         home = self._home_placeholder()
         
         # Compute health score and alerts
