@@ -1,19 +1,35 @@
 import json
+import math
+import os
 import secrets
+import subprocess
 import tempfile
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from modules.power_adapters.home_assistant import HomeAssistantAdapter
-from modules.weight_progress.importer import UPLOAD_MAX_BYTES, WithingsWorkbookImporter
+from modules.weight_progress.importer import (
+    OVERLAP_WEIGHT_TOLERANCE_LB,
+    OVERLAP_WINDOW,
+    UPLOAD_MAX_BYTES,
+    WithingsWorkbookImporter,
+)
 from modules.weight_progress.database import WeightProgressDatabase
 from modules.weight_progress.defaults import DEFAULT_WEIGHT_PROGRESS_CONFIG
 from modules.weight_progress.models import WeightMeasurement
 
 
 UNAVAILABLE_STATES = {"", "unknown", "unavailable", "none", "null", "--", "nan"}
+WINDOWS_TO_IANA = {
+    "Pacific Standard Time": "America/Los_Angeles",
+    "Mountain Standard Time": "America/Denver",
+    "Central Standard Time": "America/Chicago",
+    "Eastern Standard Time": "America/New_York",
+    "UTC": "UTC",
+}
 
 
 class WeightProgressService:
@@ -25,14 +41,18 @@ class WeightProgressService:
         "all": None,
     }
     COMPOSITION_METRICS = {
-        "body_fat": {"label": "Body Fat", "unit": "%", "kind": "percent", "field": "body_fat_percent"},
+        "body_fat": {"label": "Body Fat %", "unit": "%", "kind": "percent", "field": "body_fat_percent"},
         "fat_mass": {"label": "Fat Mass", "unit": "lb", "kind": "mass", "field": "fat_mass"},
         "fat_free_mass": {"label": "Fat-Free Mass", "unit": "lb", "kind": "mass", "field": "fat_free_mass"},
         "muscle_mass": {"label": "Muscle Mass", "unit": "lb", "kind": "mass", "field": "muscle_mass"},
-        "hydration": {"label": "Hydration", "unit": "lb", "kind": "mass", "field": "hydration"},
+        "muscle_percentage": {"label": "Muscle %", "unit": "%", "kind": "percent", "field": "muscle_percentage"},
+        "hydration": {"label": "Hydration Mass", "unit": "lb", "kind": "mass", "field": "hydration"},
+        "hydration_percentage": {"label": "Hydration %", "unit": "%", "kind": "percent", "field": "hydration_percentage"},
         "bone_mass": {"label": "Bone Mass", "unit": "lb", "kind": "mass", "field": "bone_mass"},
-        "visceral_fat": {"label": "Visceral Fat", "unit": "Index", "kind": "index", "field": "visceral_fat_index"},
+        "visceral_fat": {"label": "Visceral Fat Index", "unit": "Index", "kind": "index", "field": "visceral_fat_index"},
     }
+    PRIMARY_COMPOSITION_METRICS = ("body_fat", "muscle_percentage", "hydration_percentage", "visceral_fat")
+    SECONDARY_COMPOSITION_METRICS = ("fat_mass", "fat_free_mass", "muscle_mass", "hydration", "bone_mass")
 
     def __init__(self, config, log):
         self.config = config
@@ -41,6 +61,8 @@ class WeightProgressService:
         self.importer = WithingsWorkbookImporter(self.log)
         self._pending_imports = {}
         self._pending_imports_lock = threading.Lock()
+        self._local_timezone_name = None
+        self._local_timezone_info = None
 
     def database_path(self):
         weight_progress = self.config.get("weight_progress", default={})
@@ -49,6 +71,8 @@ class WeightProgressService:
     def refresh_config(self, config):
         self.config = config
         self.database = WeightProgressDatabase(self.database_path())
+        self._local_timezone_name = None
+        self._local_timezone_info = None
 
     def initialize(self):
         self.database.initialize()
@@ -259,7 +283,7 @@ class WeightProgressService:
         )
         return measurement
 
-    def view_model(self, include_live=True, range_key="current_journey"):
+    def view_model(self, include_live=True, range_key="current_journey", now=None):
         cfg = self.weight_progress_config()
         if include_live:
             self.snapshot()
@@ -281,16 +305,20 @@ class WeightProgressService:
         remaining_to_goal = self._delta_value(current_weight, goal_weight)
         body_fat = self._to_display_percent(self._derived_body_fat_percent(latest) if latest else None)
         weekly_change = self._average_weekly_change(journey_history, display_unit)
+        weekly_cards = self._weekly_weight_cards(all_history, now=now)
         progress_percent = self._journey_progress_percent(starting_weight, current_weight, goal_weight)
         chart_points = self._chart_points(history, goal_weight, display_unit)
         all_chart_points = self._chart_points(all_history, goal_weight, display_unit)
         composition_rows = self._body_composition_rows(latest, display_unit)
         composition_points = self._composition_points(history, display_unit)
         all_composition_points = self._composition_points(all_history, display_unit)
+        all_visceral_fat_points = self._visceral_chart_points(
+            all_composition_points
+        )
         composition_summary = self._composition_summary(
             composition_points,
             all_composition_points,
-            "body_fat",
+            "muscle_percentage",
             journey_start_date,
             display_unit,
         )
@@ -316,14 +344,16 @@ class WeightProgressService:
                 {"label": "Goal Weight", "value": self._format_weight(goal_weight, display_unit)},
                 {"label": "Remaining to Goal", "value": self._format_delta(remaining_to_goal, display_unit)},
                 {"label": "Journey Progress", "value": self._format_percent(progress_percent)},
-                {"label": "Current Body Fat", "value": self._format_percent(body_fat)},
+                {"label": "Current Body Fat %", "value": self._format_percent(body_fat)},
                 {"label": "Latest Weigh-In", "value": latest_label},
-                {"label": "Journey Average Weekly Change", "value": self._format_delta(weekly_change, display_unit, per_week=True)},
+                {"label": "Average Weekly Loss", "value": self._format_delta(weekly_change, display_unit, per_week=True)},
+                *weekly_cards,
             ],
+            "weekly_cards": weekly_cards,
             "body_composition_rows": composition_rows,
             "composition_trends": {
-                "default_metric": "body_fat",
-                "selected_metric": "body_fat",
+                "default_metric": "muscle_percentage",
+                "selected_metric": "muscle_percentage",
                 "range_key": self.normalize_range(range_key),
                 "journey_start_date": journey_start_date.isoformat() if journey_start_date else None,
                 "range_options": [
@@ -333,15 +363,15 @@ class WeightProgressService:
                     {"value": "1y", "label": "1 Year"},
                     {"value": "all", "label": "All History"},
                 ],
-                "metric_options": [
-                    {"value": key, "label": metric["label"], "unit": self._composition_metric_unit(key, display_unit)} for key, metric in self.COMPOSITION_METRICS.items()
-                ],
+                "metric_options": self._composition_metric_options(self.PRIMARY_COMPOSITION_METRICS, display_unit),
+                "more_metric_options": self._composition_metric_options(self.SECONDARY_COMPOSITION_METRICS, display_unit),
                 "metric_units": {key: self._composition_metric_unit(key, display_unit) for key in self.COMPOSITION_METRICS},
                 "metric_labels": {key: metric["label"] for key, metric in self.COMPOSITION_METRICS.items()},
                 "metric_fields": {key: metric["field"] for key, metric in self.COMPOSITION_METRICS.items()},
                 "metric_kinds": {key: metric["kind"] for key, metric in self.COMPOSITION_METRICS.items()},
                 "points": composition_points,
                 "all_points": all_composition_points,
+                "visceral_fat_points": all_visceral_fat_points,
                 "summary_cards": composition_summary["summary_cards"],
                 "summary_message": composition_summary["summary_message"],
                 "selected_metric_summary": composition_summary,
@@ -384,17 +414,27 @@ class WeightProgressService:
     def _body_composition_rows(self, measurement, display_unit):
         if not measurement:
             return [
+                {"label": "Body Fat %", "value": "--"},
+                {"label": "Muscle %", "value": "--"},
+                {"label": "Hydration %", "value": "--"},
+                {"label": "Visceral Fat Index", "value": "--"},
                 {"label": "Fat Mass", "value": "--"},
                 {"label": "Fat-Free Mass", "value": "--"},
                 {"label": "Muscle Mass", "value": "--"},
+                {"label": "Hydration Mass", "value": "--"},
                 {"label": "Bone Mass", "value": "--"},
-                {"label": "Hydration", "value": "--"},
-                {"label": "Visceral Fat Index", "value": "--"},
                 {"label": "Heart Rate", "value": "--"},
                 {"label": "Scale Battery", "value": "--"},
             ]
+        body_fat_percent = self._derived_body_fat_percent(measurement)
+        muscle_percentage = self._derived_muscle_percentage(measurement)
+        hydration_percentage = self._derived_hydration_percentage(measurement)
         fat_free_mass_kg, fat_free_mass_note, fat_free_mass_derived = self._derived_fat_free_mass(measurement)
         return [
+            {"label": "Body Fat %", "value": self._format_percent(body_fat_percent)},
+            {"label": "Muscle %", "value": self._format_percent(muscle_percentage)},
+            {"label": "Hydration %", "value": self._format_percent(hydration_percentage)},
+            {"label": "Visceral Fat Index", "value": self._format_index(measurement.visceral_fat_index)},
             {"label": "Fat Mass", "value": self._format_weight(self._to_display_weight(measurement.fat_mass_kg, display_unit), display_unit)},
             {
                 "label": "Fat-Free Mass",
@@ -402,15 +442,15 @@ class WeightProgressService:
                 "note": fat_free_mass_note if fat_free_mass_derived else None,
             },
             {"label": "Muscle Mass", "value": self._format_weight(self._to_display_weight(measurement.muscle_mass_kg, display_unit), display_unit)},
+            {"label": "Hydration Mass", "value": self._format_weight(self._to_display_weight(measurement.hydration_kg, display_unit), display_unit)},
             {"label": "Bone Mass", "value": self._format_weight(self._to_display_weight(measurement.bone_mass_kg, display_unit), display_unit)},
-            {"label": "Hydration", "value": self._format_weight(self._to_display_weight(measurement.hydration_kg, display_unit), display_unit)},
-            {"label": "Visceral Fat Index", "value": self._format_index(measurement.visceral_fat_index)},
             {"label": "Heart Rate", "value": f"{int(round(measurement.heart_rate_bpm))} bpm" if measurement.heart_rate_bpm is not None else "--"},
             {"label": "Scale Battery", "value": str(measurement.scale_battery).strip() if measurement.scale_battery else "--"},
         ]
 
     def _composition_points(self, history, display_unit):
         points = []
+        seen_home_assistant_visceral = {}
         for item in history:
             if not item.source_timestamp:
                 continue
@@ -418,8 +458,25 @@ class WeightProgressService:
             if not timestamp:
                 continue
             fat_free_mass_kg, _, fat_free_mass_derived = self._derived_fat_free_mass(item)
-            points.append(
-                {
+            muscle_percentage = self._derived_muscle_percentage(item)
+            hydration_percentage = self._derived_hydration_percentage(item)
+            visceral_fat = self._to_display_index(item.visceral_fat_index)
+            visceral_timestamp, visceral_utc_date = self._visceral_chart_timestamp(
+                item, timestamp
+            )
+            if (
+                visceral_fat is not None
+                and item.import_source == "home_assistant"
+                and visceral_utc_date is not None
+            ):
+                visceral_identity = (visceral_utc_date, visceral_fat)
+                previous_point = seen_home_assistant_visceral.get(
+                    visceral_identity
+                )
+                if previous_point is not None:
+                    previous_point["visceral_fat_index"] = None
+                    previous_point["visceral_fat"] = None
+            point = {
                     "timestamp": timestamp,
                     "body_fat_percent": self._to_display_percent(self._derived_body_fat_percent(item)),
                     "body_fat": self._to_display_percent(self._derived_body_fat_percent(item)),
@@ -427,12 +484,73 @@ class WeightProgressService:
                     "fat_free_mass": self._to_display_weight(fat_free_mass_kg, display_unit) if fat_free_mass_kg is not None else None,
                     "fat_free_mass_derived": fat_free_mass_derived,
                     "muscle_mass": self._to_display_weight(item.muscle_mass_kg, display_unit),
-                    "bone_mass": self._to_display_weight(item.bone_mass_kg, display_unit),
+                    "muscle_mass_lb": self._to_display_weight_pounds(item.muscle_mass_kg),
+                    "muscle_percentage": self._to_display_percent(muscle_percentage),
                     "hydration": self._to_display_weight(item.hydration_kg, display_unit),
-                    "visceral_fat": self._to_display_index(item.visceral_fat_index),
+                    "hydration_mass_lb": self._to_display_weight_pounds(item.hydration_kg),
+                    "hydration_percentage": self._to_display_percent(hydration_percentage),
+                    "weight_lb": self._to_display_weight_pounds(item.weight_kg),
+                    "bone_mass": self._to_display_weight(item.bone_mass_kg, display_unit),
+                    "visceral_fat_index": visceral_fat,
+                    "visceral_fat": visceral_fat,
+                    "visceral_fat_timestamp": visceral_timestamp,
                 }
-            )
+            points.append(point)
+            if (
+                visceral_fat is not None
+                and item.import_source == "home_assistant"
+                and visceral_utc_date is not None
+            ):
+                seen_home_assistant_visceral[visceral_identity] = point
         return points
+
+    def _visceral_chart_timestamp(self, measurement, fallback_timestamp):
+        raw_timestamp = measurement.source_timestamp
+        if measurement.import_source == "home_assistant" and measurement.metadata_json:
+            try:
+                metadata = json.loads(measurement.metadata_json)
+                entity = (
+                    (metadata.get("entities") or {}).get("visceral_fat_index")
+                    or {}
+                )
+                details = entity.get("metadata") or {}
+                raw_timestamp = (
+                    details.get("last_updated")
+                    or details.get("last_changed")
+                    or entity.get("source_timestamp")
+                    or raw_timestamp
+                )
+            except (TypeError, json.JSONDecodeError):
+                pass
+        normalized = self._normalize_timestamp(raw_timestamp) or fallback_timestamp
+        try:
+            parsed = datetime.fromisoformat(
+                str(raw_timestamp).strip().replace("Z", "+00:00")
+            )
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            utc_date = parsed.astimezone(timezone.utc).date().isoformat()
+        except (TypeError, ValueError):
+            utc_date = None
+        return normalized, utc_date
+
+    def _visceral_chart_points(self, composition_points):
+        points = []
+        for point in composition_points:
+            value = point.get("visceral_fat")
+            timestamp = (
+                point.get("visceral_fat_timestamp") or point.get("timestamp")
+            )
+            if value is None or not timestamp:
+                continue
+            chart_point = dict(point)
+            chart_point["timestamp"] = timestamp
+            points.append(chart_point)
+        return sorted(
+            points,
+            key=lambda point: self._parse_timestamp(point["timestamp"])
+            or datetime.min,
+        )
 
     def _composition_summary(self, selected_points, all_points, metric_key, journey_start_date, display_unit):
         metric = self.COMPOSITION_METRICS[metric_key]
@@ -498,11 +616,22 @@ class WeightProgressService:
         }
 
     def _composition_summary_message(self, metric_key, selected_points):
+        if metric_key == "muscle_percentage":
+            note = "Muscle percentage is muscle mass as a share of total body weight. It may rise during weight loss even when muscle mass in pounds changes only slightly."
+            if len(selected_points) <= 1:
+                return f"{note} Additional history will appear as measurements are collected."
+            return note
         if metric_key == "visceral_fat" and len(selected_points) <= 1:
             return "Visceral-fat history will appear as additional measurements are collected."
         if len(selected_points) <= 1:
             return "Only one reading is available so far. Additional history will appear as measurements are collected."
         return "The selected body-composition trend uses actual readings and a seven-day trend line."
+
+    def _composition_metric_options(self, metric_keys, display_unit):
+        return [
+            {"value": key, "label": self.COMPOSITION_METRICS[key]["label"], "unit": self._composition_metric_unit(key, display_unit)}
+            for key in metric_keys
+        ]
 
     def _composition_value_note(self, point, metric):
         if not point:
@@ -562,6 +691,38 @@ class WeightProgressService:
         if derived < 0:
             return None, None, False
         return derived, "Derived from weight - fat mass", True
+
+    def _derived_muscle_percentage(self, measurement):
+        if not measurement or measurement.weight_kg is None or measurement.muscle_mass_kg is None:
+            return None
+        weight_kg = self._parse_float(measurement.weight_kg)
+        muscle_mass_kg = self._parse_float(measurement.muscle_mass_kg)
+        if weight_kg is None or muscle_mass_kg is None:
+            return None
+        if weight_kg <= 0 or muscle_mass_kg <= 0:
+            return None
+        if muscle_mass_kg > weight_kg:
+            return None
+        percent = round((muscle_mass_kg / weight_kg) * 100, 1)
+        if percent <= 0 or percent > 100:
+            return None
+        return percent
+
+    def _derived_hydration_percentage(self, measurement):
+        if not measurement or measurement.weight_kg is None or measurement.hydration_kg is None:
+            return None
+        weight_kg = self._parse_float(measurement.weight_kg)
+        hydration_kg = self._parse_float(measurement.hydration_kg)
+        if weight_kg is None or hydration_kg is None:
+            return None
+        if weight_kg <= 0 or hydration_kg <= 0:
+            return None
+        if hydration_kg > weight_kg:
+            return None
+        percent = round((hydration_kg / weight_kg) * 100, 1)
+        if percent <= 0 or percent > 100:
+            return None
+        return percent
 
     def _derived_body_fat_percent(self, measurement):
         if not measurement:
@@ -623,6 +784,319 @@ class WeightProgressService:
         last_weight = self._to_display_weight(last.weight_kg, display_unit)
         days = max((last_ts - first_ts).total_seconds() / 86400, 1 / 24)
         return round(((last_weight - first_weight) / days) * 7, 2)
+
+    def _weekly_weight_cards(self, history, now=None):
+        timezone_info = self.local_timezone()
+        current_time = self._as_local_datetime(
+            now or datetime.now(timezone_info), timezone_info
+        )
+        days_since_tuesday = (current_time.weekday() - 1) % 7
+        current_start = current_time.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        ) - timedelta(days=days_since_tuesday)
+        last_start = current_start - timedelta(days=7)
+        last_end = current_start - timedelta(microseconds=1)
+
+        readings = self._canonical_weight_readings(history, timezone_info)
+        return [
+            self._weekly_weight_card(
+                "Last Week",
+                readings,
+                last_start,
+                last_end,
+                end_exclusive=current_start,
+            ),
+            self._weekly_weight_card(
+                "This Week So Far",
+                readings,
+                current_start,
+                current_time,
+            ),
+        ]
+
+    def _weekly_weight_card(
+        self,
+        label,
+        readings,
+        period_start,
+        period_end,
+        end_exclusive=None,
+    ):
+        selected = [
+            reading
+            for reading in readings
+            if reading["timestamp"] >= period_start
+            and (
+                reading["timestamp"] < end_exclusive
+                if end_exclusive is not None
+                else reading["timestamp"] <= period_end
+            )
+        ]
+        period_day_count = (
+            period_end.date() - period_start.date()
+        ).days + 1
+        period_text = self._format_week_period(
+            period_start.date(),
+            period_end.date(),
+            period_day_count,
+        )
+        base = {
+            "label": label,
+            "status": "insufficient_data",
+            "direction": "unknown",
+            "change_pounds": None,
+            "display_text": "Not enough data",
+            "value": "Not enough data",
+            "period_start": period_start.date().isoformat(),
+            "period_end": period_end.date().isoformat(),
+            "first_weight": None,
+            "last_weight": None,
+            "first_timestamp": None,
+            "last_timestamp": None,
+            "measurement_count": len(selected),
+            "period_day_count": period_day_count,
+            "date_range_display": period_text,
+            "period_text": period_text,
+            "measurement_text": None,
+            "count_text": "Not enough weigh-ins",
+            "note_lines": [period_text, "Not enough weigh-ins"],
+        }
+        if len(selected) < 2:
+            return base
+
+        first = selected[0]
+        last = selected[-1]
+        first_weight = round(first["weight_pounds"], 1)
+        last_weight = round(last["weight_pounds"], 1)
+        change_pounds = round(first_weight - last_weight, 1)
+        if change_pounds > 0:
+            status = "complete"
+            direction = "lost"
+            display_text = f"{change_pounds:.1f} lb lost"
+        elif change_pounds < 0:
+            status = "complete"
+            direction = "gained"
+            display_text = f"{abs(change_pounds):.1f} lb gained"
+        else:
+            status = "no_change"
+            direction = "none"
+            display_text = "No change"
+
+        measurement_text = (
+            f"{first_weight:.1f} lb \N{RIGHTWARDS ARROW} "
+            f"{last_weight:.1f} lb"
+        )
+        count_text = f"{len(selected)} weigh-ins"
+        base.update(
+            {
+                "status": status,
+                "direction": direction,
+                "change_pounds": change_pounds,
+                "display_text": display_text,
+                "value": display_text,
+                "first_weight": first_weight,
+                "last_weight": last_weight,
+                "first_timestamp": first["timestamp"].isoformat(
+                    sep=" ",
+                    timespec="seconds",
+                ),
+                "last_timestamp": last["timestamp"].isoformat(
+                    sep=" ",
+                    timespec="seconds",
+                ),
+                "measurement_text": measurement_text,
+                "count_text": count_text,
+                "note_lines": [period_text, measurement_text, count_text],
+            }
+        )
+        return base
+
+    def _canonical_weight_readings(self, history, timezone_info):
+        candidates = []
+        for index, measurement in enumerate(history or []):
+            weight_kg = self._parse_float(measurement.weight_kg)
+            if (
+                weight_kg is None
+                or not math.isfinite(weight_kg)
+                or weight_kg <= 0
+            ):
+                continue
+            timestamp = self._measurement_weight_timestamp(
+                measurement,
+                timezone_info,
+            )
+            if timestamp is None:
+                continue
+            candidates.append(
+                {
+                    "measurement": measurement,
+                    "timestamp": timestamp,
+                    "weight_pounds": weight_kg * 2.2046226218,
+                    "priority": self._weight_measurement_priority(measurement),
+                    "order": index,
+                }
+            )
+
+        candidates.sort(
+            key=lambda item: (
+                item["timestamp"],
+                -item["priority"],
+                item["order"],
+            )
+        )
+        canonical = []
+        for candidate in candidates:
+            overlap_index = None
+            for index in range(len(canonical) - 1, -1, -1):
+                existing = canonical[index]
+                elapsed = candidate["timestamp"] - existing["timestamp"]
+                if (
+                    self._tuesday_week_start(candidate["timestamp"])
+                    != self._tuesday_week_start(existing["timestamp"])
+                ):
+                    break
+                if elapsed > OVERLAP_WINDOW:
+                    break
+                if (
+                    abs(elapsed.total_seconds())
+                    <= OVERLAP_WINDOW.total_seconds()
+                    and abs(
+                        candidate["weight_pounds"]
+                        - existing["weight_pounds"]
+                    )
+                    <= OVERLAP_WEIGHT_TOLERANCE_LB
+                ):
+                    overlap_index = index
+                    break
+            if overlap_index is None:
+                canonical.append(candidate)
+                continue
+            existing = canonical[overlap_index]
+            if candidate["priority"] > existing["priority"]:
+                canonical[overlap_index] = candidate
+
+        return sorted(
+            canonical,
+            key=lambda item: (item["timestamp"], item["order"]),
+        )
+
+    def _measurement_weight_timestamp(self, measurement, timezone_info):
+        raw_timestamp = measurement.source_timestamp
+        if measurement.metadata_json:
+            try:
+                metadata = json.loads(measurement.metadata_json)
+                weight_entity = (
+                    (metadata.get("entities") or {}).get("weight") or {}
+                )
+                weight_metadata = weight_entity.get("metadata") or {}
+                raw_timestamp = (
+                    weight_metadata.get("last_updated")
+                    or weight_metadata.get("last_changed")
+                    or weight_entity.get("source_timestamp")
+                    or metadata.get("original_timestamp")
+                    or raw_timestamp
+                )
+            except (AttributeError, TypeError, json.JSONDecodeError):
+                pass
+        return self._as_local_datetime(raw_timestamp, timezone_info)
+
+    @staticmethod
+    def _weight_measurement_priority(measurement):
+        source = str(measurement.import_source or "").strip().lower()
+        if source == "home_assistant":
+            return 2
+        return 1
+
+    @staticmethod
+    def _tuesday_week_start(value):
+        days_since_tuesday = (value.weekday() - 1) % 7
+        return value.date() - timedelta(days=days_since_tuesday)
+
+    @staticmethod
+    def _format_week_period(period_start, period_end, period_day_count):
+        day_word = "day" if period_day_count == 1 else "days"
+        return (
+            f"{period_start:%b} {period_start.day}"
+            f"\N{EN DASH}"
+            f"{period_end:%b} {period_end.day}"
+            f" ({period_day_count} {day_word})"
+        )
+
+    def local_timezone_name(self):
+        if self._local_timezone_name:
+            return self._local_timezone_name
+        config_data = getattr(self.config, "data", {})
+        if not isinstance(config_data, dict):
+            config_data = {}
+        weight_progress = config_data.get("weight_progress") or {}
+        system = config_data.get("system") or {}
+        weather = config_data.get("weather") or {}
+        candidates = (
+            weight_progress.get("timezone")
+            if isinstance(weight_progress, dict)
+            else None,
+            config_data.get("timezone"),
+            config_data.get("time_zone"),
+            system.get("timezone") if isinstance(system, dict) else None,
+            weather.get("timezone") if isinstance(weather, dict) else None,
+            os.environ.get("TZ"),
+        )
+        for candidate in candidates:
+            name = str(candidate or "").strip()
+            if not name:
+                continue
+            try:
+                ZoneInfo(name)
+                self._local_timezone_name = name
+                return name
+            except ZoneInfoNotFoundError:
+                continue
+        if os.name == "nt":
+            try:
+                result = subprocess.run(
+                    ["tzutil", "/g"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=True,
+                )
+                name = WINDOWS_TO_IANA.get(result.stdout.strip())
+                if name:
+                    self._local_timezone_name = name
+                    return name
+            except (OSError, subprocess.SubprocessError):
+                pass
+        local = datetime.now().astimezone().tzinfo
+        name = getattr(local, "key", None)
+        if name:
+            self._local_timezone_name = str(name)
+            return self._local_timezone_name
+        raise ValueError("HomePulse local timezone could not be determined.")
+
+    def local_timezone(self):
+        if self._local_timezone_info is None:
+            self._local_timezone_info = ZoneInfo(self.local_timezone_name())
+        return self._local_timezone_info
+
+    @staticmethod
+    def _as_local_datetime(value, timezone_info):
+        if isinstance(value, datetime):
+            parsed = value
+        elif value:
+            try:
+                parsed = datetime.fromisoformat(
+                    str(value).strip().replace("Z", "+00:00")
+                )
+            except (TypeError, ValueError):
+                return None
+        else:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone_info)
+        return parsed.astimezone(timezone_info)
 
     def _starting_weight(self, cfg, journey_history, earliest, display_unit):
         starting = self._to_display_scalar(cfg.get("starting_weight"), display_unit)
@@ -791,6 +1265,11 @@ class WeightProgressService:
             return None
         if display_unit == "kg":
             return round(value_kg, 1)
+        return round(value_kg * 2.2046226218, 1)
+
+    def _to_display_weight_pounds(self, value_kg):
+        if value_kg is None:
+            return None
         return round(value_kg * 2.2046226218, 1)
 
     def _to_display_scalar(self, value, display_unit):

@@ -217,7 +217,7 @@
       <label class="field-label" for="weight-progress-goal-weight">Goal Weight</label>
       <input id="weight-progress-goal-weight" name="weight_progress_goal_weight" type="number" min="0" step="0.1" value="{{ weight_progress_config.get("goal_weight") if weight_progress_config.get("goal_weight") is not none else 220 }}">
 
-      <details id="weight-progress-history-maintenance" class="advanced-settings">
+      <details id="weight-history-maintenance" class="advanced-settings">
         <summary>History Import &amp; Maintenance</summary>
         <p class="settings-help">Choose a local Withings workbook, preview it, and confirm only when the summary looks right. The preview never writes to the database.</p>
 
@@ -760,10 +760,10 @@
 <script src="{{ url_for('static', filename='js/weight_progress.js') }}"></script>
 <script>
   (function() {
-    if (window.location.hash !== "#weight-progress-history-maintenance") {
+    if (window.location.hash !== "#weight-history-maintenance") {
       return;
     }
-    const details = document.getElementById("weight-progress-history-maintenance");
+    const details = document.getElementById("weight-history-maintenance");
     if (details) {
       details.open = true;
       details.scrollIntoView({ block: "start" });

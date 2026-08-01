@@ -120,6 +120,10 @@ function compositionMetricConfig(data, metric) {
   };
 }
 
+function compositionTrendDatasetLabel(metricLabel) {
+  return `${metricLabel} - 7-day trend`;
+}
+
 function formatCompositionMetricValue(value, metricConfig) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "--";
   if (metricConfig.kind === "percent") {
@@ -155,10 +159,20 @@ function compositionValueNote(point, metricConfig) {
 
 function filteredCompositionMetricPoints(points, metricConfig, range, journeyStartDate) {
   const selectedPoints = filteredWeightProgressPoints(points, range, journeyStartDate);
-  return selectedPoints.map((point) => ({
-    timestamp: point.timestamp,
+  const metricPoints = metricConfig.key === "visceral_fat"
+    ? selectedPoints.filter((point) => point[metricConfig.field] !== null
+      && point[metricConfig.field] !== undefined
+      && !Number.isNaN(Number(point[metricConfig.field])))
+    : selectedPoints;
+  return metricPoints.map((point) => ({
+    timestamp: metricConfig.key === "visceral_fat"
+      ? (point.visceral_fat_timestamp || point.timestamp)
+      : point.timestamp,
     value: point[metricConfig.field],
     derived: metricConfig.key === "fat_free_mass" ? Boolean(point.fat_free_mass_derived) : false,
+    muscle_mass_lb: point.muscle_mass_lb,
+    hydration_mass_lb: point.hydration_mass_lb,
+    weight_lb: point.weight_lb,
   }));
 }
 
@@ -293,7 +307,9 @@ function renderWeightProgressCompositionChart() {
 
   const metricConfig = compositionMetricConfig(data, metric);
   const journeyStartDate = container.dataset.journeyStartDate || data.composition_trends?.journey_start_date || null;
-  const sourcePoints = data.composition_trends?.all_points || data.composition_trends?.points || [];
+  const sourcePoints = metric === "visceral_fat"
+    ? (data.composition_trends?.visceral_fat_points || [])
+    : (data.composition_trends?.all_points || data.composition_trends?.points || []);
   const selectedPoints = filteredCompositionMetricPoints(sourcePoints, metricConfig, range, journeyStartDate);
   const summary = buildCompositionSummary(selectedPoints, sourcePoints, metricConfig, journeyStartDate);
   renderCompositionSummary(summary);
@@ -328,6 +344,23 @@ function renderWeightProgressCompositionChart() {
     return average;
   });
   const unit = metricConfig.unit === "%" || metricConfig.unit === "Index" ? metricConfig.unit : (data.display_unit || "lb");
+  const trendLabel = compositionTrendDatasetLabel(metricConfig.label);
+  const tooltipExtraLines = ["muscle_percentage", "hydration_percentage"].includes(metricConfig.key)
+    ? (items) => {
+        const point = selectedPoints[items[0]?.dataIndex];
+        if (!point) return [];
+        if (metricConfig.key === "hydration_percentage") {
+          return [
+            `Hydration mass: ${formatWeightValue(point.hydration_mass_lb, "lb")}`,
+            `Body weight: ${formatWeightValue(point.weight_lb, "lb")}`,
+          ];
+        }
+        return [
+          `Muscle mass: ${formatWeightValue(point.muscle_mass_lb, "lb")}`,
+          `Body weight: ${formatWeightValue(point.weight_lb, "lb")}`,
+        ];
+      }
+    : () => [];
   const context = canvas.getContext("2d");
   const gradient = context.createLinearGradient(0, 0, 0, canvas.clientHeight || 320);
   gradient.addColorStop(0, "rgba(15, 118, 110, 0.3)");
@@ -336,10 +369,13 @@ function renderWeightProgressCompositionChart() {
   if (weightProgressCompositionChart) {
     weightProgressCompositionChart.data.labels = labels;
     weightProgressCompositionChart.data.datasets[0].data = actualValues;
+    weightProgressCompositionChart.data.datasets[0].label = metricConfig.label;
     weightProgressCompositionChart.data.datasets[1].data = trendValues;
+    weightProgressCompositionChart.data.datasets[1].label = trendLabel;
     weightProgressCompositionChart.options.plugins.tooltip.callbacks.title = (items) => tooltipLabels[items[0].dataIndex] || "";
+    weightProgressCompositionChart.options.plugins.tooltip.callbacks.afterBody = tooltipExtraLines;
     weightProgressCompositionChart.options.scales.y.title.text = unit;
-    weightProgressCompositionChart.options.plugins.legend.labels.filter = (legendItem) => legendItem.text !== "7-day trend" || visiblePoints.length > 1;
+    weightProgressCompositionChart.options.plugins.legend.labels.filter = (legendItem) => legendItem.datasetIndex !== 1 || visiblePoints.length > 1;
     weightProgressCompositionChart.update("active");
   } else {
     weightProgressCompositionChart = new Chart(canvas, {
@@ -359,7 +395,7 @@ function renderWeightProgressCompositionChart() {
             pointHoverRadius: 5,
           },
           {
-            label: "7-day trend",
+            label: trendLabel,
             data: trendValues,
             borderColor: "#7c3aed",
             borderDash: [6, 5],
@@ -381,6 +417,9 @@ function renderWeightProgressCompositionChart() {
               color: "#344258",
               boxWidth: 10,
               usePointStyle: true,
+              filter(legendItem) {
+                return legendItem.datasetIndex !== 1 || visiblePoints.length > 1;
+              },
             },
           },
           tooltip: {
@@ -397,6 +436,7 @@ function renderWeightProgressCompositionChart() {
                 const value = context.parsed.y;
                 return `${label}: ${formatCompositionMetricValue(value, metricConfig)}`;
               },
+              afterBody: tooltipExtraLines,
             },
           },
         },

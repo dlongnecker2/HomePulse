@@ -18,7 +18,16 @@
     <article class="summary-card">
       <span>{{ card.label }}</span>
       <strong>{{ card.value }}</strong>
-      {% if card.note %}
+      {% if card.date_range_display %}
+        <div class="small">{{ card.date_range_display }}</div>
+        {% for line in card.note_lines[1:] %}
+          <div class="small">{{ line }}</div>
+        {% endfor %}
+      {% elif card.note_lines %}
+        {% for line in card.note_lines %}
+          <div class="small">{{ line }}</div>
+        {% endfor %}
+      {% elif card.note %}
         <div class="small">{{ card.note }}</div>
       {% endif %}
     </article>
@@ -69,7 +78,7 @@
     <div class="panel-heading">
       <div>
         <h2>Body Composition Trends</h2>
-        <p>Switch between body-fat percentage, mass measurements, and visceral fat while keeping the selected date range in sync with Weight Trend.</p>
+        <p>Switch between percentage-based body-composition trends first, with raw mass metrics available under More metrics while keeping the selected date range in sync with Weight Trend.</p>
       </div>
       <div class="range-controls" aria-label="Body composition metrics">
         {% for option in weight_progress.composition_trends.metric_options %}
@@ -77,6 +86,16 @@
         {% endfor %}
       </div>
     </div>
+    {% if weight_progress.composition_trends.more_metric_options %}
+      <details style="margin-bottom: 0.9rem;">
+        <summary class="small">More metrics</summary>
+        <div class="range-controls" aria-label="Additional body composition metrics">
+          {% for option in weight_progress.composition_trends.more_metric_options %}
+            <span data-composition-metric="{{ option.value }}">{{ option.label }}</span>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
     <section id="weight-progress-composition-summary" class="history-summary-grid composition-summary-grid">
       {% for card in weight_progress.composition_trends.summary_cards %}
         <article class="summary-card">
@@ -114,7 +133,7 @@
       <h2>History Maintenance</h2>
       <p class="settings-help">Manage the optional workbook import and local history cleanup in Settings.</p>
     </div>
-    <a class="diagnostic-test-button" href="{{ url_for('settings') }}#weight-progress-history-maintenance">Manage Weight History</a>
+    <a class="small" href="{{ url_for('settings') }}#weight-history-maintenance">Manage Weight History</a>
   </div>
 </section>
 

@@ -2,9 +2,10 @@ import json
 from io import BytesIO
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from flask import Flask, render_template
 from openpyxl import Workbook
@@ -705,6 +706,661 @@ class WeightProgressServiceTests(unittest.TestCase):
         self.assertEqual(payload["summary_cards"][6]["value"], "20.0%")
         self.assertEqual(payload["composition_trends"]["points"][0]["body_fat"], 20.0)
 
+    def test_body_composition_rows_prioritize_percentage_metrics(self):
+        service = self._service()
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-07-10 08:00:00",
+                source_timestamp="2026-07-10 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=100.0,
+                body_fat_percent=20.0,
+                fat_mass_kg=20.0,
+                fat_free_mass_kg=80.0,
+                muscle_mass_kg=60.0,
+                hydration_kg=70.0,
+                bone_mass_kg=3.2,
+                visceral_fat_index=8.4,
+                reading_hash="hash-composition-rows",
+                metadata={"timestamp": "2026-07-10 08:00:00"},
+            )
+        )
+
+        payload = service.view_model(include_live=False)
+        labels = [row["label"] for row in payload["body_composition_rows"]]
+
+        self.assertEqual(
+            labels[:9],
+            [
+                "Body Fat %",
+                "Muscle %",
+                "Hydration %",
+                "Visceral Fat Index",
+                "Fat Mass",
+                "Fat-Free Mass",
+                "Muscle Mass",
+                "Hydration Mass",
+                "Bone Mass",
+            ],
+        )
+
+    def test_muscle_percentage_is_derived_and_validated(self):
+        service = self._service()
+
+        valid_measurement = WeightMeasurement.create(
+            captured_at="2026-07-10 08:00:00",
+            source_timestamp="2026-07-10 08:00:00",
+            source_entity="sensor.withings_weight",
+            weight_kg=127.6,
+            muscle_mass_kg=77.5,
+            reading_hash="hash-muscle-valid",
+            metadata={"timestamp": "2026-07-10 08:00:00"},
+        )
+        self.assertEqual(service._derived_muscle_percentage(valid_measurement), 60.7)
+
+        for weight_kg, muscle_mass_kg in [
+            (None, 60.0),
+            (100.0, None),
+            (0, 50.0),
+            (-1.0, 50.0),
+            (100.0, 0),
+            (100.0, -1.0),
+            (100.0, 120.0),
+            ("abc", 60.0),
+            (100.0, "bad"),
+        ]:
+            with self.subTest(weight_kg=weight_kg, muscle_mass_kg=muscle_mass_kg):
+                measurement = WeightMeasurement.create(
+                    captured_at="2026-07-10 08:00:00",
+                    source_timestamp="2026-07-10 08:00:00",
+                    source_entity="sensor.withings_weight",
+                    weight_kg=weight_kg,
+                    muscle_mass_kg=muscle_mass_kg,
+                    reading_hash=f"hash-{weight_kg}-{muscle_mass_kg}",
+                    metadata={"timestamp": "2026-07-10 08:00:00"},
+                )
+                self.assertIsNone(service._derived_muscle_percentage(measurement))
+
+    def test_muscle_percentage_summary_uses_percentage_points_and_tooltip_fields(self):
+        config = build_config(
+            weight_progress={
+                "enabled": True,
+                "database": "data/weight_progress.db",
+                "display_unit": "lb",
+                "starting_weight": None,
+                "journey_start_date": "2026-07-01",
+                "goal_weight": 220,
+                "entities": build_config().data["weight_progress"]["entities"],
+            }
+        )
+        service = self._service(config)
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-07-01 08:00:00",
+                source_timestamp="2026-07-01 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=120.0,
+                muscle_mass_kg=72.0,
+                reading_hash="hash-muscle-start",
+                metadata={"timestamp": "2026-07-01 08:00:00"},
+            )
+        )
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-07-09 08:00:00",
+                source_timestamp="2026-07-09 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=130.0,
+                muscle_mass_kg=79.3,
+                reading_hash="hash-muscle-latest",
+                metadata={"timestamp": "2026-07-09 08:00:00"},
+            )
+        )
+
+        payload = service.view_model(include_live=False)
+        trends = payload["composition_trends"]
+        muscle_options = [option["value"] for option in trends["metric_options"]]
+        more_options = [option["value"] for option in trends["more_metric_options"]]
+
+        summary = service._composition_summary(
+            trends["points"],
+            trends["all_points"],
+            "muscle_percentage",
+            service._journey_start_date(service.weight_progress_config()),
+            service.weight_progress_config().get("display_unit", "lb"),
+        )
+
+        self.assertEqual(trends["default_metric"], "muscle_percentage")
+        self.assertEqual(trends["selected_metric"], "muscle_percentage")
+        self.assertEqual(muscle_options, ["body_fat", "muscle_percentage", "hydration_percentage", "visceral_fat"])
+        self.assertEqual(more_options, ["fat_mass", "fat_free_mass", "muscle_mass", "hydration", "bone_mass"])
+        self.assertEqual(trends["all_points"][0]["muscle_percentage"], 60.0)
+        self.assertEqual(trends["all_points"][1]["muscle_percentage"], 61.0)
+        self.assertEqual(trends["all_points"][1]["muscle_mass_lb"], 174.8)
+        self.assertEqual(trends["all_points"][1]["weight_lb"], 286.6)
+        self.assertEqual(trends["all_points"][1]["hydration_percentage"], None)
+        self.assertEqual(summary["summary_cards"][0]["value"], "61.0%")
+        self.assertEqual(summary["summary_cards"][1]["value"], "60.0%")
+        self.assertEqual(summary["summary_cards"][2]["value"], "Up 1.0 percentage points")
+        self.assertEqual(summary["summary_cards"][3]["value"], "Jul 1, 2026")
+        self.assertEqual(summary["summary_cards"][4]["value"], "Jul 9, 2026")
+        self.assertIn("muscle mass as a share of total body weight", summary["summary_message"])
+
+    def test_hydration_percentage_is_derived_and_validated(self):
+        service = self._service()
+
+        valid_measurement = WeightMeasurement.create(
+            captured_at="2026-07-10 08:00:00",
+            source_timestamp="2026-07-10 08:00:00",
+            source_entity="sensor.withings_weight",
+            weight_kg=100.0,
+            hydration_kg=70.0,
+            reading_hash="hash-hydration-valid",
+            metadata={"timestamp": "2026-07-10 08:00:00"},
+        )
+        self.assertEqual(service._derived_hydration_percentage(valid_measurement), 70.0)
+
+        for weight_kg, hydration_kg in [
+            (None, 70.0),
+            (100.0, None),
+            (0, 50.0),
+            (-1.0, 50.0),
+            (100.0, 0),
+            (100.0, -1.0),
+            (100.0, 120.0),
+            ("abc", 70.0),
+            (100.0, "bad"),
+        ]:
+            with self.subTest(weight_kg=weight_kg, hydration_kg=hydration_kg):
+                measurement = WeightMeasurement.create(
+                    captured_at="2026-07-10 08:00:00",
+                    source_timestamp="2026-07-10 08:00:00",
+                    source_entity="sensor.withings_weight",
+                    weight_kg=weight_kg,
+                    hydration_kg=hydration_kg,
+                    reading_hash=f"hash-{weight_kg}-{hydration_kg}",
+                    metadata={"timestamp": "2026-07-10 08:00:00"},
+                )
+                self.assertIsNone(service._derived_hydration_percentage(measurement))
+
+    def test_hydration_percentage_summary_uses_percentage_points_and_tooltip_fields(self):
+        config = build_config(
+            weight_progress={
+                "enabled": True,
+                "database": "data/weight_progress.db",
+                "display_unit": "lb",
+                "starting_weight": None,
+                "journey_start_date": "2026-07-01",
+                "goal_weight": 220,
+                "entities": build_config().data["weight_progress"]["entities"],
+            }
+        )
+        service = self._service(config)
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-07-01 08:00:00",
+                source_timestamp="2026-07-01 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=100.0,
+                hydration_kg=70.0,
+                reading_hash="hash-hydration-start",
+                metadata={"timestamp": "2026-07-01 08:00:00"},
+            )
+        )
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-07-09 08:00:00",
+                source_timestamp="2026-07-09 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=120.0,
+                hydration_kg=78.0,
+                reading_hash="hash-hydration-latest",
+                metadata={"timestamp": "2026-07-09 08:00:00"},
+            )
+        )
+
+        payload = service.view_model(include_live=False)
+        trends = payload["composition_trends"]
+        summary = service._composition_summary(
+            trends["points"],
+            trends["all_points"],
+            "hydration_percentage",
+            service._journey_start_date(service.weight_progress_config()),
+            service.weight_progress_config().get("display_unit", "lb"),
+        )
+
+        self.assertEqual(trends["all_points"][0]["hydration_percentage"], 70.0)
+        self.assertEqual(trends["all_points"][1]["hydration_percentage"], 65.0)
+        self.assertEqual(trends["all_points"][1]["hydration_mass_lb"], 172.0)
+        self.assertEqual(trends["all_points"][1]["weight_lb"], 264.6)
+        self.assertEqual(trends["metric_labels"]["visceral_fat"], "Visceral Fat Index")
+        self.assertEqual(summary["summary_cards"][0]["value"], "65.0%")
+        self.assertEqual(summary["summary_cards"][1]["value"], "70.0%")
+        self.assertEqual(summary["summary_cards"][2]["value"], "Down 5.0 percentage points")
+
+    def test_visceral_fat_history_uses_stored_index_values(self):
+        config = build_config(
+            weight_progress={
+                "enabled": True,
+                "database": "data/weight_progress.db",
+                "display_unit": "lb",
+                "starting_weight": None,
+                "journey_start_date": "2026-07-01",
+                "goal_weight": 220,
+                "entities": build_config().data["weight_progress"]["entities"],
+            }
+        )
+        service = self._service(config)
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-07-01 08:00:00",
+                source_timestamp="2026-07-01 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=100.0,
+                visceral_fat_index=9.2,
+                reading_hash="hash-visceral-start",
+                metadata={"timestamp": "2026-07-01 08:00:00"},
+            )
+        )
+        service.database.insert_measurement(
+            WeightMeasurement.create(
+                captured_at="2026-07-09 08:00:00",
+                source_timestamp="2026-07-09 08:00:00",
+                source_entity="sensor.withings_weight",
+                weight_kg=98.0,
+                visceral_fat_index=8.4,
+                reading_hash="hash-visceral-latest",
+                metadata={"timestamp": "2026-07-09 08:00:00"},
+            )
+        )
+
+        payload = service.view_model(include_live=False)
+        trends = payload["composition_trends"]
+        summary = service._composition_summary(
+            service._composition_points(service.database.query_measurements(), "lb"),
+            service._composition_points(service.database.query_measurements(), "lb"),
+            "visceral_fat",
+            service._journey_start_date(service.weight_progress_config()),
+            service.weight_progress_config().get("display_unit", "lb"),
+        )
+
+        self.assertEqual(trends["metric_options"][-1]["value"], "visceral_fat")
+        self.assertEqual(summary["trend_points"], 2)
+        self.assertEqual(summary["current_value"], 8.4)
+        self.assertEqual(summary["journey_value"], 9.2)
+        self.assertEqual(summary["summary_cards"][2]["value"], "Down 0.8 Index")
+
+    def test_visceral_chart_reconciles_home_assistant_snapshots_and_keeps_imports(self):
+        service = self._service()
+        imported = WeightMeasurement.create(
+            captured_at="2023-12-13 04:18:52+00:00",
+            source_timestamp="2023-12-13 04:18:52+00:00",
+            source_entity="withings_public_api_history",
+            visceral_fat_index=9.5,
+            import_source="withings_public_api_history",
+            reading_hash="imported-visceral-history",
+            metadata={"withings_measure_type": 170},
+        )
+        service.database.insert_measurement(imported)
+        for index, (source_timestamp, sensor_timestamp, value, body_fat) in enumerate(
+            (
+                (
+                    "2026-07-20 08:00:00",
+                    "2026-07-20T13:00:00+00:00",
+                    8.4,
+                    20.0,
+                ),
+                (
+                    "2026-07-20 09:00:00",
+                    "2026-07-20T18:00:00+00:00",
+                    8.4,
+                    21.0,
+                ),
+                (
+                    "2026-07-20 10:00:00",
+                    "2026-07-20T19:00:00+00:00",
+                    8.3,
+                    22.0,
+                ),
+            )
+        ):
+            service.database.insert_measurement(
+                WeightMeasurement.create(
+                    captured_at=source_timestamp,
+                    source_timestamp=source_timestamp,
+                    source_entity="sensor.withings_weight",
+                    weight_kg=100.0 - index,
+                    body_fat_percent=body_fat,
+                    visceral_fat_index=value,
+                    import_source="home_assistant",
+                    reading_hash=f"home-assistant-visceral-{index}",
+                    metadata={
+                        "entities": {
+                            "visceral_fat_index": {
+                                "metadata": {
+                                    "last_updated": sensor_timestamp,
+                                    "last_changed": sensor_timestamp,
+                                }
+                            }
+                        }
+                    },
+                )
+            )
+
+        payload = service.view_model(include_live=False, range_key="all")
+        points = payload["composition_trends"]["all_points"]
+        visceral_points = [
+            point for point in points if point["visceral_fat"] is not None
+        ]
+
+        self.assertEqual(len(visceral_points), 3)
+        self.assertEqual(
+            [point["visceral_fat"] for point in visceral_points],
+            [9.5, 8.4, 8.3],
+        )
+        self.assertEqual(
+            visceral_points[1]["visceral_fat_timestamp"],
+            service._normalize_timestamp("2026-07-20T18:00:00+00:00"),
+        )
+        self.assertEqual(
+            [point["body_fat"] for point in points if point["body_fat"] is not None],
+            [20.0, 21.0, 22.0],
+        )
+        trends = payload["composition_trends"]
+        self.assertEqual(len(trends["visceral_fat_points"]), 3)
+        self.assertEqual(
+            [point["visceral_fat"] for point in trends["visceral_fat_points"]],
+            [9.5, 8.4, 8.3],
+        )
+        self.assertEqual(
+            [point["timestamp"] for point in trends["visceral_fat_points"]],
+            sorted(point["timestamp"] for point in trends["visceral_fat_points"]),
+        )
+        self.assertEqual(trends["metric_labels"]["visceral_fat"], "Visceral Fat Index")
+        self.assertEqual(trends["metric_units"]["visceral_fat"], "Index")
+        self.assertEqual(trends["metric_kinds"]["visceral_fat"], "index")
+
+        script = Path("static/js/weight_progress.js").read_text(encoding="utf-8")
+        self.assertIn('metricConfig.key === "visceral_fat"', script)
+        self.assertIn("`${metricLabel} - 7-day trend`", script)
+
+    def _weekly_service(self, journey_start_date=None):
+        config = build_config()
+        config.data["timezone"] = "America/Los_Angeles"
+        if journey_start_date:
+            config.data["weight_progress"]["journey_start_date"] = journey_start_date
+        return self._service(config)
+
+    @staticmethod
+    def _weekly_measurement(
+        timestamp,
+        weight_lb,
+        *,
+        import_source="withings_xlsx",
+        original_weight_timestamp=None,
+        reading_hash=None,
+        visceral_fat_index=None,
+    ):
+        metadata = {"timestamp": timestamp}
+        if original_weight_timestamp:
+            metadata = {
+                "entities": {
+                    "weight": {
+                        "metadata": {
+                            "last_updated": original_weight_timestamp,
+                            "last_changed": original_weight_timestamp,
+                        }
+                    }
+                }
+            }
+        if weight_lb is None or isinstance(weight_lb, str):
+            weight_kg = weight_lb
+        else:
+            weight_kg = weight_lb / 2.2046226218
+        return WeightMeasurement.create(
+            captured_at=str(timestamp),
+            source_timestamp=str(timestamp),
+            source_entity="sensor.withings_weight",
+            weight_kg=weight_kg,
+            visceral_fat_index=visceral_fat_index,
+            import_source=import_source,
+            reading_hash=reading_hash or f"weekly-{timestamp}-{weight_lb}",
+            metadata=metadata,
+        )
+
+    def test_tuesday_periods_select_completed_last_week_and_current_week(self):
+        service = self._weekly_service()
+        now = datetime(2026, 7, 31, 12, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement("2026-07-21 00:00:00", 286.2),
+            self._weekly_measurement("2026-07-27 23:59:59.999999", 283.8),
+            self._weekly_measurement("2026-07-28 00:00:00", 283.8),
+            self._weekly_measurement("2026-07-31 09:00:00", 282.9),
+        ]
+
+        last_week, this_week = service._weekly_weight_cards(history, now=now)
+
+        self.assertEqual(service.local_timezone_name(), "America/Los_Angeles")
+        self.assertEqual(last_week["period_start"], "2026-07-21")
+        self.assertEqual(last_week["period_end"], "2026-07-27")
+        self.assertEqual(last_week["period_day_count"], 7)
+        self.assertEqual(
+            last_week["date_range_display"],
+            "Jul 21\N{EN DASH}Jul 27 (7 days)",
+        )
+        self.assertEqual(last_week["measurement_count"], 2)
+        self.assertEqual(last_week["first_weight"], 286.2)
+        self.assertEqual(last_week["last_weight"], 283.8)
+        self.assertEqual(last_week["change_pounds"], 2.4)
+        self.assertEqual(last_week["direction"], "lost")
+        self.assertEqual(last_week["display_text"], "2.4 lb lost")
+        self.assertEqual(this_week["period_start"], "2026-07-28")
+        self.assertEqual(this_week["period_end"], "2026-07-31")
+        self.assertEqual(this_week["period_day_count"], 4)
+        self.assertEqual(
+            this_week["date_range_display"],
+            "Jul 28\N{EN DASH}Jul 31 (4 days)",
+        )
+        self.assertEqual(this_week["measurement_count"], 2)
+        self.assertEqual(this_week["display_text"], "0.9 lb lost")
+        self.assertTrue(last_week["first_timestamp"].startswith("2026-07-21 00:00:00"))
+        self.assertTrue(last_week["last_timestamp"].startswith("2026-07-27 23:59:59"))
+
+    def test_weekly_change_wording_handles_gain_no_change_and_insufficient_data(self):
+        service = self._weekly_service()
+        now = datetime(2026, 7, 31, 12, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+
+        gained = service._weekly_weight_cards(
+            [
+                self._weekly_measurement("2026-07-28 08:00:00", 280.0),
+                self._weekly_measurement("2026-07-31 08:00:00", 280.8),
+            ],
+            now=now,
+        )[1]
+        unchanged = service._weekly_weight_cards(
+            [
+                self._weekly_measurement("2026-07-28 08:00:00", 280.0),
+                self._weekly_measurement("2026-07-31 08:00:00", 280.0),
+            ],
+            now=now,
+        )[1]
+        one_reading = service._weekly_weight_cards(
+            [self._weekly_measurement("2026-07-29 08:00:00", 280.0)],
+            now=now,
+        )[1]
+        no_readings = service._weekly_weight_cards([], now=now)[1]
+
+        self.assertEqual(gained["change_pounds"], -0.8)
+        self.assertEqual(gained["direction"], "gained")
+        self.assertEqual(gained["display_text"], "0.8 lb gained")
+        self.assertNotIn("-", gained["display_text"])
+        self.assertEqual(unchanged["status"], "no_change")
+        self.assertEqual(unchanged["direction"], "none")
+        self.assertEqual(unchanged["display_text"], "No change")
+        for card, count in ((one_reading, 1), (no_readings, 0)):
+            self.assertEqual(card["status"], "insufficient_data")
+            self.assertEqual(card["direction"], "unknown")
+            self.assertEqual(card["display_text"], "Not enough data")
+            self.assertEqual(card["measurement_count"], count)
+            self.assertIn("Not enough weigh-ins", card["note_lines"])
+
+    def test_weekly_cards_reconcile_duplicates_and_ignore_non_weight_rows(self):
+        service = self._weekly_service()
+        now = datetime(2026, 7, 31, 12, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement(
+                "2026-07-29 08:05:00",
+                283.0,
+                import_source="home_assistant",
+                original_weight_timestamp="2026-07-29T15:00:00+00:00",
+                reading_hash="snapshot-a",
+            ),
+            self._weekly_measurement(
+                "2026-07-29 11:00:00",
+                283.0,
+                import_source="home_assistant",
+                original_weight_timestamp="2026-07-29T15:00:00+00:00",
+                reading_hash="snapshot-b",
+            ),
+            self._weekly_measurement(
+                "2026-07-30 08:00:00",
+                282.0,
+                import_source="home_assistant",
+                reading_hash="live-canonical",
+            ),
+            self._weekly_measurement(
+                "2026-07-30 08:03:00",
+                282.1,
+                import_source="withings_xlsx",
+                reading_hash="import-overlap",
+            ),
+            self._weekly_measurement(
+                "2026-07-30 09:00:00",
+                None,
+                visceral_fat_index=8.2,
+                reading_hash="visceral-only",
+            ),
+            self._weekly_measurement("2026-07-30 10:00:00", "bad"),
+            self._weekly_measurement("2026-07-30 11:00:00", "nan"),
+            self._weekly_measurement("2026-07-30 11:30:00", 0.0),
+            self._weekly_measurement("2026-08-01 08:00:00", 275.0),
+        ]
+
+        this_week = service._weekly_weight_cards(history, now=now)[1]
+
+        self.assertEqual(this_week["measurement_count"], 2)
+        self.assertEqual(this_week["first_weight"], 283.0)
+        self.assertEqual(this_week["last_weight"], 282.0)
+        self.assertEqual(this_week["display_text"], "1.0 lb lost")
+        self.assertTrue(this_week["first_timestamp"].startswith("2026-07-29 08:00:00"))
+
+    def test_weekly_cards_use_chronological_readings_and_keep_same_day_weigh_ins(self):
+        service = self._weekly_service(journey_start_date="2026-07-30")
+        now = datetime(2026, 7, 31, 20, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement("2026-07-29 18:00:00", 279.0),
+            self._weekly_measurement("2026-07-29 08:00:00", 280.0),
+            self._weekly_measurement("2026-07-29 12:00:00", 282.0),
+        ]
+
+        this_week = service._weekly_weight_cards(history, now=now)[1]
+
+        self.assertEqual(this_week["measurement_count"], 3)
+        self.assertEqual(this_week["first_weight"], 280.0)
+        self.assertEqual(this_week["last_weight"], 279.0)
+        self.assertEqual(this_week["display_text"], "1.0 lb lost")
+
+    def test_utc_timestamps_convert_to_local_tuesday_and_monday_boundaries(self):
+        service = self._weekly_service()
+        now = datetime(2026, 7, 28, 10, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement("2026-07-21T07:00:00+00:00", 286.0),
+            self._weekly_measurement("2026-07-28T06:59:59+00:00", 284.0),
+            self._weekly_measurement("2026-07-28T07:00:00+00:00", 283.8),
+            self._weekly_measurement("2026-07-28T16:00:00+00:00", 283.0),
+        ]
+
+        last_week, this_week = service._weekly_weight_cards(history, now=now)
+
+        self.assertEqual(last_week["measurement_count"], 2)
+        self.assertTrue(last_week["last_timestamp"].startswith("2026-07-27 23:59:59"))
+        self.assertEqual(this_week["measurement_count"], 2)
+        self.assertTrue(this_week["first_timestamp"].startswith("2026-07-28 00:00:00"))
+        self.assertEqual(this_week["period_end"], "2026-07-28")
+
+    def test_current_period_start_is_correct_on_monday_and_tuesday(self):
+        service = self._weekly_service()
+        zone = ZoneInfo("America/Los_Angeles")
+
+        monday = service._weekly_weight_cards(
+            [], now=datetime(2026, 8, 3, 23, 0, tzinfo=zone)
+        )
+        tuesday = service._weekly_weight_cards(
+            [], now=datetime(2026, 8, 4, 0, 0, tzinfo=zone)
+        )
+
+        self.assertEqual(monday[1]["period_start"], "2026-07-28")
+        self.assertEqual(monday[1]["period_end"], "2026-08-03")
+        self.assertEqual(
+            monday[1]["date_range_display"],
+            "Jul 28\N{EN DASH}Aug 3 (7 days)",
+        )
+        self.assertEqual(tuesday[0]["period_start"], "2026-07-28")
+        self.assertEqual(tuesday[0]["period_end"], "2026-08-03")
+        self.assertEqual(tuesday[1]["period_start"], "2026-08-04")
+        self.assertEqual(tuesday[1]["period_end"], "2026-08-04")
+        self.assertEqual(tuesday[1]["period_day_count"], 1)
+        self.assertEqual(
+            tuesday[1]["date_range_display"],
+            "Aug 4\N{EN DASH}Aug 4 (1 day)",
+        )
+
+    def test_week_boundaries_remain_local_across_daylight_saving_transition(self):
+        service = self._weekly_service()
+        now = datetime(2026, 3, 10, 12, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement("2026-03-03T08:00:00+00:00", 290.0),
+            self._weekly_measurement("2026-03-10T06:59:59+00:00", 288.0),
+            self._weekly_measurement("2026-03-10T07:00:00+00:00", 287.8),
+            self._weekly_measurement("2026-03-10T18:00:00+00:00", 287.0),
+        ]
+
+        last_week, this_week = service._weekly_weight_cards(history, now=now)
+
+        self.assertEqual(last_week["period_start"], "2026-03-03")
+        self.assertEqual(last_week["period_end"], "2026-03-09")
+        self.assertTrue(last_week["first_timestamp"].endswith("-08:00"))
+        self.assertTrue(last_week["last_timestamp"].endswith("-07:00"))
+        self.assertEqual(this_week["period_start"], "2026-03-10")
+        self.assertEqual(this_week["measurement_count"], 2)
+
+    def test_average_weekly_loss_value_and_composition_outputs_are_unchanged(self):
+        service = self._weekly_service()
+        first = self._measurement("2026-07-01 08:00:00", 100.0, 20.0)
+        last = self._measurement("2026-07-08 08:00:00", 99.0, 19.0)
+        last.reading_hash = "weekly-average-last"
+        service.database.insert_measurement(first)
+        service.database.insert_measurement(last)
+        expected_average = service._format_delta(
+            service._average_weekly_change([first, last], "lb"),
+            "lb",
+            per_week=True,
+        )
+
+        payload = service.view_model(include_live=False)
+        average_card = next(
+            card for card in payload["summary_cards"]
+            if card["label"] == "Average Weekly Loss"
+        )
+
+        self.assertEqual(average_card["value"], expected_average)
+        self.assertEqual(
+            [card["label"] for card in payload["summary_cards"][-3:]],
+            ["Average Weekly Loss", "Last Week", "This Week So Far"],
+        )
+        self.assertEqual(payload["composition_trends"]["default_metric"], "muscle_percentage")
+        self.assertIn("visceral_fat_points", payload["composition_trends"])
+
 
 class WeightProgressTemplateTests(unittest.TestCase):
     def _service_payload(self, measurement=None):
@@ -774,9 +1430,85 @@ class WeightProgressTemplateTests(unittest.TestCase):
         self.assertIn("Body Composition Trends", html)
         self.assertIn("Manage Weight History", html)
         self.assertNotIn("Import Weight History", html)
+        self.assertNotIn("weight-progress-import-file", html)
+        self.assertNotIn("weight-progress-import-preview-grid", html)
         self.assertLess(html.index("Current Weight"), html.index("Weight Trend"))
         self.assertLess(html.index("Weight Trend"), html.index("Body Composition Trends"))
         self.assertLess(html.index("Body Composition Trends"), html.index("Manage Weight History"))
+
+    def test_page_renders_weekly_cards_after_average_with_supporting_text(self):
+        payload = self._service_payload()
+        payload["summary_cards"][-2:] = [
+            {
+                "label": "Last Week",
+                "value": "2.4 lb lost",
+                "date_range_display": "Jul 21\N{EN DASH}Jul 27 (7 days)",
+                "note_lines": [
+                    "Jul 21\N{EN DASH}Jul 27 (7 days)",
+                    "286.2 lb \N{RIGHTWARDS ARROW} 283.8 lb",
+                    "7 weigh-ins",
+                ],
+            },
+            {
+                "label": "This Week So Far",
+                "value": "Not enough data",
+                "date_range_display": "Jul 28\N{EN DASH}Jul 31 (4 days)",
+                "note_lines": [
+                    "Jul 28\N{EN DASH}Jul 31 (4 days)",
+                    "Not enough weigh-ins",
+                ],
+            },
+        ]
+
+        html = self._render(payload)
+
+        self.assertLess(html.index("Average Weekly Loss"), html.index("Last Week"))
+        self.assertLess(html.index("Last Week"), html.index("This Week So Far"))
+        self.assertIn("2.4 lb lost", html)
+        self.assertIn("Jul 21\N{EN DASH}Jul 27 (7 days)", html)
+        self.assertIn("Jul 28\N{EN DASH}Jul 31 (4 days)", html)
+        self.assertIn("286.2 lb \N{RIGHTWARDS ARROW} 283.8 lb", html)
+        self.assertIn("7 weigh-ins", html)
+        self.assertIn("Not enough data", html)
+        self.assertIn("Not enough weigh-ins", html)
+
+    def test_page_renders_percentage_primary_selector_and_secondary_metrics(self):
+        measurement = WeightMeasurement.create(
+            captured_at="2026-07-19 07:35:33.270181",
+            source_timestamp="2026-07-19 07:35:33.270181",
+            source_entity="sensor.withings_weight",
+            weight_kg=100.0,
+            body_fat_percent=17.5,
+            fat_mass_kg=18.0,
+            fat_free_mass_kg=82.0,
+            muscle_mass_kg=60.0,
+            hydration_kg=70.0,
+            bone_mass_kg=3.2,
+            heart_rate_bpm=58,
+            scale_battery="low",
+            withings_goal_kg=95.0,
+            reading_hash="hash-2",
+            metadata={"timestamp": "2026-07-19 07:35:33.270181"},
+        )
+        payload = self._service_payload(measurement)
+        html = self._render(payload)
+        primary_start = html.index('<div class="range-controls" aria-label="Body composition metrics">')
+        primary_end = html.index("</div>", primary_start)
+        primary_block = html[primary_start:primary_end]
+
+        self.assertIn('data-default-metric="muscle_percentage"', html)
+        self.assertIn("Body Fat %", primary_block)
+        self.assertIn("Muscle %", primary_block)
+        self.assertIn("Hydration %", primary_block)
+        self.assertIn("Visceral Fat Index", primary_block)
+        self.assertNotIn("Fat Mass", primary_block)
+        self.assertNotIn("Fat-Free Mass", primary_block)
+        self.assertNotIn("Muscle Mass", primary_block)
+        self.assertIn("Fat Mass", html)
+        self.assertIn("Fat-Free Mass", html)
+        self.assertIn("Muscle Mass", html)
+        self.assertIn("Hydration Mass", html)
+        self.assertIn("Bone Mass", html)
 
     def test_page_renders_empty_state_without_history(self):
         payload = self._service_payload()
@@ -787,6 +1519,8 @@ class WeightProgressTemplateTests(unittest.TestCase):
         self.assertIn("No body composition history has been collected yet.", html)
         self.assertNotIn("Import Weight History", html)
         self.assertIn("Manage Weight History", html)
+        self.assertNotIn("weight-progress-import-file", html)
+        self.assertNotIn("weight-progress-import-preview-grid", html)
 
     def test_no_tokens_appear_in_rendered_output(self):
         payload = self._service_payload()
@@ -868,16 +1602,17 @@ class WeightProgressSettingsTests(unittest.TestCase):
             weight_progress=build_config().data["weight_progress"],
         )
 
-        with app.test_request_context("/settings#weight-progress-history-maintenance"):
+        with app.test_request_context("/settings#weight-history-maintenance"):
             return render_template("settings.html", **context)
 
     def test_settings_contains_collapsed_history_import_section(self):
         html = self._render()
 
         self.assertIn("History Import &amp; Maintenance", html)
-        self.assertIn('id="weight-progress-history-maintenance" class="advanced-settings"', html)
-        self.assertNotIn('id="weight-progress-history-maintenance" class="advanced-settings" open', html)
+        self.assertIn('id="weight-history-maintenance" class="advanced-settings"', html)
+        self.assertNotIn('id="weight-history-maintenance" class="advanced-settings" open', html)
         self.assertIn("Preview Import", html)
+        self.assertIn('id="weight-progress-import-file"', html)
         self.assertIn("weight_progress.js", html)
 
 
