@@ -439,9 +439,9 @@ class Dashboard:
                     "step_3": "Start HomePulse using one of these methods:",
                     "methods": [
                         "Task Scheduler: Open Task Scheduler, find 'HomePulse', right-click and select 'Run'",
-                        "PowerShell: cd C:\\RouterMonitorV2 && python router_monitor.py",
-                        "Command Prompt: cd C:\\RouterMonitorV2 && python router_monitor.py",
-                        "Batch file: Double-click C:\\RouterMonitorV2\\start_monitor.bat"
+                        "PowerShell: cd C:\\DennisApps\\HomePulse && python router_monitor.py",
+                        "Command Prompt: cd C:\\DennisApps\\HomePulse && python router_monitor.py",
+                        "Batch file: Double-click C:\\DennisApps\\HomePulse\\start_monitor.bat"
                     ]
                 },
                 "timestamp": str(datetime.now()),

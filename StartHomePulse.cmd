@@ -1,3 +1,3 @@
 @echo off
-cd /d C:\RouterMonitorV2
-python router_monitor.py
+call "C:\DennisApps\HomePulse\scripts\start_homepulse.bat"
+exit /b %ERRORLEVEL%

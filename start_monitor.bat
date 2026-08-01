@@ -1,4 +1,4 @@
 @echo off
-cd /d C:\RouterMonitorV2
+cd /d C:\DennisApps\HomePulse
 python router_monitor.py
 pause
