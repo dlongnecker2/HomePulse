@@ -12,6 +12,10 @@ cache/
 temp/
 tmp/
 data/config_backups/
+data/health_insights/google_credentials.json
+data/health_insights/google_tokens.json
+data/health_insights/*.json
+data/health_insights/*.tmp
 .DS_Store
 Thumbs.db
 .idea/
