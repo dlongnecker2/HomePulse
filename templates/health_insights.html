@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} Health Insights{% endblock %}
+{% block content %}
+<section class="page-heading history-heading">
+  <div>
+    <h2>Health Insights</h2>
+    <p>Daily nutrition, activity, sleep, and measured weight in one local, read-only view.</p>
+  </div>
+  <div>
+    <button
+      id="health-insights-refresh"
+      type="button"
+      {% if not health_insights.freshness.google_health_authorized %}disabled{% endif %}
+    >Refresh Recent Data</button>
+  </div>
+</section>
+
+<div
+  id="health-insights-refresh-status"
+  class="settings-message info"
+  {% if health_insights.manual_refresh.status == "idle" %}hidden{% endif %}
+  data-status="{{ health_insights.manual_refresh.status }}"
+>
+  {{ health_insights.manual_refresh.message }}
+</div>
+
+{% if not health_insights.freshness.google_health_authorized %}
+  <div class="settings-message warning">
+    Google Health authorization is not active. Complete the local read-only authorization before refreshing data.
+  </div>
+{% endif %}
+
+<section class="history-summary-grid" aria-label="Health summary">
+  {% for card in health_insights.summary_cards %}
+    <article class="summary-card">
+      <span>{{ card.label }}</span>
+      <strong>{{ card.value }}</strong>
+    </article>
+  {% endfor %}
+</section>
+
+<section class="content-grid">
+  <article class="dashboard-panel">
+    <h2>{{ health_insights.readiness.headline }}</h2>
+    <p>{{ health_insights.readiness.detail }}</p>
+    <p class="small">
+      Relationships remain hidden until at least
+      {{ health_insights.readiness.minimum_days }} complete, non-current days overlap.
+      This prevents conclusions from very small samples.
+    </p>
+  </article>
+
+  <article class="dashboard-panel">
+    <h2>Data Freshness and Sources</h2>
+    <table>
+      <tr><td>Last successful refresh</td><td>{{ health_insights.freshness.last_successful_sync }}</td></tr>
+      <tr><td>Calendar timezone</td><td>{{ health_insights.freshness.timezone }}</td></tr>
+      <tr><td>Nutrition</td><td>{{ health_insights.freshness.nutrition_source }}</td></tr>
+      <tr><td>Activity and sleep</td><td>{{ health_insights.freshness.activity_source }}</td></tr>
+      <tr><td>Weight</td><td>{{ health_insights.freshness.weight_source }}</td></tr>
+    </table>
+  </article>
+</section>
+
+<section class="dashboard-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Recent Daily Summary</h2>
+      <p>Missing data is shown as an em dash and is never treated as zero.</p>
+    </div>
+  </div>
+  <div class="center-table-container">
+    <table class="center-data-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Calories Eaten</th>
+          <th>Protein</th>
+          <th>Carbs</th>
+          <th>Fat</th>
+          <th>Fiber</th>
+          <th>Steps</th>
+          <th>Calories Burned</th>
+          <th>Exercise</th>
+          <th>Sleep</th>
+          <th>Weight</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in health_insights.daily_rows %}
+          <tr>
+            <td>{{ row.date }}</td>
+            <td>{{ row.calories }}</td>
+            <td>{{ row.protein }}</td>
+            <td>{{ row.carbs }}</td>
+            <td>{{ row.fat }}</td>
+            <td>{{ row.fiber }}</td>
+            <td>{{ row.steps }}</td>
+            <td>{{ row.calories_burned }}</td>
+            <td>{{ row.exercise }}</td>
+            <td>{{ row.sleep }}</td>
+            <td>{{ row.weight }}</td>
+            <td>{{ row.status }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="12" class="table-empty">
+              No Health Insights days have been stored. Refresh recent data to begin.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="dashboard-panel">
+  <h2>How to Read This</h2>
+  <p>
+    Total expenditure is an estimate and is not added to active-energy or exercise Calories.
+    Weight and body composition come from actual Withings measurements in Weight Progress;
+    days without a weigh-in remain missing.
+  </p>
+  <p class="small">
+    Health Insights is personal tracking, not medical advice. Future relationship summaries
+    will describe associations only and will not claim that one measure caused another.
+  </p>
+</section>
+
+<script>
+  window.HealthInsightsData = {{ health_insights | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/health_insights.js') }}"></script>
+{% endblock %}

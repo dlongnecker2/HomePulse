@@ -10,6 +10,54 @@ from typing import Any
 
 
 @dataclass
+class DailyHealthInsight:
+    local_date: str
+    timezone: str
+    nutrition_calories: float | None = None
+    protein_grams: float | None = None
+    carbohydrate_grams: float | None = None
+    fat_grams: float | None = None
+    fiber_grams: float | None = None
+    sodium_milligrams: float | None = None
+    nutrition_complete: bool = False
+    nutrition_source: str | None = None
+    nutrition_platform: str | None = None
+    nutrition_record_count: int = 0
+    steps: int | None = None
+    total_calories_burned: float | None = None
+    active_energy_calories: float | None = None
+    active_minutes: int | None = None
+    active_zone_minutes: int | None = None
+    distance_miles: float | None = None
+    exercise_session_count: int = 0
+    exercise_minutes: float | None = None
+    exercise_calories: float | None = None
+    activity_complete: bool = False
+    activity_source: str | None = None
+    sleep_minutes: int | None = None
+    sleep_hours: float | None = None
+    awake_minutes: int | None = None
+    sleep_session_count: int = 0
+    sleep_complete: bool = False
+    sleep_source: str | None = None
+    weight_pounds: float | None = None
+    seven_day_average_weight_pounds: float | None = None
+    body_fat_percentage: float | None = None
+    muscle_percentage: float | None = None
+    visceral_fat_index: float | None = None
+    weight_available: bool = False
+    weight_source: str | None = None
+    is_current_day: bool = False
+    nutrition_activity_weight_complete: bool = False
+    data_status: str = "incomplete"
+    first_imported_at: str | None = None
+    last_refreshed_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class DailyNutrition:
     local_date: str
     calories_kcal: float | None = None

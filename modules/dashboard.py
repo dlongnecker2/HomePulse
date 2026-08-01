@@ -137,6 +137,47 @@ class Dashboard:
                 now=datetime.now(),
             )
 
+        @self.app.route("/health-insights")
+        def health_insights():
+            return render_template(
+                "health_insights.html",
+                health_insights=self.application.health_insights.dashboard_view_model(),
+                now=datetime.now(),
+            )
+
+        @self.app.route("/api/health-insights/status")
+        def api_health_insights_status():
+            try:
+                return jsonify({
+                    "ok": True,
+                    "health_insights": self.application.health_insights.dashboard_view_model(),
+                    "timestamp": str(datetime.now()),
+                })
+            except Exception as exc:
+                self.application.log.exception(f"Health Insights status failed: {exc}")
+                return jsonify({
+                    "ok": False,
+                    "error": "Health Insights status is temporarily unavailable.",
+                    "timestamp": str(datetime.now()),
+                }), 500
+
+        @self.app.route("/api/health-insights/refresh", methods=["POST"])
+        def api_health_insights_refresh():
+            try:
+                result = self.application.health_insights.start_manual_refresh()
+                status_code = 409 if result.get("busy") else 202
+                return jsonify({
+                    **result,
+                    "timestamp": str(datetime.now()),
+                }), status_code
+            except Exception as exc:
+                self.application.log.exception(f"Health Insights refresh failed: {exc}")
+                return jsonify({
+                    "ok": False,
+                    "error": "Health data refresh could not be started.",
+                    "timestamp": str(datetime.now()),
+                }), 500
+
         @self.app.route("/api/weight-progress/import/preview", methods=["POST"])
         def api_weight_progress_import_preview():
             try:

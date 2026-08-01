@@ -1,4 +1,4 @@
-"""Read-only Google Health foundations for HomePulse Health Insights."""
+"""Google Health foundations and local Health Insights services."""
 
 from modules.health_insights.google_health import (
     ACTIVITY_SCOPE,
@@ -14,9 +14,16 @@ from modules.health_insights.google_health import (
 )
 from modules.health_insights.models import (
     DailyActivity,
+    DailyHealthInsight,
     DailyNutrition,
     DailySleep,
     ExerciseSession,
+)
+from modules.health_insights.database import HealthInsightsDatabase
+from modules.health_insights.service import (
+    HealthInsightsError,
+    HealthInsightsService,
+    WeightProgressDailyReader,
 )
 
 __all__ = [
@@ -25,12 +32,17 @@ __all__ = [
     "NUTRITION_SCOPE",
     "SLEEP_SCOPE",
     "DailyActivity",
+    "DailyHealthInsight",
     "DailyNutrition",
     "DailySleep",
     "ExerciseSession",
     "GoogleHealthClient",
     "GoogleHealthError",
     "GoogleOAuthClient",
+    "HealthInsightsDatabase",
+    "HealthInsightsError",
+    "HealthInsightsService",
+    "WeightProgressDailyReader",
     "configure_credentials",
     "load_local_credentials",
     "load_local_tokens",

@@ -38,6 +38,7 @@ from modules.weather import WeatherManager
 from modules.garden import GardenManager
 from modules.network_mesh import NetworkMeshManager
 from modules.weight_progress import WeightProgressService
+from modules.health_insights import HealthInsightsService
 from version import APP_NAME, APP_VERSION
 
 
@@ -60,6 +61,10 @@ class Application:
         self.garden = GardenManager(self.config, self.log)
         self.network_mesh = NetworkMeshManager(self.config, self.log)
         self.weight_progress = WeightProgressService(self.config, self.log)
+        self.health_insights = HealthInsightsService(
+            Path(__file__).resolve().parent.parent,
+            self.log,
+        )
         self.history = HistoryService(self.config, self.log)
         self.environment = EnvironmentManager(self.config, self.log, self.db.environment)
         self.timeline = TimelineService()
@@ -146,6 +151,7 @@ class Application:
         self.log.info("Database initialized successfully")
         self.history.initialize()
         self.weight_progress.initialize()
+        self.health_insights.initialize()
         self.environment.initialize()
         self.plugin_manager.initialize_plugins()
         self.load_latest_speedtest()
@@ -204,6 +210,7 @@ class Application:
         self.register_environment_job()
         self.register_solar_alert_job()
         self.register_maintenance_job()
+        self.register_health_insights_job()
 
     def register_environment_job(self):
         if not self.environment.enabled():
@@ -260,6 +267,22 @@ class Application:
             function=self.maintenance_check,
         )
         self.log.info(f"Maintenance check scheduled for {time_value}")
+
+    def register_health_insights_job(self):
+        authorization = self.health_insights.authorization_status()
+        if not authorization["authorized"]:
+            self.log.info(
+                "Health Insights daily refresh is disabled until Google Health "
+                "authorization is complete"
+            )
+            return
+        self.scheduler.daily(
+            name="Health Insights Daily Refresh",
+            hour=5,
+            minute=15,
+            function=self.health_insights.sync_recent,
+        )
+        self.log.info("Health Insights daily refresh scheduled for 05:15 local time")
 
     def register_history_job(self):
         if not self.config.get("history", "enabled", default=True):
