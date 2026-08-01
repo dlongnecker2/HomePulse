@@ -1,0 +1,21 @@
+{
+  "captured_from_real_response": false,
+  "synthetic_fixture": true,
+  "pages": [
+    {
+      "more_type": "bool",
+      "more": false,
+      "offset_present": false,
+      "measuregrps_type": "list"
+    }
+  ],
+  "reading_count": 2,
+  "duplicate_count": 1,
+  "sample": [
+    {
+      "timestamp": 1893456000,
+      "value": 7.0,
+      "source_id": "withings-0000000000"
+    }
+  ]
+}
