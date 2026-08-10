@@ -2419,6 +2419,12 @@ button:focus-visible {
   font-size: 13px;
 }
 
+.summary-card .compact-line {
+  margin-top: 4px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .is-updated {
   animation: valuePulse 520ms ease;
 }

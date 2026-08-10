@@ -18,6 +18,9 @@
     <article class="summary-card">
       <span>{{ card.label }}</span>
       <strong>{{ card.value }}</strong>
+      {% if card.secondary_text %}
+        <div class="small compact-line">{{ card.secondary_text }}</div>
+      {% endif %}
       {% if card.date_range_display %}
         <div class="small">{{ card.date_range_display }}</div>
         {% for line in card.note_lines[1:] %}

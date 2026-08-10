@@ -597,6 +597,7 @@ class WeightProgressServiceTests(unittest.TestCase):
         service.database.insert_measurement(self._measurement("2026-07-01 08:00:00", 200.0, 18.5))
 
         payload = service.view_model(include_live=False)
+        payload = service.view_model(include_live=False)
 
         self.assertEqual(payload["summary_cards"][1]["value"], "10.0 kg")
         self.assertEqual(payload["summary_cards"][4]["value"], "20.0 kg")
@@ -613,9 +614,9 @@ class WeightProgressServiceTests(unittest.TestCase):
             }
         )
         service = self._service(config)
-        service.database.insert_measurement(self._measurement("2026-07-01 08:00:00", 200.0, 18.5))
-        service.database.insert_measurement(self._measurement("2026-07-04 08:00:00", 198.0, 18.2))
-        service.database.insert_measurement(self._measurement("2026-07-09 08:00:00", 196.0, 18.0))
+        service.database.insert_measurement(self._measurement("2026-07-20 08:00:00", 200.0, 18.5))
+        service.database.insert_measurement(self._measurement("2026-07-24 08:00:00", 198.0, 18.2))
+        service.database.insert_measurement(self._measurement("2026-07-29 08:00:00", 196.0, 18.0))
 
         payload = service.view_model(include_live=False, range_key="1m")
 
@@ -1337,7 +1338,7 @@ class WeightProgressServiceTests(unittest.TestCase):
     def test_average_weekly_loss_value_and_composition_outputs_are_unchanged(self):
         service = self._weekly_service()
         first = self._measurement("2026-07-01 08:00:00", 100.0, 20.0)
-        last = self._measurement("2026-07-08 08:00:00", 99.0, 19.0)
+        last = self._measurement("2026-07-08 08:00:00", 98.95, 19.0)
         last.reading_hash = "weekly-average-last"
         service.database.insert_measurement(first)
         service.database.insert_measurement(last)
@@ -1353,15 +1354,119 @@ class WeightProgressServiceTests(unittest.TestCase):
             if card["label"] == "Average Weekly Loss"
         )
 
-        self.assertEqual(average_card["value"], expected_average)
-        self.assertEqual(
-            [card["label"] for card in payload["summary_cards"][-3:]],
-            ["Average Weekly Loss", "Last Week", "This Week So Far"],
-        )
+        self.assertEqual(average_card["value"], "2.4 lb/week")
+        self.assertLess(service._average_weekly_change([first, last], "lb"), 0)
+        self.assertEqual(payload["summary_cards"][-3]["label"], "Average Weekly Loss")
+        self.assertEqual(payload["summary_cards"][-2]["label"], "Last Week")
+        self.assertEqual(payload["summary_cards"][-1]["label"], "This Week So Far")
         self.assertEqual(payload["composition_trends"]["default_metric"], "muscle_percentage")
         self.assertIn("visceral_fat_points", payload["composition_trends"])
 
 
+
+    def test_weekly_loss_summary_counts_completed_tuesday_through_monday_weeks(self):
+        service = self._weekly_service(journey_start_date="2026-07-07")
+        now = datetime(2026, 8, 5, 12, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement("2026-07-07 08:00:00", 300.0),
+            self._weekly_measurement("2026-07-13 08:00:00", 298.0),
+            self._weekly_measurement("2026-07-14 08:00:00", 297.0),
+            self._weekly_measurement("2026-07-20 08:00:00", 296.0),
+            self._weekly_measurement("2026-07-21 08:00:00", 295.0),
+            self._weekly_measurement("2026-07-27 08:00:00", 295.0),
+            self._weekly_measurement("2026-07-28 08:00:00", 294.5),
+            self._weekly_measurement("2026-08-03 08:00:00", 295.0),
+            self._weekly_measurement("2026-08-04 08:00:00", 293.0),
+            self._weekly_measurement("2026-08-05 08:00:00", 292.0),
+        ]
+
+        summary = service._weekly_loss_summary(
+            history,
+            "lb",
+            journey_start_date=service._journey_start_date(service.weight_progress_config()),
+            now=now,
+        )
+
+        self.assertEqual(summary["positive_loss_week_count"], 2)
+        self.assertEqual(summary["minimum_weekly_loss_pounds"], 1.0)
+        self.assertEqual(summary["maximum_weekly_loss_pounds"], 2.0)
+        self.assertEqual(summary["minimum_weekly_loss_display"], "1.0 lb")
+        self.assertEqual(summary["maximum_weekly_loss_display"], "2.0 lb")
+        self.assertEqual(summary["secondary_text"], "Min 1.0 lb • Max 2.0 lb")
+
+    def test_weekly_loss_summary_excludes_short_gain_no_change_duplicate_and_visceral_rows(self):
+        service = self._weekly_service()
+        now = datetime(2026, 7, 31, 12, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement("2026-07-07 08:00:00", 300.0, reading_hash="a"),
+            self._weekly_measurement("2026-07-13 08:00:00", 298.0, reading_hash="b"),
+            self._weekly_measurement("2026-07-14 08:00:00", 297.0, reading_hash="c"),
+            self._weekly_measurement("2026-07-14 08:00:00", 297.0, reading_hash="duplicate-c"),
+            self._weekly_measurement("2026-07-21 08:00:00", 296.0, reading_hash="d"),
+            self._weekly_measurement("2026-07-21 12:00:00", None, reading_hash="visceral-only", visceral_fat_index=8.4),
+            self._weekly_measurement("2026-07-22 08:00:00", 296.0, reading_hash="e"),
+            self._weekly_measurement("2026-07-27 08:00:00", 296.0, reading_hash="f"),
+            self._weekly_measurement("2026-07-28 08:00:00", 295.0, reading_hash="g"),
+            self._weekly_measurement("2026-07-30 08:00:00", 295.4, reading_hash="h"),
+        ]
+
+        summary = service._weekly_loss_summary(
+            history,
+            "lb",
+            journey_start_date=service._journey_start_date(service.weight_progress_config()),
+            now=now,
+        )
+
+        self.assertEqual(summary["positive_loss_week_count"], 1)
+        self.assertEqual(summary["minimum_weekly_loss_pounds"], 2.0)
+        self.assertEqual(summary["maximum_weekly_loss_pounds"], 2.0)
+        self.assertEqual(summary["secondary_text"], "Min 2.0 lb • Max 2.0 lb")
+
+    def test_weekly_loss_summary_uses_local_week_boundaries_for_utc_measurements(self):
+        service = self._weekly_service()
+        now = datetime(2026, 7, 28, 10, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement("2026-07-21T07:00:00+00:00", 286.0),
+            self._weekly_measurement("2026-07-28T06:59:59+00:00", 284.0),
+            self._weekly_measurement("2026-07-28T07:00:00+00:00", 283.8),
+            self._weekly_measurement("2026-07-28T16:00:00+00:00", 283.0),
+        ]
+
+        summary = service._weekly_loss_summary(
+            history,
+            "lb",
+            journey_start_date=service._journey_start_date(service.weight_progress_config()),
+            now=now,
+        )
+
+        self.assertEqual(summary["positive_loss_week_count"], 1)
+        self.assertEqual(summary["minimum_weekly_loss_pounds"], 2.0)
+        self.assertEqual(summary["maximum_weekly_loss_pounds"], 2.0)
+        self.assertEqual(summary["secondary_text"], "Min 2.0 lb • Max 2.0 lb")
+
+    def test_weekly_loss_summary_uses_em_dashes_when_no_positive_weeks_exist(self):
+        service = self._weekly_service()
+        now = datetime(2026, 7, 31, 12, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+        history = [
+            self._weekly_measurement("2026-07-21 08:00:00", 300.0),
+            self._weekly_measurement("2026-07-27 08:00:00", 300.0),
+            self._weekly_measurement("2026-07-28 08:00:00", 301.0),
+            self._weekly_measurement("2026-07-30 08:00:00", 301.2),
+        ]
+
+        summary = service._weekly_loss_summary(
+            history,
+            "lb",
+            journey_start_date=service._journey_start_date(service.weight_progress_config()),
+            now=now,
+        )
+
+        self.assertEqual(summary["positive_loss_week_count"], 0)
+        self.assertIsNone(summary["minimum_weekly_loss_pounds"])
+        self.assertIsNone(summary["maximum_weekly_loss_pounds"])
+        self.assertEqual(summary["minimum_weekly_loss_display"], "—")
+        self.assertEqual(summary["maximum_weekly_loss_display"], "—")
+        self.assertEqual(summary["secondary_text"], "Min — • Max —")
 class WeightProgressTemplateTests(unittest.TestCase):
     def _service_payload(self, measurement=None):
         temp_dir = tempfile.TemporaryDirectory()
@@ -1472,6 +1577,45 @@ class WeightProgressTemplateTests(unittest.TestCase):
         self.assertIn("Not enough data", html)
         self.assertIn("Not enough weigh-ins", html)
 
+
+    def test_page_renders_compact_min_and_max_weekly_loss_row(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        cfg = build_config()
+        cfg.data["weight_progress"]["database"] = str(Path(temp_dir.name) / "weight_progress.db")
+        service = WeightProgressService(cfg, MagicMock())
+        service.initialize()
+        for timestamp, weight_lb in (
+            ("2026-07-01 08:00:00", 300.0),
+            ("2026-07-06 08:00:00", 298.0),
+            ("2026-07-08 08:00:00", 297.0),
+            ("2026-07-13 08:00:00", 296.0),
+            ("2026-07-15 08:00:00", 295.0),
+            ("2026-07-20 08:00:00", 294.0),
+        ):
+            service.database.insert_measurement(
+                WeightMeasurement.create(
+                    captured_at=timestamp,
+                    source_timestamp=timestamp,
+                    source_entity="sensor.withings_weight",
+                    weight_kg=weight_lb / 2.2046226218,
+                    body_fat_percent=20.0,
+                    reading_hash=f"template-{timestamp}",
+                    metadata={"timestamp": timestamp},
+                )
+            )
+
+        with patch.object(WeightProgressService, "_now_text", return_value="2026-08-09 12:00:00"):
+            payload = service.view_model(include_live=False)
+        html = self._render(payload)
+        average_card = next(card for card in payload["summary_cards"] if card["label"] == "Average Weekly Loss")
+
+        self.assertEqual(average_card["secondary_text"], "Min 1.0 lb • Max 2.0 lb")
+        self.assertEqual(payload["weekly_loss_summary"]["positive_loss_week_count"], 3)
+        self.assertIn('class="small compact-line"', html)
+        self.assertIn("Min 1.0 lb", html)
+        self.assertIn("Max 2.0 lb", html)
+        self.assertIn("Min 1.0 lb • Max 2.0 lb", html)
     def test_page_renders_percentage_primary_selector_and_secondary_metrics(self):
         measurement = WeightMeasurement.create(
             captured_at="2026-07-19 07:35:33.270181",

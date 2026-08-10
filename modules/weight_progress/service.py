@@ -305,6 +305,12 @@ class WeightProgressService:
         remaining_to_goal = self._delta_value(current_weight, goal_weight)
         body_fat = self._to_display_percent(self._derived_body_fat_percent(latest) if latest else None)
         weekly_change = self._average_weekly_change(journey_history, display_unit)
+        weekly_loss_summary = self._weekly_loss_summary(
+            journey_history,
+            display_unit,
+            journey_start_date=journey_start_date,
+            now=now,
+        )
         weekly_cards = self._weekly_weight_cards(all_history, now=now)
         progress_percent = self._journey_progress_percent(starting_weight, current_weight, goal_weight)
         chart_points = self._chart_points(history, goal_weight, display_unit)
@@ -346,10 +352,15 @@ class WeightProgressService:
                 {"label": "Journey Progress", "value": self._format_percent(progress_percent)},
                 {"label": "Current Body Fat %", "value": self._format_percent(body_fat)},
                 {"label": "Latest Weigh-In", "value": latest_label},
-                {"label": "Average Weekly Loss", "value": self._format_delta(weekly_change, display_unit, per_week=True)},
+                {
+                    "label": "Average Weekly Loss",
+                    "value": self._format_delta(abs(weekly_change) if weekly_change is not None else None, display_unit, per_week=True),
+                    **weekly_loss_summary,
+                },
                 *weekly_cards,
             ],
             "weekly_cards": weekly_cards,
+            "weekly_loss_summary": weekly_loss_summary,
             "body_composition_rows": composition_rows,
             "composition_trends": {
                 "default_metric": "muscle_percentage",
@@ -784,6 +795,55 @@ class WeightProgressService:
         last_weight = self._to_display_weight(last.weight_kg, display_unit)
         days = max((last_ts - first_ts).total_seconds() / 86400, 1 / 24)
         return round(((last_weight - first_weight) / days) * 7, 2)
+
+    def _weekly_loss_summary(self, history, display_unit, journey_start_date=None, now=None):
+        timezone_info = self.local_timezone()
+        current_time = self._as_local_datetime(
+            now or datetime.now(timezone_info), timezone_info
+        )
+        if current_time is None:
+            current_time = datetime.now(timezone_info)
+        current_week_start = self._tuesday_week_start(current_time)
+        readings = self._canonical_weight_readings(history, timezone_info)
+        weekly_losses = []
+        grouped_readings = {}
+
+        for reading in readings:
+            week_start = self._tuesday_week_start(reading["timestamp"])
+            if journey_start_date and week_start < journey_start_date:
+                continue
+            if week_start >= current_week_start:
+                continue
+            grouped_readings.setdefault(week_start, []).append(reading)
+
+        for week_start in sorted(grouped_readings):
+            selected = grouped_readings[week_start]
+            if len(selected) < 2:
+                continue
+            first_weight = round(selected[0]["weight_pounds"], 1)
+            last_weight = round(selected[-1]["weight_pounds"], 1)
+            weekly_loss = round(first_weight - last_weight, 1)
+            if weekly_loss > 0:
+                weekly_losses.append(weekly_loss)
+
+        minimum_weekly_loss_pounds = min(weekly_losses) if weekly_losses else None
+        maximum_weekly_loss_pounds = max(weekly_losses) if weekly_losses else None
+        minimum_weekly_loss_display = self._format_weekly_loss_display(
+            minimum_weekly_loss_pounds,
+            display_unit,
+        )
+        maximum_weekly_loss_display = self._format_weekly_loss_display(
+            maximum_weekly_loss_pounds,
+            display_unit,
+        )
+        return {
+            "minimum_weekly_loss_pounds": minimum_weekly_loss_pounds,
+            "maximum_weekly_loss_pounds": maximum_weekly_loss_pounds,
+            "minimum_weekly_loss_display": minimum_weekly_loss_display,
+            "maximum_weekly_loss_display": maximum_weekly_loss_display,
+            "positive_loss_week_count": len(weekly_losses),
+            "secondary_text": f"Min {minimum_weekly_loss_display} • Max {maximum_weekly_loss_display}",
+        }
 
     def _weekly_weight_cards(self, history, now=None):
         timezone_info = self.local_timezone()
@@ -1288,6 +1348,12 @@ class WeightProgressService:
     def _format_weight(self, value, display_unit):
         if value is None:
             return "--"
+        return f"{value:.1f} {display_unit}"
+
+    @staticmethod
+    def _format_weekly_loss_display(value, display_unit):
+        if value is None:
+            return "—"
         return f"{value:.1f} {display_unit}"
 
     def _format_percent(self, value):
